@@ -378,9 +378,9 @@ END $$;
 -- (MUST RUN AFTER TABLES CREATED)
 -- ============================================
 
-DROP FUNCTION IF EXISTS auth.get_active_tenant_id() CASCADE;
+DROP FUNCTION IF EXISTS public.get_active_tenant_id() CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.get_active_tenant_id()
+CREATE OR REPLACE FUNCTION public.get_active_tenant_id()
 RETURNS UUID AS $$
 BEGIN
   RETURN (
@@ -391,66 +391,66 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS auth.has_role(text[]) CASCADE;
+DROP FUNCTION IF EXISTS public.has_role(text[]) CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.has_role(check_roles text[])
+CREATE OR REPLACE FUNCTION public.has_role(check_roles text[])
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 
     FROM public.user_tenant_roles
     WHERE user_id = auth.uid()
-      AND tenant_id = auth.get_active_tenant_id()
+      AND tenant_id = public.get_active_tenant_id()
       AND role = ANY(check_roles)
       AND is_active = true
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS auth.is_owner() CASCADE;
+DROP FUNCTION IF EXISTS public.is_owner() CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.is_owner()
+CREATE OR REPLACE FUNCTION public.is_owner()
 RETURNS BOOLEAN AS $$
 BEGIN
-  RETURN auth.has_role(ARRAY['owner']);
+  RETURN public.has_role(ARRAY['owner']);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS auth.is_admin() CASCADE;
+DROP FUNCTION IF EXISTS public.is_admin() CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.is_admin()
+CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-  RETURN auth.has_role(ARRAY['admin_finance', 'admin_logistic']);
+  RETURN public.has_role(ARRAY['admin_finance', 'admin_logistic']);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS auth.get_user_branch_id() CASCADE;
+DROP FUNCTION IF EXISTS public.get_user_branch_id() CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.get_user_branch_id()
+CREATE OR REPLACE FUNCTION public.get_user_branch_id()
 RETURNS UUID AS $$
 BEGIN
   RETURN (
     SELECT branch_id 
     FROM public.user_tenant_roles
     WHERE user_id = auth.uid()
-      AND tenant_id = auth.get_active_tenant_id()
+      AND tenant_id = public.get_active_tenant_id()
       AND is_active = true
     LIMIT 1
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS auth.get_user_role() CASCADE;
+DROP FUNCTION IF EXISTS public.get_user_role() CASCADE;
 
-CREATE OR REPLACE FUNCTION auth.get_user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS TEXT AS $$
 BEGIN
   RETURN (
     SELECT role::text
     FROM public.user_tenant_roles
     WHERE user_id = auth.uid()
-      AND tenant_id = auth.get_active_tenant_id()
+      AND tenant_id = public.get_active_tenant_id()
       AND is_active = true
     LIMIT 1
   );
@@ -485,12 +485,12 @@ CREATE POLICY "owners_update_own_tenant"
 ON public.tenants
 FOR UPDATE
 USING (
-  id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
 )
 WITH CHECK (
-  id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
 );
 
 CREATE POLICY "system_insert_tenants"
@@ -520,11 +520,11 @@ CREATE POLICY "owners_view_tenant_profiles"
 ON public.profiles
 FOR SELECT
 USING (
-  auth.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic'])
+  public.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic'])
   AND id IN (
     SELECT user_id 
     FROM public.user_tenant_roles
-    WHERE tenant_id = auth.get_active_tenant_id()
+    WHERE tenant_id = public.get_active_tenant_id()
   )
 );
 
@@ -549,16 +549,16 @@ CREATE POLICY "owners_view_tenant_roles"
 ON public.user_tenant_roles
 FOR SELECT
 USING (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
 );
 
 CREATE POLICY "owners_insert_tenant_roles"
 ON public.user_tenant_roles
 FOR INSERT
 WITH CHECK (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
   AND role != 'owner'
 );
 
@@ -566,12 +566,12 @@ CREATE POLICY "owners_update_tenant_roles"
 ON public.user_tenant_roles
 FOR UPDATE
 USING (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
 )
 WITH CHECK (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
   AND role != 'owner'
 );
 
@@ -579,8 +579,8 @@ CREATE POLICY "owners_delete_tenant_roles"
 ON public.user_tenant_roles
 FOR DELETE
 USING (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner'])
   AND role != 'owner'
 );
 

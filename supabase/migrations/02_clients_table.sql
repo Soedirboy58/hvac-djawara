@@ -60,15 +60,15 @@ ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_view_tenant_clients"
 ON public.clients
 FOR SELECT
-USING (tenant_id = auth.get_active_tenant_id());
+USING (tenant_id = public.get_active_tenant_id());
 
 -- INSERT: Owner, admins, and sales partners can create clients
 CREATE POLICY "users_insert_clients"
 ON public.clients
 FOR INSERT
 WITH CHECK (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
 );
 
 -- UPDATE: Owner, admins, and sales partners can update clients
@@ -76,12 +76,12 @@ CREATE POLICY "users_update_clients"
 ON public.clients
 FOR UPDATE
 USING (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
 )
 WITH CHECK (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner', 'admin_finance', 'admin_logistic', 'sales_partner'])
 );
 
 -- DELETE: Only owner and admins can delete clients (soft delete preferred)
@@ -89,8 +89,8 @@ CREATE POLICY "admins_delete_clients"
 ON public.clients
 FOR DELETE
 USING (
-  tenant_id = auth.get_active_tenant_id()
-  AND auth.has_role(ARRAY['owner', 'admin_finance'])
+  tenant_id = public.get_active_tenant_id()
+  AND public.has_role(ARRAY['owner', 'admin_finance'])
 );
 
 -- ================================================
