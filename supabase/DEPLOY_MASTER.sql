@@ -89,7 +89,9 @@ COMMENT ON TYPE subscription_plan IS
 - pro: Up to 50 users, advanced features
 - enterprise: Unlimited users, all features + custom';
 
-RAISE NOTICE '✓ Phase 1.1: Enum types created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 1.1: Enum types created';
+END $$;
 
 -- ================================================
 -- 1.2 HANDLE_UPDATED_AT FUNCTION
@@ -110,7 +112,9 @@ Apply as BEFORE UPDATE trigger.
 Example: CREATE TRIGGER set_updated_at BEFORE UPDATE ON table_name 
 FOR EACH ROW EXECUTE FUNCTION handle_updated_at();';
 
-RAISE NOTICE '✓ Phase 1.2: handle_updated_at function created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 1.2: handle_updated_at function created';
+END $$;
 
 -- ================================================
 -- 1.3 TEXT HELPER FUNCTIONS
@@ -180,7 +184,9 @@ COMMENT ON FUNCTION public.clean_phone(TEXT) IS
 'Clean and format Indonesian phone number to E.164 format.
 Example: clean_phone(''0812-3456-7890'') → ''+628123456890''';
 
-RAISE NOTICE '✓ Phase 1.3: Text helper functions created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 1.3: Text helper functions created';
+END $$;
 
 -- ============================================
 -- PHASE 2: CORE TABLES
@@ -255,7 +261,9 @@ ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.tenants IS 
 'Perusahaan jasa yang subscribe platform. Root table untuk multi-tenant isolation.';
 
-RAISE NOTICE '✓ Phase 2.1: Tenants table created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 2.1: Tenants table created';
+END $$;
 
 -- ================================================
 -- 2.2 PROFILES TABLE
@@ -304,7 +312,9 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.profiles IS 
 'Extended user profile (1:1 relationship with auth.users). Auto-created on registration.';
 
-RAISE NOTICE '✓ Phase 2.2: Profiles table created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 2.2: Profiles table created';
+END $$;
 
 -- ================================================
 -- 2.3 USER_TENANT_ROLES TABLE
@@ -359,7 +369,9 @@ ALTER TABLE public.user_tenant_roles ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.user_tenant_roles IS 
 'Junction table: user ↔ tenant ↔ role. One user can have multiple roles in multiple tenants.';
 
-RAISE NOTICE '✓ Phase 2.3: User Tenant Roles table created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 2.3: User Tenant Roles table created';
+END $$;
 
 -- ============================================
 -- PHASE 3: AUTH HELPER FUNCTIONS
@@ -445,7 +457,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-RAISE NOTICE '✓ Phase 3: Auth helper functions created';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 3: Auth helper functions created';
+END $$;
 
 -- ============================================
 -- PHASE 4: RLS POLICIES
@@ -484,7 +498,9 @@ ON public.tenants
 FOR INSERT
 WITH CHECK (true);
 
-RAISE NOTICE '✓ Phase 4.1: Tenants RLS policies applied';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 4.1: Tenants RLS policies applied';
+END $$;
 
 -- ================================================
 -- 4.2 PROFILES POLICIES
@@ -517,7 +533,9 @@ ON public.profiles
 FOR INSERT
 WITH CHECK (true);
 
-RAISE NOTICE '✓ Phase 4.2: Profiles RLS policies applied';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 4.2: Profiles RLS policies applied';
+END $$;
 
 -- ================================================
 -- 4.3 USER_TENANT_ROLES POLICIES
@@ -578,7 +596,9 @@ WITH CHECK (
   )
 );
 
-RAISE NOTICE '✓ Phase 4.3: User Tenant Roles RLS policies applied';
+DO $$ BEGIN
+  RAISE NOTICE '✓ Phase 4.3: User Tenant Roles RLS policies applied';
+END $$;
 
 -- ============================================
 -- FINAL VALIDATION
