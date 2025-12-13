@@ -1,0 +1,3 @@
+export function ScheduleOrderModal() {
+  return <div>Schedule Order Modal - Coming in Stage 6</div>
+}

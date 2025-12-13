@@ -11,9 +11,11 @@
 # next.js
 /.next/
 /out/
+/build
+/dist
 
 # production
-/build
+.vercel
 
 # misc
 .DS_Store
@@ -23,10 +25,18 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+<<<<<<< HEAD
 
 # local env files
 .env*.local
 .env
+=======
+.pnpm-debug.log*
+
+# local env files
+.env
+.env*.local
+>>>>>>> copilot/implement-scheduling-workforce-system
 .env.local
 .env.development.local
 .env.test.local
@@ -54,6 +64,12 @@ next-env.d.ts
 Thumbs.db
 .DS_Store
 
+<<<<<<< HEAD
+=======
+# Supabase
+.supabase
+
+>>>>>>> copilot/implement-scheduling-workforce-system
 # Old migration files without proper naming
 01_extend_order_types.sql
 02_extend_service_orders
