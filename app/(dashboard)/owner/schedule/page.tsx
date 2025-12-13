@@ -51,11 +51,11 @@ export default function SchedulePage() {
     );
   }
 
-  const scheduledCount = orders?.filter(o => o.scheduledDate).length || 0;
+  const scheduledCount = orders?.filter(o => o.scheduled_date).length || 0;
   const todayCount = orders?.filter(o => {
-    if (!o.scheduledDate) return false;
+    if (!o.scheduled_date) return false;
     const today = new Date().toISOString().split('T')[0];
-    return o.scheduledDate.toString().split('T')[0] === today;
+    return o.scheduled_date.toString().split('T')[0] === today;
   }).length || 0;
 
   return (
