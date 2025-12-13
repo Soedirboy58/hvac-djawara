@@ -150,7 +150,7 @@ export function ClockInOutCard() {
                       })}
                     </span>
                     {todayAttendance.is_late && (
-                      <Badge variant="destructive">Terlambat</Badge>
+                      <Badge variant="error">Terlambat</Badge>
                     )}
                   </>
                 ) : (
