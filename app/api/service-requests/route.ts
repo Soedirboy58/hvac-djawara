@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get HVAC Djawara tenant
     const { data: tenant } = await supabase

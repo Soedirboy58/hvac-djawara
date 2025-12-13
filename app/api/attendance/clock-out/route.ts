@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 // POST /api/attendance/clock-out - Clock out for today
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
