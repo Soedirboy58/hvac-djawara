@@ -49,7 +49,7 @@ export function BASTViewer({ order, spk }: BASTViewerProps) {
   };
 
   const handleApprove = () => {
-    if (!clientSigRef.current?.isEmpty() && !techSigRef.current?.isEmpty() && bast) {
+    if (clientSigRef.current && techSigRef.current && !clientSigRef.current.isEmpty() && !techSigRef.current.isEmpty() && bast) {
       const clientSignature = clientSigRef.current.toDataURL();
       const technicianSignature = techSigRef.current.toDataURL();
       

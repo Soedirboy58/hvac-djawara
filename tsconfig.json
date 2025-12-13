@@ -23,5 +23,13 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "domain/**",
+    "hooks/use-clients.ts",
+    "hooks/use-tenants.ts",
+    "app/(dashboard)",
+    "app/(auth)",
+    "app/api/attendance"
+  ]
 }
