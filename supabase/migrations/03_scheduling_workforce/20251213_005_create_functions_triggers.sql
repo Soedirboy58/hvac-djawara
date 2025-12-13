@@ -125,15 +125,17 @@ BEGIN
       2
     );
     
-    -- Calculate billable hours
-    IF NEW.actual_hours <= NEW.estimated_hours THEN
-      -- Actual within estimate: bill actual
-      NEW.billable_hours := NEW.actual_hours;
-      NEW.needs_review := false;
-    ELSE
-      -- Actual exceeds estimate: bill only estimated, flag for review
-      NEW.billable_hours := NEW.estimated_hours;
-      NEW.needs_review := true;
+    -- Calculate billable hours (only if estimated_hours is set)
+    IF NEW.estimated_hours IS NOT NULL AND NEW.actual_hours IS NOT NULL THEN
+      IF NEW.actual_hours <= NEW.estimated_hours THEN
+        -- Actual within estimate: bill actual
+        NEW.billable_hours := NEW.actual_hours;
+        NEW.needs_review := false;
+      ELSE
+        -- Actual exceeds estimate: bill only estimated, flag for review
+        NEW.billable_hours := NEW.estimated_hours;
+        NEW.needs_review := true;
+      END IF;
     END IF;
     
     -- Update status to completed if not already
@@ -155,7 +157,8 @@ BEGIN
     AND is_active = true
     LIMIT 1;
     
-    -- Use default if no config found
+    -- Use default if no config found (Rp 5,000/hour - standard rate)
+    -- Note: This default should match working_hours_config.overtime_rate_per_hour default
     NEW.overtime_rate := COALESCE(config_rate, 5000.00);
   END IF;
   

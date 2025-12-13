@@ -250,7 +250,6 @@ CREATE TABLE IF NOT EXISTS public.working_hours_config (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
   -- Constraints
-  CONSTRAINT unique_tenant_active UNIQUE (tenant_id, is_active),
   CONSTRAINT valid_work_hours CHECK (work_end_time > work_start_time),
   CONSTRAINT valid_overtime_rate CHECK (overtime_rate_per_hour >= 0),
   CONSTRAINT valid_max_overtime CHECK (max_overtime_hours_per_day > 0 AND max_overtime_hours_per_day <= 8)
@@ -259,6 +258,11 @@ CREATE TABLE IF NOT EXISTS public.working_hours_config (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_working_hours_tenant ON public.working_hours_config(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_working_hours_active ON public.working_hours_config(is_active) 
+  WHERE is_active = true;
+
+-- Unique constraint: Only one active config per tenant (using partial index)
+CREATE UNIQUE INDEX IF NOT EXISTS unique_tenant_active_config 
+  ON public.working_hours_config(tenant_id) 
   WHERE is_active = true;
 
 -- Trigger
