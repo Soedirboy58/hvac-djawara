@@ -175,7 +175,7 @@ export function ClockInOutCard() {
                       })}
                     </span>
                     {todayAttendance.is_early_leave && (
-                      <Badge variant="destructive">Pulang Cepat</Badge>
+                      <Badge variant="error">Pulang Cepat</Badge>
                     )}
                     {todayAttendance.is_auto_checkout && (
                       <Badge variant="outline">

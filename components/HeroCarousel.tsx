@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle, Users, Award, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { RequestServiceModal } from './RequestServiceModal';
+import { RequestServiceModal } from '@/components/RequestServiceModal';
 
 const slides = [
   {
