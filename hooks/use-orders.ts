@@ -45,7 +45,6 @@ export interface ServiceOrder {
   technician?: {
     id: string
     full_name: string
-    email?: string
   }
   creator?: {
     id: string
@@ -106,7 +105,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
         .select(`
           *,
           client:clients!client_id(id, name, phone, email, address),
-          technician:profiles!assigned_to(id, full_name, email),
+          technician:profiles!assigned_to(id, full_name),
           creator:profiles!created_by(id, full_name)
         `)
         .eq('tenant_id', profile.active_tenant_id)
@@ -182,7 +181,7 @@ export function useOrder(orderId: string | null) {
         .select(`
           *,
           client:clients!client_id(id, name, phone, email, address),
-          technician:profiles!assigned_to(id, full_name, email),
+          technician:profiles!assigned_to(id, full_name),
           creator:profiles!created_by(id, full_name)
         `)
         .eq('id', orderId)
@@ -255,7 +254,7 @@ export function useUpdateOrder() {
 
 // Hook to get technicians for assignment
 export function useTechnicians() {
-  const [technicians, setTechnicians] = useState<Array<{ id: string; full_name: string; email?: string }>>([])
+  const [technicians, setTechnicians] = useState<Array<{ id: string; full_name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
@@ -283,7 +282,7 @@ export function useTechnicians() {
           .from('user_tenant_roles')
           .select(`
             user_id,
-            profiles!inner(id, full_name, email)
+            profiles!inner(id, full_name)
           `)
           .eq('tenant_id', profile.active_tenant_id)
           .in('role', ['technician', 'tech_head', 'helper'])
@@ -295,7 +294,6 @@ export function useTechnicians() {
         const techniciansList = (data || []).map((item: any) => ({
           id: item.profiles.id,
           full_name: item.profiles.full_name,
-          email: item.profiles.email,
         }))
 
         setTechnicians(techniciansList)
