@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useOrder, useUpdateOrder, useTechnicians, OrderStatus } from '@/hooks/use-orders'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const statusConfig = {
   pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
@@ -27,7 +28,7 @@ const statusConfig = {
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-800' },
 }
 
-export default function OrderDetailPage() {
+function OrderDetailContent() {
   const params = useParams()
   const router = useRouter()
   const orderId = params.id as string
@@ -368,5 +369,13 @@ export default function OrderDetailPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function OrderDetailPage() {
+  return (
+    <ErrorBoundary>
+      <OrderDetailContent />
+    </ErrorBoundary>
   )
 }
