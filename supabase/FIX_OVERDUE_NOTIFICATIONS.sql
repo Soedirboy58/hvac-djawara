@@ -3,6 +3,9 @@
 -- Generate notifications untuk maintenance yang sudah lewat
 -- ============================================
 
+-- Drop existing function first (return type changed)
+DROP FUNCTION IF EXISTS generate_maintenance_reminders();
+
 -- Add overdue notification generation to existing function
 CREATE OR REPLACE FUNCTION generate_maintenance_reminders()
 RETURNS TABLE(
