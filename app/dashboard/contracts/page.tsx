@@ -1,6 +1,6 @@
 // ============================================
-// Maintenance Contracts Management
-// Complex scheduling for enterprise clients
+// Contract Management - All-in-One
+// Requests + Active Contracts + Expired
 // ============================================
 
 'use client'
@@ -15,12 +15,26 @@ import {
   Plus, 
   Building, 
   Calendar,
-  Settings,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  CheckCircle,
+  XCircle,
+  TrendingUp
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+
+type TabType = 'requests' | 'active' | 'expired'
+
+interface ContractRequest {
+  id: string
+  client_name: string
+  client_email: string
+  requested_at: string
+  status: 'pending' | 'approved' | 'rejected'
+  properties_count: number
+}
 
 interface MaintenanceContract {
   id: string
@@ -29,21 +43,23 @@ interface MaintenanceContract {
   client_name: string
   start_date: string
   end_date: string
-  status: 'active' | 'expired' | 'pending'
+  status: 'active' | 'expired'
   total_locations: number
   total_units: number
 }
 
 export default function ContractsPage() {
+  const [activeTab, setActiveTab] = useState<TabType>('active')
+  const [requests, setRequests] = useState<ContractRequest[]>([])
   const [contracts, setContracts] = useState<MaintenanceContract[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    loadContracts()
-  }, [])
+    loadData()
+  }, [activeTab])
 
-  const loadContracts = async () => {
+  const loadData = async () => {
     try {
       setLoading(true)
       setError('')
@@ -68,12 +84,16 @@ export default function ContractsPage() {
         return
       }
 
-      // TODO: Query maintenance_contracts table (will be created)
-      // For now, show placeholder message
-      setContracts([])
+      if (activeTab === 'requests') {
+        // TODO: Load contract requests from contract_requests table
+        setRequests([])
+      } else {
+        // TODO: Load maintenance contracts (active or expired based on tab)
+        setContracts([])
+      }
       
     } catch (err: any) {
-      console.error('Error loading contracts:', err)
+      console.error('Error loading data:', err)
       setError(err.message)
     } finally {
       setLoading(false)
@@ -109,9 +129,9 @@ export default function ContractsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Maintenance Contracts</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Contract Management</h1>
           <p className="text-gray-600 mt-1">
-            Manage enterprise maintenance contracts with complex scheduling
+            Manage contract requests and maintenance agreements
           </p>
         </div>
         <Button asChild>
@@ -122,14 +142,52 @@ export default function ContractsPage() {
         </Button>
       </div>
 
-      {/* Info Alert */}
-      <Alert>
-        <AlertCircle className="w-4 h-4" />
-        <AlertDescription>
-          <strong>Contract-based Maintenance</strong> is for enterprise clients with multiple locations and different maintenance frequencies per unit type (e.g., ATM rooms monthly, office spaces quarterly).
-          For simple clients with one location, use the <Link href="/dashboard/clients" className="text-blue-600 underline">Simple Maintenance Schedule</Link> instead.
-        </AlertDescription>
-      </Alert>
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="flex gap-8">
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'requests'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Contract Requests
+            </div>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'active'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" />
+              Active Contracts
+            </div>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('expired')}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'expired'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <XCircle className="w-4 h-4" />
+              Expired
+            </div>
+          </button>
+        </nav>
+      </div>
 
       {error && (
         <Alert variant="destructive">
@@ -138,27 +196,78 @@ export default function ContractsPage() {
         </Alert>
       )}
 
-      {/* Contracts List */}
-      {contracts.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="w-16 h-16 text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No maintenance contracts yet
-            </h3>
-            <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-              Create your first maintenance contract to set up complex scheduling for enterprise clients.
-              Perfect for clients like Bank Permata with multiple locations and varying frequencies.
-            </p>
-            <Button asChild>
-              <Link href="/dashboard/contracts/new">
-                <Plus className="w-4 h-4 mr-2" />
-                Create First Contract
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
+      {/* Requests Tab */}
+      {activeTab === 'requests' && (
+        <>
+          {requests.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Clock className="w-16 h-16 text-gray-300 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No pending requests
+                </h3>
+                <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
+                  When clients request maintenance contracts from their portal, they will appear here for approval.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {requests.map((request) => (
+                <Card key={request.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold">{request.client_name}</h3>
+                        <p className="text-sm text-gray-600">{request.client_email}</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Requested: {new Date(request.requested_at).toLocaleDateString('id-ID')}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Properties: {request.properties_count}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Eye className="w-3 h-3 mr-1" />
+                          Review
+                        </Button>
+                        <Button size="sm">
+                          Approve & Create Contract
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Active Contracts Tab */}
+      {activeTab === 'active' && (
+        <>
+          {contracts.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FileText className="w-16 h-16 text-gray-300 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No active contracts yet
+                </h3>
+                <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
+                  Create your first maintenance contract to set up complex scheduling for enterprise clients.
+                  Perfect for clients like Bank Permata with multiple locations and varying frequencies.
+                </p>
+                <Button asChild>
+                  <Link href="/dashboard/contracts/new">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Contract
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
         <div className="grid gap-4">
           {contracts.map((contract) => (
             <Card key={contract.id} className="hover:shadow-md transition-shadow">
@@ -217,10 +326,28 @@ export default function ContractsPage() {
             </Card>
           ))}
         </div>
+          )}
+        </>
+      )}
+
+      {/* Expired Contracts Tab */}
+      {activeTab === 'expired' && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <XCircle className="w-16 h-16 text-gray-300 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No expired contracts
+            </h3>
+            <p className="text-sm text-gray-600 text-center max-w-md">
+              Contracts that have reached their end date will appear here.
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      {activeTab === 'active' && contracts.length > 0 && (
+        <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
@@ -260,6 +387,7 @@ export default function ContractsPage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   )
 }
