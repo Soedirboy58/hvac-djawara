@@ -95,9 +95,13 @@ FROM property_maintenance_schedules
 ORDER BY created_at DESC
 LIMIT 5;
 
-RAISE NOTICE '';
-RAISE NOTICE '═══════════════════════════════════════════════════════════';
-RAISE NOTICE '✅ NEXT DATE TRIGGER FIXED!';
-RAISE NOTICE '═══════════════════════════════════════════════════════════';
-RAISE NOTICE 'Next scheduled dates will now populate automatically on INSERT/UPDATE';
-RAISE NOTICE '';
+-- Final success message
+DO $$
+BEGIN
+    RAISE NOTICE '';
+    RAISE NOTICE '═══════════════════════════════════════════════════════════';
+    RAISE NOTICE '✅ NEXT DATE TRIGGER FIXED!';
+    RAISE NOTICE '═══════════════════════════════════════════════════════════';
+    RAISE NOTICE 'Next scheduled dates will now populate automatically on INSERT/UPDATE';
+    RAISE NOTICE '';
+END $$;
