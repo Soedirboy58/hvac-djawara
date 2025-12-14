@@ -272,7 +272,7 @@ BEGIN
         PERFORM cron.schedule(
             'generate-maintenance-reminders',
             '0 7 * * *',
-            $$SELECT * FROM generate_maintenance_reminders()$$
+            $cron$SELECT * FROM generate_maintenance_reminders()$cron$
         );
         
         RAISE NOTICE '✅ Notification cron job scheduled: generate-maintenance-reminders (daily at 7 AM)';
