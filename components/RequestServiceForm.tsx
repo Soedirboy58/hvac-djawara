@@ -143,9 +143,9 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
           className="w-full p-2 border rounded-md"
           required
         >
-          <option value="instalasi">Instalasi AC Baru</option>
+          <option value="installation">Instalasi AC Baru</option>
           <option value="maintenance">Maintenance/Service Rutin</option>
-          <option value="perbaikan">Perbaikan/Service AC Rusak</option>
+          <option value="repair">Perbaikan/Service AC Rusak</option>
           <option value="konsultasi">Konsultasi</option>
         </select>
       </div>
