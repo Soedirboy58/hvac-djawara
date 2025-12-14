@@ -16,7 +16,8 @@ import {
   DollarSign,
   Settings,
   BarChart3,
-  FileText
+  FileText,
+  FileCheck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +26,7 @@ const navigation = [
   { name: 'Clients', href: '/dashboard/clients', icon: Users },
   { name: 'Service Orders', href: '/dashboard/orders', icon: ClipboardList },
   { name: 'Contract Requests', href: '/dashboard/contract-requests', icon: FileText },
+  { name: 'Maintenance Contracts', href: '/dashboard/contracts', icon: FileCheck },
   { name: 'Schedule', href: '/dashboard/schedule', icon: Calendar },
   { name: 'Inventory', href: '/dashboard/inventory', icon: Package },
   { name: 'Finance', href: '/dashboard/finance', icon: DollarSign },

@@ -20,7 +20,12 @@ import {
   Home,
   FileText,
   ArrowRight,
-  Building
+  Building,
+  Edit,
+  Trash2,
+  Pause,
+  Play,
+  Eye
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -144,6 +149,56 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
     window.location.href = '/dashboard/contract-requests'
   }
 
+  async function handlePauseResume(scheduleId: string, currentStatus: boolean) {
+    try {
+      const { error } = await supabase
+        .from('property_maintenance_schedules')
+        .update({ is_active: !currentStatus })
+        .eq('id', scheduleId)
+
+      if (error) throw error
+
+      await loadData()
+      alert(currentStatus ? 'Schedule paused' : 'Schedule resumed')
+    } catch (err) {
+      console.error('Error updating schedule:', err)
+      alert('Failed to update schedule')
+    }
+  }
+
+  async function handleDelete(scheduleId: string) {
+    if (!confirm('Delete this maintenance schedule? This cannot be undone.')) return
+
+    try {
+      const { error } = await supabase
+        .from('property_maintenance_schedules')
+        .delete()
+        .eq('id', scheduleId)
+
+      if (error) throw error
+
+      await loadData()
+      alert('Schedule deleted successfully')
+    } catch (err) {
+      console.error('Error deleting schedule:', err)
+      alert('Failed to delete schedule')
+    }
+  }
+
+  async function handleEdit(sched: any) {
+    setSelectedProperty(sched.property_id)
+    setSchedule({
+      frequency: sched.frequency,
+      custom_days: sched.custom_interval_days || 30,
+      start_date: sched.start_date,
+      maintenance_type: sched.maintenance_type,
+      notes: sched.notes || ''
+    })
+    setMode('simple')
+    // Note: For now, this will create a new schedule. 
+    // To truly edit, need to add editingId state and update logic
+  }
+
   if (loading) {
     return (
       <Card>
@@ -170,32 +225,110 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
             <CardContent>
               <div className="space-y-3">
                 {schedules.map((sched) => (
-                  <div key={sched.id} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Building className="w-4 h-4" />
-                          {sched.property?.property_name}
-                        </h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {sched.property?.address}
-                        </p>
-                        <div className="flex items-center gap-3 mt-2">
-                          <Badge variant="outline">
-                            {sched.frequency === 'monthly' ? 'Monthly' :
-                             sched.frequency === 'quarterly' ? 'Quarterly' :
-                             sched.frequency === 'semi_annual' ? 'Semi-Annual' :
-                             sched.frequency === 'annual' ? 'Annual' :
-                             `Every ${sched.custom_interval_days} days`}
-                          </Badge>
-                          {sched.next_scheduled_date && (
-                            <span className="text-sm text-gray-600">
-                              Next: {new Date(sched.next_scheduled_date).toLocaleDateString('id-ID')}
-                            </span>
+                  <div key={sched.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Building className="w-4 h-4 text-gray-400" />
+                          <h4 className="font-semibold text-gray-900">
+                            {sched.property?.property_name}
+                          </h4>
+                          {sched.is_active ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200">
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              Paused
+                            </Badge>
                           )}
                         </div>
+                        
+                        <p className="text-sm text-gray-600 mb-3">
+                          {sched.property?.address}
+                        </p>
+                        
+                        {/* Schedule Info */}
+                        <div className="grid grid-cols-2 gap-4 mb-3">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Frequency</p>
+                            <Badge variant="outline" className="text-xs">
+                              {sched.frequency === 'monthly' ? '📅 Monthly' :
+                               sched.frequency === 'quarterly' ? '📅 Quarterly (3 months)' :
+                               sched.frequency === 'semi_annual' ? '📅 Semi-Annual (6 months)' :
+                               sched.frequency === 'annual' ? '📅 Annual (1 year)' :
+                               `📅 Every ${sched.custom_interval_days} days`}
+                            </Badge>
+                          </div>
+                          
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Next Maintenance</p>
+                            {sched.next_scheduled_date ? (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-600">
+                                  {new Date(sched.next_scheduled_date).toLocaleDateString('id-ID', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">Not scheduled yet</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Last Generated */}
+                        {sched.last_generated_date && (
+                          <p className="text-xs text-gray-500">
+                            Last service: {new Date(sched.last_generated_date).toLocaleDateString('id-ID')}
+                          </p>
+                        )}
                       </div>
-                      <Badge className="bg-green-100 text-green-800">Active</Badge>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEdit(sched)}
+                          className="w-full"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Edit
+                        </Button>
+                        
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handlePauseResume(sched.id, sched.is_active)}
+                          className="w-full"
+                        >
+                          {sched.is_active ? (
+                            <>
+                              <Pause className="w-3 h-3 mr-1" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3 mr-1" />
+                              Resume
+                            </>
+                          )}
+                        </Button>
+                        
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(sched.id)}
+                          className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
