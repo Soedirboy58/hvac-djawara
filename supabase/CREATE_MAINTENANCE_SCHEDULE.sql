@@ -44,9 +44,10 @@ CREATE POLICY contract_schedules_staff_all ON contract_schedules
     FOR ALL
     USING (
         EXISTS (
-            SELECT 1 FROM profiles
-            WHERE id = auth.uid()
-            AND user_role::text = ANY(ARRAY['admin', 'manager', 'supervisor'])
+            SELECT 1 FROM user_tenant_roles utr
+            WHERE utr.user_id = auth.uid()
+            AND utr.role::text = ANY(ARRAY['admin', 'manager', 'supervisor'])
+            AND utr.is_active = TRUE
         )
     );
 
@@ -131,7 +132,7 @@ BEGIN
         v_next_date,
         'scheduled',
         'Auto-generated ' || v_schedule.maintenance_type || ' maintenance',
-        (SELECT id FROM profiles WHERE user_role::text = 'admin' LIMIT 1) -- System generated
+        (SELECT user_id FROM user_tenant_roles WHERE role::text = 'admin' AND is_active = TRUE LIMIT 1) -- System generated
     ) RETURNING id INTO v_order_id;
 
     -- Update schedule last generated date
