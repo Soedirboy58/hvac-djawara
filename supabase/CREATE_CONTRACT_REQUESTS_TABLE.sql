@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.contract_requests (
   
   -- Internal workflow
   status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'reviewed', 'quoted', 'approved', 'rejected'
-  assigned_to UUID REFERENCES public.profiles(id), -- sales/admin yang handle
+  assigned_to UUID, -- REFERENCES public.profiles(id) - sales/admin yang handle
   
   -- Quotation
   quotation_amount DECIMAL(15,2), -- nilai penawaran
@@ -33,12 +33,12 @@ CREATE TABLE IF NOT EXISTS public.contract_requests (
   quotation_file_url TEXT, -- link file PDF penawaran
   
   -- Approval
-  approved_by UUID REFERENCES public.profiles(id),
+  approved_by UUID, -- REFERENCES public.profiles(id)
   approved_at TIMESTAMPTZ,
   rejection_reason TEXT,
   
-  -- Link to actual contract (after approved)
-  contract_id UUID REFERENCES public.maintenance_contracts(id),
+  -- Link to actual contract (after approved) - nullable, no constraint yet
+  contract_id UUID, -- REFERENCES public.maintenance_contracts(id) - table doesn't exist yet
   
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
