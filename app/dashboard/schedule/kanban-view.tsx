@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import moment from 'moment'
 import KanbanColumn from './kanban-column'
 import KanbanCard from './kanban-card'
+import OrderDetailModal from './order-detail-modal'
 
 const columns: { id: OrderStatus; title: string; color: string }[] = [
   { id: 'pending', title: 'Pending', color: 'bg-yellow-100 border-yellow-300' },
@@ -28,9 +29,21 @@ export default function ScheduleKanbanView() {
   const { orders, loading, error, refetch } = useOrders()
   const { updateOrder } = useUpdateOrder()
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string)
+  }
+
+  const handleCardClick = (order: any) => {
+    setSelectedOrder(order)
+    setModalOpen(true)
+  }
+
+  const handleCloseModal = () => {
+    setModalOpen(false)
+    setSelectedOrder(null)
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -40,9 +53,21 @@ export default function ScheduleKanbanView() {
     if (!over) return
 
     const orderId = active.id as string
-    const newStatus = over.id as OrderStatus
+    
+    // Check if dropped over a column (status) or another card
+    let newStatus: OrderStatus
+    
+    // If dropped over a column, over.id will be the status
+    if (columns.some(col => col.id === over.id)) {
+      newStatus = over.id as OrderStatus
+    } else {
+      // If dropped over a card, find which column it belongs to
+      const targetOrder = orders.find(o => o.id === over.id)
+      if (!targetOrder) return
+      newStatus = targetOrder.status as OrderStatus
+    }
 
-    // Find the order
+    // Find the order being moved
     const order = orders.find(o => o.id === orderId)
     if (!order || order.status === newStatus) return
 
@@ -120,7 +145,7 @@ export default function ScheduleKanbanView() {
                     <KanbanCard
                       key={order.id}
                       order={order}
-                      onClick={() => router.push(`/dashboard/orders/${order.id}`)}
+                      onClick={() => handleCardClick(order)}
                     />
                   ))}
                   {ordersByStatus[column.id].length === 0 && (
@@ -150,6 +175,16 @@ export default function ScheduleKanbanView() {
           Create New Order
         </Button>
       </div>
+
+      {/* Order Detail Modal */}
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          open={modalOpen}
+          onClose={handleCloseModal}
+          onUpdate={refetch}
+        />
+      )}
     </div>
   )
 }
