@@ -18,6 +18,7 @@ import { EditClientForm } from '@/components/client-portal/EditClientForm'
 import { PropertyManagement } from '@/components/client-portal/PropertyManagement'
 import { ACInventoryManager } from '@/components/client-portal/ACInventoryManager'
 import { AuditLogViewer } from '@/components/client-portal/AuditLogViewer'
+import { DocumentManager } from '@/components/client-portal/DocumentManager'
 
 interface ClientDetailPageProps {
   params: {
@@ -28,7 +29,7 @@ interface ClientDetailPageProps {
 export default function ClientDetailPage({ params }: ClientDetailPageProps) {
   const [client, setClient] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'info' | 'properties' | 'inventory' | 'audit'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'properties' | 'inventory' | 'audit' | 'documents'>('info')
   const [editMode, setEditMode] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -150,6 +151,16 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
             }`}
           >
             Change History
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`px-4 py-2 border-b-2 font-medium text-sm ${
+              activeTab === 'documents'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Documents
           </button>
         </nav>
       </div>
@@ -292,6 +303,11 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
           {/* Audit Log Tab */}
           {activeTab === 'audit' && (
             <AuditLogViewer clientId={params.id} />
+          )}
+
+          {/* Documents Tab */}
+          {activeTab === 'documents' && (
+            <DocumentManager clientId={params.id} />
           )}
         </div>
 
