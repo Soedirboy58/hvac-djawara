@@ -25,27 +25,39 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!tenant) {
+      console.error('Tenant hvac-djawara not found');
       return NextResponse.json(
         { error: 'Tenant not found' },
         { status: 500 }
       );
     }
 
+    console.log('Found tenant:', tenant.id);
+
     // Check if client exists by phone
     let clientId: string;
-    const { data: existingClient } = await supabase
+    const { data: existingClient, error: selectError } = await supabase
       .from('clients')
       .select('id')
       .eq('phone', phone)
       .eq('tenant_id', tenant.id)
-      .single();
+      .maybeSingle();
+
+    if (selectError) {
+      console.error('Error selecting client:', selectError);
+      return NextResponse.json(
+        { error: 'Database error checking client', details: selectError.message },
+        { status: 500 }
+      );
+    }
 
     if (existingClient) {
       clientId = existingClient.id;
+      console.log('Found existing client:', clientId);
       
       // Update client info if provided
       if (email || address) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('clients')
           .update({
             ...(email && { email }),
@@ -53,9 +65,15 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq('id', clientId);
+
+        if (updateError) {
+          console.error('Error updating client:', updateError);
+          // Don't fail, just log
+        }
       }
     } else {
       // Create new client
+      console.log('Creating new client');
       const { data: newClient, error: clientError } = await supabase
         .from('clients')
         .insert({
@@ -64,19 +82,28 @@ export async function POST(request: NextRequest) {
           phone,
           email: email || null,
           address: address || null,
-          client_type: 'individual',
         })
         .select('id')
         .single();
 
-      if (clientError || !newClient) {
+      if (clientError) {
+        console.error('Error creating client:', clientError);
         return NextResponse.json(
-          { error: 'Failed to create client' },
+          { error: 'Failed to create client', details: clientError.message },
+          { status: 500 }
+        );
+      }
+
+      if (!newClient) {
+        console.error('No client returned after insert');
+        return NextResponse.json(
+          { error: 'Failed to create client - no data returned' },
           { status: 500 }
         );
       }
 
       clientId = newClient.id;
+      console.log('Created new client:', clientId);
     }
 
     // Prepare scheduled time based on preferred time
@@ -94,6 +121,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create service order - match PHASE_1_WORKFLOW.sql schema
+    console.log('Creating service order with data:', {
+      tenant_id: tenant.id,
+      client_id: clientId,
+      order_type: service_type,
+      service_title: `Request ${service_type} dari website`,
+      location_address: address,
+      requested_date: preferred_date,
+    });
+
     const { data: order, error: orderError } = await supabase
       .from('service_orders')
       .insert({
@@ -114,12 +150,23 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (orderError || !order) {
+    if (orderError) {
+      console.error('Error creating order:', orderError);
       return NextResponse.json(
-        { error: 'Failed to create order' },
+        { error: 'Failed to create order', details: orderError.message },
         { status: 500 }
       );
     }
+
+    if (!order) {
+      console.error('No order returned after insert');
+      return NextResponse.json(
+        { error: 'Failed to create order - no data returned' },
+        { status: 500 }
+      );
+    }
+
+    console.log('Order created successfully:', order.id);
 
     return NextResponse.json({
       success: true,
