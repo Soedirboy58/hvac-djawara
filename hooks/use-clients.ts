@@ -6,139 +6,174 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 
-interface Client {
+export interface Client {
   id: string
   tenant_id: string
   name: string
-  email: string
+  email?: string
   phone: string
-  type: 'residential' | 'commercial'
-  address: string
-  city: string
-  notes?: string
-  status: 'active' | 'inactive'
+  address?: string
+  is_active: boolean
   created_at: string
+  updated_at: string
 }
 
-export function useClients(tenantId?: string) {
+export function useClients() {
+  const [clients, setClients] = useState<Client[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
-  const queryClient = useQueryClient()
 
-  // Fetch all clients for a tenant
-  const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients', tenantId],
-    queryFn: async () => {
-      if (!tenantId) return []
-      
-      // TODO: Replace with actual table name when created
-      // const { data, error } = await supabase
-      //   .from('clients')
-      //   .select('*')
-      //   .eq('tenant_id', tenantId)
-      //   .order('created_at', { ascending: false })
+  const fetchClients = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-      // if (error) throw error
-      // return data as Client[]
-      
-      // Mock data for now
-      return [] as Client[]
-    },
-    enabled: !!tenantId,
-  })
+      // Get current user and tenant
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
 
-  // Fetch single client
-  const useClient = (clientId: string) => {
-    return useQuery({
-      queryKey: ['client', clientId],
-      queryFn: async () => {
-        // TODO: Replace with actual query
-        // const { data, error } = await supabase
-        //   .from('clients')
-        //   .select('*')
-        //   .eq('id', clientId)
-        //   .single()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .eq('id', user.id)
+        .single()
 
-        // if (error) throw error
-        // return data as Client
-        
-        return null
-      },
-      enabled: !!clientId,
-    })
-  }
+      if (!profile?.active_tenant_id) {
+        throw new Error('No active tenant')
+      }
 
-  // Create client
-  const createClient = useMutation({
-    mutationFn: async (newClient: Omit<Client, 'id' | 'created_at' | 'status'>) => {
-      // TODO: Replace with actual insert
-      // const { data, error } = await supabase
-      //   .from('clients')
-      //   .insert([{ ...newClient, status: 'active' }])
-      //   .select()
-      //   .single()
+      const { data, error: fetchError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
 
-      // if (error) throw error
-      // return data
-      
-      console.log('Creating client:', newClient)
-      return newClient
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', tenantId] })
-    },
-  })
+      if (fetchError) throw fetchError
 
-  // Update client
-  const updateClient = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Client> & { id: string }) => {
-      // TODO: Replace with actual update
-      // const { data, error } = await supabase
-      //   .from('clients')
-      //   .update(updates)
-      //   .eq('id', id)
-      //   .select()
-      //   .single()
+      setClients(data || [])
+    } catch (err) {
+      console.error('Error fetching clients:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch clients')
+    } finally {
+      setLoading(false)
+    }
+  }, [supabase])
 
-      // if (error) throw error
-      // return data
-      
-      console.log('Updating client:', id, updates)
-      return { id, ...updates }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', tenantId] })
-    },
-  })
+  useEffect(() => {
+    fetchClients()
+  }, [fetchClients])
 
-  // Delete client
-  const deleteClient = useMutation({
-    mutationFn: async (clientId: string) => {
-      // TODO: Replace with actual delete
-      // const { error } = await supabase
-      //   .from('clients')
-      //   .delete()
-      //   .eq('id', clientId)
-
-      // if (error) throw error
-      
-      console.log('Deleting client:', clientId)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', tenantId] })
-    },
-  })
+  const refetch = useCallback(() => {
+    fetchClients()
+  }, [fetchClients])
 
   return {
     clients,
-    isLoading,
-    useClient,
-    createClient: createClient.mutate,
-    updateClient: updateClient.mutate,
-    deleteClient: deleteClient.mutate,
-    isCreating: createClient.isPending,
-    isUpdating: updateClient.isPending,
-    isDeleting: deleteClient.isPending,
+    loading,
+    error,
+    refetch,
+  }
+}
+
+// Hook to get single client by ID
+export function useClient(clientId: string | null) {
+  const [client, setClient] = useState<Client | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const supabase = createClient()
+
+  const fetchClient = useCallback(async () => {
+    if (!clientId) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const { data, error: fetchError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      setClient(data)
+    } catch (err) {
+      console.error('Error fetching client:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch client')
+    } finally {
+      setLoading(false)
+    }
+  }, [clientId, supabase])
+
+  useEffect(() => {
+    fetchClient()
+  }, [fetchClient])
+
+  return {
+    client,
+    loading,
+    error,
+  }
+}
+
+// Hook to create/update client
+export function useCreateClient() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const supabase = createClient()
+
+  const createClient = useCallback(async (clientData: Omit<Client, 'id' | 'created_at' | 'updated_at' | 'tenant_id' | 'is_active'>) => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Get current user and tenant
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile?.active_tenant_id) {
+        throw new Error('No active tenant')
+      }
+
+      const { data, error: createError } = await supabase
+        .from('clients')
+        .insert({
+          ...clientData,
+          tenant_id: profile.active_tenant_id,
+          is_active: true,
+        })
+        .select()
+        .single()
+
+      if (createError) throw createError
+
+      return data
+    } catch (err) {
+      console.error('Error creating client:', err)
+      setError(err instanceof Error ? err.message : 'Failed to create client')
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }, [supabase])
+
+  return {
+    createClient,
+    loading,
+    error,
   }
 }
