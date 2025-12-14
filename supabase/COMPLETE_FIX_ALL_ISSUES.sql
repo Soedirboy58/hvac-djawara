@@ -19,8 +19,23 @@ BEGIN
   RAISE NOTICE '🔧 Part 1: Fixing client type constraint...';
 END $$;
 
--- IMPORTANT: Update data FIRST before changing constraint
--- Update existing client types to new values
+-- Drop ALL existing client_type constraints (could be multiple)
+DO $$
+DECLARE
+  constraint_rec RECORD;
+BEGIN
+  FOR constraint_rec IN 
+    SELECT conname 
+    FROM pg_constraint 
+    WHERE conrelid = 'public.clients'::regclass 
+    AND conname LIKE '%client_type%'
+  LOOP
+    EXECUTE 'ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS ' || constraint_rec.conname;
+    RAISE NOTICE 'Dropped constraint: %', constraint_rec.conname;
+  END LOOP;
+END $$;
+
+-- IMPORTANT: Update data to valid values
 UPDATE public.clients 
 SET client_type = CASE 
   WHEN client_type = 'residential' THEN 'rumah_tangga'
@@ -35,9 +50,6 @@ SET client_type = CASE
   WHEN client_type = 'pabrik_industri' THEN 'pabrik_industri'
   ELSE 'rumah_tangga'  -- Default untuk data yang tidak valid
 END;
-
--- Drop old constraint
-ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_client_type_check;
 
 -- Add new constraint with 8 types
 ALTER TABLE public.clients ADD CONSTRAINT clients_client_type_check 
