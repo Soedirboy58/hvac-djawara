@@ -36,8 +36,8 @@ CREATE POLICY "Users can view clients in their tenant"
   FOR SELECT
   TO authenticated
   USING (
-    tenant_id IN (
-      SELECT active_tenant_id 
+    tenant_id = (
+      SELECT (raw_user_meta_data->>'active_tenant_id')::uuid
       FROM auth.users 
       WHERE id = auth.uid()
     )
@@ -50,8 +50,8 @@ CREATE POLICY "Users can insert clients in their tenant"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    tenant_id IN (
-      SELECT active_tenant_id 
+    tenant_id = (
+      SELECT (raw_user_meta_data->>'active_tenant_id')::uuid
       FROM auth.users 
       WHERE id = auth.uid()
     )
@@ -64,15 +64,15 @@ CREATE POLICY "Users can update clients in their tenant"
   FOR UPDATE
   TO authenticated
   USING (
-    tenant_id IN (
-      SELECT active_tenant_id 
+    tenant_id = (
+      SELECT (raw_user_meta_data->>'active_tenant_id')::uuid
       FROM auth.users 
       WHERE id = auth.uid()
     )
   )
   WITH CHECK (
-    tenant_id IN (
-      SELECT active_tenant_id 
+    tenant_id = (
+      SELECT (raw_user_meta_data->>'active_tenant_id')::uuid
       FROM auth.users 
       WHERE id = auth.uid()
     )
@@ -98,7 +98,7 @@ AS $$
 BEGIN
   -- If tenant_id is not provided, get it from user's active_tenant_id
   IF NEW.tenant_id IS NULL THEN
-    SELECT active_tenant_id INTO NEW.tenant_id
+    SELECT (raw_user_meta_data->>'active_tenant_id')::uuid INTO NEW.tenant_id
     FROM auth.users
     WHERE id = auth.uid();
   END IF;
@@ -141,8 +141,8 @@ SELECT
   user_id,
   created_at
 FROM clients
-WHERE tenant_id IN (
-  SELECT active_tenant_id 
+WHERE tenant_id = (
+  SELECT (raw_user_meta_data->>'active_tenant_id')::uuid
   FROM auth.users 
   WHERE id = auth.uid()
 )
