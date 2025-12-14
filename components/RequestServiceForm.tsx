@@ -16,6 +16,7 @@ interface RequestServiceFormProps {
 export function RequestServiceForm({ variant = 'default', onSuccess }: RequestServiceFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isContractRequest, setIsContractRequest] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -25,6 +26,10 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
     preferred_date: '',
     preferred_time: 'pagi',
     notes: '',
+    // Contract fields
+    unit_count: '',
+    location_count: '1',
+    preferred_frequency: 'monthly',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,10 +37,27 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
     setLoading(true);
 
     try {
-      const response = await fetch('/api/service-requests', {
+      // If it's a contract request, submit to contract_requests table
+      const endpoint = isContractRequest ? '/api/contract-requests' : '/api/service-requests';
+      
+      const payload = isContractRequest 
+        ? {
+            company_name: formData.name,
+            contact_person: formData.name,
+            phone: formData.phone,
+            email: formData.email,
+            address: formData.address,
+            unit_count: parseInt(formData.unit_count),
+            location_count: parseInt(formData.location_count),
+            preferred_frequency: formData.preferred_frequency,
+            notes: formData.notes,
+          }
+        : formData;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -49,7 +71,11 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
           preferred_date: '',
           preferred_time: 'pagi',
           notes: '',
+          unit_count: '',
+          location_count: '1',
+          preferred_frequency: 'monthly',
         });
+        setIsContractRequest(false);
         
         // Call onSuccess callback if provided
         if (onSuccess) {
@@ -159,7 +185,87 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
           onChange={handleChange}
           placeholder="Jl. Contoh No. 123, Jakarta Selatan"
           rows={2}
-          required
+      {/* Contract Option */}
+      <div className="border-t pt-4">
+        <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg">
+          <input
+            type="checkbox"
+            id="is_contract"
+            checked={isContractRequest}
+            onChange={(e) => setIsContractRequest(e.target.checked)}
+            className="mt-1"
+          />
+          <div>
+            <Label htmlFor="is_contract" className="text-base font-semibold cursor-pointer">
+              💼 Ajukan Kontrak Maintenance Berkala
+            </Label>
+            <p className="text-sm text-gray-600 mt-1">
+              Hemat biaya dengan layanan maintenance rutin! Hati tenang, AC awet, perawatan terjadwal otomatis.
+            </p>
+          </div>
+        </div>
+
+        {/* Show contract fields when checkbox is checked */}
+        {isContractRequest && (
+          <div className="mt-4 space-y-4 p-4 border rounded-lg bg-gray-50">
+            <p className="text-sm font-medium text-gray-700">Detail Kontrak Maintenance:</p>
+            
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="unit_count">Jumlah Unit AC *</Label>
+                <Input
+                  id="unit_count"
+                  name="unit_count"
+                  type="number"
+                  min="1"
+                  value={formData.unit_count}
+      )}
+                  onChange={handleChange}
+                  placeholder="Contoh: 5"
+                  required={isContractRequest}
+                />
+                <p className="text-xs text-gray-500 mt-1">Berapa total unit AC yang ingin di-maintenance?</p>
+              </div>
+
+              <div>
+                <Label htmlFor="location_count">Jumlah Lokasi</Label>
+                <Input
+                  id="location_count"
+                  name="location_count"
+                  type="number"
+                  min="1"
+                  value={formData.location_count}
+                  onChange={handleChange}
+                  placeholder="1"
+                />
+                <p className="text-xs text-gray-500 mt-1">Berapa cabang/lokasi?</p>
+              </div>
+            isContractRequest ? (
+          '💼 Ajukan Kontrak Maintenance'
+        ) : </div>
+
+            <div>
+              <Label htmlFor="preferred_frequency">Frekuensi Perawatan *</Label>
+              <select
+                id="preferred_frequency"
+                name="preferred_frequency"
+                value={formData.preferred_frequency}
+                onChange={handleChange}
+                className="w-full p-2 border rounded-md"
+                required={isContractRequest}
+              >
+                <option value="monthly">Bulanan - Setiap bulan (Rekomendasi untuk ATM/Server)</option>
+                <option value="quarterly">3 Bulan Sekali (Hemat & efektif)</option>
+                <option value="semi_annual">6 Bulan Sekali (Standar)</option>
+                <option value="custom">Sesuai Kebutuhan</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!isContractRequest && (
+            required
         />
       </div>
 
