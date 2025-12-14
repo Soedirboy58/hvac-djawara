@@ -236,15 +236,8 @@ CREATE TABLE IF NOT EXISTS public.client_audit_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Make changed_by nullable if table already exists
-DO $$
-BEGIN
-  ALTER TABLE public.client_audit_log ALTER COLUMN changed_by DROP NOT NULL;
-  RAISE NOTICE '✅ Made changed_by column nullable';
-EXCEPTION
-  WHEN others THEN
-    RAISE NOTICE '✓ changed_by column already nullable or does not exist';
-END $$;
+-- CRITICAL: Make changed_by nullable (drop NOT NULL constraint)
+ALTER TABLE public.client_audit_log ALTER COLUMN changed_by DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_audit_client ON public.client_audit_log(client_id);
 CREATE INDEX IF NOT EXISTS idx_audit_date ON public.client_audit_log(created_at DESC);
