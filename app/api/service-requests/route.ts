@@ -79,30 +79,21 @@ export async function POST(request: NextRequest) {
       clientId = newClient.id;
     }
 
-    // Prepare scheduled date based on preferred date and time
-    let scheduledDate = null;
-    if (preferred_date) {
-      const date = new Date(preferred_date);
-      
-      // Set time based on preferred_time
-      switch (preferred_time) {
-        case 'pagi':
-          date.setHours(9, 0, 0);
-          break;
-        case 'siang':
-          date.setHours(12, 0, 0);
-          break;
-        case 'sore':
-          date.setHours(15, 0, 0);
-          break;
-        default:
-          date.setHours(9, 0, 0);
-      }
-      
-      scheduledDate = date.toISOString();
+    // Prepare scheduled time based on preferred time
+    let scheduledTime = '09:00:00';
+    switch (preferred_time) {
+      case 'pagi':
+        scheduledTime = '09:00:00';
+        break;
+      case 'siang':
+        scheduledTime = '12:00:00';
+        break;
+      case 'sore':
+        scheduledTime = '15:00:00';
+        break;
     }
 
-    // Create service order
+    // Create service order - match PHASE_1_WORKFLOW.sql schema
     const { data: order, error: orderError } = await supabase
       .from('service_orders')
       .insert({
@@ -111,10 +102,14 @@ export async function POST(request: NextRequest) {
         order_type: service_type,
         status: 'pending',
         priority: 'medium',
-        description: notes || `Request ${service_type} dari website\nWaktu yang diinginkan: ${preferred_time} (${preferred_date})`,
-        location: address || null,
-        source: 'web',
-        scheduled_start: scheduledDate,
+        service_title: `Request ${service_type} dari website`,
+        service_description: notes || `Waktu yang diinginkan: ${preferred_time} (${preferred_date})`,
+        location_address: address || '',
+        requested_date: preferred_date || null,
+        scheduled_date: preferred_date || null,
+        scheduled_time: scheduledTime,
+        notes: notes || null,
+        is_survey: false,
       })
       .select()
       .single();
