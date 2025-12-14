@@ -36,22 +36,35 @@ export function LoginForm() {
     setError(null)
 
     try {
+      // Debug: Check if env vars are available
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        console.error('Missing Supabase environment variables')
+        setError('Konfigurasi Supabase tidak lengkap. Hubungi admin.')
+        setIsLoading(false)
+        return
+      }
+
       const supabase = createClient()
       
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       })
 
       if (signInError) {
+        console.error('Auth error:', signInError.message)
         setError(signInError.message)
         return
       }
 
-      router.push('/dashboard')
-      router.refresh()
+      if (authData?.user) {
+        router.push('/dashboard')
+        router.refresh()
+      }
     } catch (err) {
-      setError('Terjadi kesalahan. Silakan coba lagi.')
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Login error:', errorMsg, err)
+      setError(`Terjadi kesalahan: ${errorMsg}`)
     } finally {
       setIsLoading(false)
     }
