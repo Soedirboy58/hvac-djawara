@@ -224,7 +224,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS public.client_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
-  changed_by UUID NOT NULL REFERENCES public.profiles(id),
+  changed_by UUID REFERENCES public.profiles(id), -- Nullable for system operations
   change_type TEXT NOT NULL,
   table_name TEXT NOT NULL,
   record_id UUID,
@@ -235,6 +235,16 @@ CREATE TABLE IF NOT EXISTS public.client_audit_log (
   user_agent TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Make changed_by nullable if table already exists
+DO $$
+BEGIN
+  ALTER TABLE public.client_audit_log ALTER COLUMN changed_by DROP NOT NULL;
+  RAISE NOTICE '✅ Made changed_by column nullable';
+EXCEPTION
+  WHEN others THEN
+    RAISE NOTICE '✓ changed_by column already nullable or does not exist';
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_audit_client ON public.client_audit_log(client_id);
 CREATE INDEX IF NOT EXISTS idx_audit_date ON public.client_audit_log(created_at DESC);
@@ -288,16 +298,7 @@ BEGIN
     change_summary := 'Client deleted';
   END IF;
 
-  -- Insert audit log (skip if no authenticated user)
-  IF auth.uid() IS NULL THEN
-    -- Skip audit logging if no user context (system operations)
-    IF TG_OP = 'DELETE' THEN
-      RETURN OLD;
-    ELSE
-      RETURN NEW;
-    END IF;
-  END IF;
-  
+  -- Insert audit log (changed_by can be NULL for system operations)
   IF TG_OP = 'DELETE' THEN
     INSERT INTO public.client_audit_log (
       client_id, changed_by, change_type, table_name, record_id,
