@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { 
   Plus, 
   Edit, 
@@ -19,7 +20,9 @@ import {
   Home,
   Loader2,
   AlertCircle,
-  Star
+  Star,
+  Calendar,
+  CalendarPlus
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -34,6 +37,10 @@ interface Property {
   coordinates?: string
   is_primary: boolean
   ac_unit_count?: number
+  schedule?: {
+    frequency: string
+    next_scheduled_date: string | null
+  } | null
 }
 
 interface PropertyManagementProps {
@@ -46,6 +53,14 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [schedulePropertyId, setSchedulePropertyId] = useState<string | null>(null)
+  const [scheduleData, setScheduleData] = useState({
+    frequency: 'monthly',
+    start_date: '',
+    notes: ''
+  })
+  const [savingSchedule, setSavingSchedule] = useState(false)
   const supabase = createClient()
 
   function getPropertyTypeLabel(type: string): string {
@@ -79,7 +94,7 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
 
   async function fetchProperties() {
     try {
-      // Fetch properties with AC unit count
+      // Fetch properties with AC unit count and maintenance schedules
       const { data, error: fetchError } = await supabase
         .from('client_properties')
         .select(`
@@ -92,9 +107,22 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
 
       if (fetchError) throw fetchError
 
+      // Fetch maintenance schedules for these properties
+      const propertyIds = data?.map(p => p.id) || []
+      const { data: schedules } = await supabase
+        .from('property_maintenance_schedules')
+        .select('property_id, frequency, next_scheduled_date')
+        .in('property_id', propertyIds)
+        .eq('is_active', true)
+
+      const scheduleMap = new Map(
+        schedules?.map(s => [s.property_id, s]) || []
+      )
+
       const formatted = data?.map(p => ({
         ...p,
-        ac_unit_count: p.ac_units?.[0]?.count || 0
+        ac_unit_count: p.ac_units?.[0]?.count || 0,
+        schedule: scheduleMap.get(p.id) || null
       })) || []
 
       setProperties(formatted)
@@ -213,6 +241,51 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
     })
     setEditingId(null)
     setShowForm(false)
+  }
+
+  async function handleScheduleSave() {
+    if (!schedulePropertyId) return
+
+    setSavingSchedule(true)
+    setError(null)
+
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .single()
+
+      if (!profile?.active_tenant_id) {
+        throw new Error('No active tenant found')
+      }
+
+      const { error: saveError } = await supabase
+        .from('property_maintenance_schedules')
+        .insert({
+          tenant_id: profile.active_tenant_id,
+          client_id: clientId,
+          property_id: schedulePropertyId,
+          frequency: scheduleData.frequency,
+          start_date: scheduleData.start_date,
+          maintenance_type: 'cleaning_inspection',
+          notes: scheduleData.notes,
+          apply_to_all_units: true,
+          is_active: true
+        })
+
+      if (saveError) throw saveError
+
+      alert('Schedule created successfully!')
+      setShowScheduleModal(false)
+      setSchedulePropertyId(null)
+      setScheduleData({ frequency: 'monthly', start_date: '', notes: '' })
+      fetchProperties() // Reload to show new schedule
+    } catch (err) {
+      console.error('Error saving schedule:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save schedule')
+    } finally {
+      setSavingSchedule(false)
+    }
   }
 
   if (loading) {
@@ -411,7 +484,7 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
                 <CardContent className="py-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {property.property_type === 'rumah_tangga' ? (
                           <Home className="w-4 h-4 text-gray-400" />
                         ) : (
@@ -432,12 +505,48 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
                       </div>
                       <p className="text-sm text-gray-600 mb-1">{property.address}</p>
                       <p className="text-sm text-gray-500">{property.city} {property.postal_code}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {property.ac_unit_count} AC Unit(s)
-                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <p className="text-xs text-gray-400">
+                          {property.ac_unit_count} AC Unit(s)
+                        </p>
+                        {property.schedule ? (
+                          <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            {property.schedule.frequency === 'monthly' ? 'Monthly' :
+                             property.schedule.frequency === 'quarterly' ? 'Quarterly' :
+                             property.schedule.frequency === 'semi_annual' ? 'Semi-Annual' :
+                             property.schedule.frequency === 'annual' ? 'Annual' :
+                             'Custom'}
+                            {property.schedule.next_scheduled_date && (
+                              <span className="ml-1">
+                                • Next: {new Date(property.schedule.next_scheduled_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                              </span>
+                            )}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-gray-50 border-gray-200 text-gray-500">
+                            No schedule
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {!property.schedule && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSchedulePropertyId(property.id)
+                            setShowScheduleModal(true)
+                          }}
+                          className="text-blue-600 hover:text-blue-700 border-blue-300"
+                          title="Setup maintenance schedule"
+                        >
+                          <CalendarPlus className="w-4 h-4 mr-1" />
+                          Setup Schedule
+                        </Button>
+                      )}
                       {!property.is_primary && (
                         <Button
                           size="sm"
@@ -468,6 +577,89 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {/* Schedule Setup Modal */}
+        {showScheduleModal && schedulePropertyId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md m-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Setup Maintenance Schedule
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  Configure recurring maintenance for{' '}
+                  {properties.find(p => p.id === schedulePropertyId)?.property_name}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Frequency *
+                  </label>
+                  <select
+                    value={scheduleData.frequency}
+                    onChange={(e) => setScheduleData({ ...scheduleData, frequency: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="monthly">Monthly (Every month)</option>
+                    <option value="quarterly">Quarterly (Every 3 months)</option>
+                    <option value="semi_annual">Semi-Annual (Every 6 months)</option>
+                    <option value="annual">Annual (Every year)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    First Maintenance Date *
+                  </label>
+                  <Input
+                    type="date"
+                    value={scheduleData.start_date}
+                    onChange={(e) => setScheduleData({ ...scheduleData, start_date: e.target.value })}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    System will auto-schedule next visits based on frequency
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={scheduleData.notes}
+                    onChange={(e) => setScheduleData({ ...scheduleData, notes: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    placeholder="Special instructions..."
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={handleScheduleSave}
+                    disabled={savingSchedule || !scheduleData.start_date}
+                    className="flex-1"
+                  >
+                    {savingSchedule ? 'Saving...' : 'Save Schedule'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowScheduleModal(false)
+                      setSchedulePropertyId(null)
+                      setScheduleData({ frequency: 'monthly', start_date: '', notes: '' })
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </CardContent>
