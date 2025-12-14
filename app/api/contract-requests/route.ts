@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
@@ -25,7 +25,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
+    // Use anon client for public form submission
+    const supabase = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     // Insert contract request
     const { data, error } = await supabase
@@ -73,6 +77,8 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    // For GET, we need authenticated client
+    const { createClient } = await import('@/lib/supabase/server');
     const supabase = await createClient();
 
     const { data, error } = await supabase
