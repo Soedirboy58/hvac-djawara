@@ -21,12 +21,7 @@ export default function HomePage() {
               <p className="text-xs text-gray-500">Professional HVAC Solutions</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/track">
-              <Button variant="outline" size="sm">
-                Track Service
-              </Button>
-            </Link>
+          <div className="flex items-center gap-4">
             <RequestServiceModal />
             <Link href="/login">
               <Button variant="default" size="sm">Login</Button>

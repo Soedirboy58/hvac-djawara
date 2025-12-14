@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { EnablePortalAccess } from '@/components/client-portal/EnablePortalAccess'
+import { ShareClientLink } from '@/components/client-portal/ShareClientLink'
 
 interface ClientDetailPageProps {
   params: {
@@ -171,9 +171,9 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           )}
         </div>
 
-        {/* Portal Access Management */}
+        {/* Share Client Link */}
         <div className="lg:col-span-1">
-          <EnablePortalAccess client={client} />
+          <ShareClientLink client={client} />
         </div>
       </div>
     </div>

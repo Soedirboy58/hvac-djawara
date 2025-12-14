@@ -1,25 +1,26 @@
 // ============================================
-// Enable Portal Access Component
-// Staff can generate invitation link + QR code
+// Share Client Public Link Component
+// Generate & share unique public link for client
 // ============================================
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
   Link as LinkIcon, 
   QrCode, 
-  Send, 
   Copy, 
   CheckCircle, 
   Loader2,
-  Mail,
-  MessageCircle
+  MessageCircle,
+  Crown,
+  Share2
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { createClient } from '@/lib/supabase/client'
 
 interface EnablePortalAccessProps {
   client: {
@@ -28,7 +29,6 @@ interface EnablePortalAccessProps {
     email?: string
     phone: string
     portal_enabled: boolean
-    portal_invitation_token?: string
     portal_activated_at?: string
   }
 }
@@ -94,7 +94,7 @@ export function EnablePortalAccess({ client }: EnablePortalAccessProps) {
     )
   }
 
-  async function handleGenerateInvitation(isResend: boolean = false) {
+  async function handleGeneratePublicLink() {
     setLoading(true)
     setError(null)
 

@@ -157,12 +157,17 @@ export default function ClientInvitePage({ params }: { params: { token: string }
               <li>• Link has already been used</li>
               <li>• Invalid or corrupted link</li>
             </ul>
-            <Button 
-              className="w-full" 
-              onClick={() => router.push('/')}
-            >
-              Back to Home
-            </Button>
+            <div className="space-y-2">
+              <Button 
+                className="w-full" 
+                onClick={() => router.push('/')}
+              >
+                Back to Home
+              </Button>
+              <p className="text-xs text-center text-gray-500">
+                Trying to view your data? Use the public link sent to you.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
