@@ -52,23 +52,26 @@ CREATE INDEX IF NOT EXISTS idx_contract_requests_created ON public.contract_requ
 -- Step 3: Enable RLS (public can INSERT, internal can view/update)
 ALTER TABLE public.contract_requests ENABLE ROW LEVEL SECURITY;
 
--- Policy: Anyone can submit request (public form)
+-- Policy: Anyone can submit request (public form) - MUST include anon role!
 DROP POLICY IF EXISTS "Anyone can submit contract request" ON public.contract_requests;
 CREATE POLICY "Anyone can submit contract request"
   ON public.contract_requests FOR INSERT
+  TO anon, authenticated
   WITH CHECK (true);
 
 -- Policy: Authenticated users can view all requests
 DROP POLICY IF EXISTS "Users can view all contract requests" ON public.contract_requests;
 CREATE POLICY "Users can view all contract requests"
   ON public.contract_requests FOR SELECT
-  USING (auth.role() = 'authenticated');
+  TO authenticated
+  USING (true);
 
 -- Policy: Authenticated users can update requests
 DROP POLICY IF EXISTS "Users can update contract requests" ON public.contract_requests;
 CREATE POLICY "Users can update contract requests"
   ON public.contract_requests FOR UPDATE
-  USING (auth.role() = 'authenticated');
+  TO authenticated
+  USING (true);
 
 -- Step 4: Create trigger for updated_at
 CREATE OR REPLACE FUNCTION update_contract_request_updated_at()
