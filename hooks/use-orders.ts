@@ -71,20 +71,35 @@ export function useOrders(options: UseOrdersOptions = {}) {
       setError(null)
 
       // Get current user and tenant
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) {
+        console.error('Error getting user:', userError)
+        throw new Error('Authentication error')
+      }
+      
       if (!user) {
         throw new Error('Not authenticated')
       }
 
-      const { data: profile } = await supabase
+      console.log('Fetching orders for user:', user.email)
+
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('active_tenant_id')
         .eq('id', user.id)
         .single()
 
-      if (!profile?.active_tenant_id) {
-        throw new Error('No active tenant')
+      if (profileError) {
+        console.error('Error fetching profile:', profileError)
+        throw new Error('Failed to fetch user profile')
       }
+
+      if (!profile?.active_tenant_id) {
+        console.error('User has no active_tenant_id:', user.email)
+        throw new Error('No active tenant set. Please contact administrator.')
+      }
+
+      console.log('Active tenant ID:', profile.active_tenant_id)
 
       let query = supabase
         .from('service_orders')
@@ -114,8 +129,12 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       const { data, error: fetchError } = await query
 
-      if (fetchError) throw fetchError
+      if (fetchError) {
+        console.error('Error fetching orders from database:', fetchError)
+        throw new Error(`Database error: ${fetchError.message}`)
+      }
 
+      console.log('Successfully fetched orders:', data?.length || 0)
       setOrders(data || [])
     } catch (err) {
       console.error('Error fetching orders:', err)
