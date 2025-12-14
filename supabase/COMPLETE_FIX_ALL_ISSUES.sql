@@ -141,8 +141,10 @@ CREATE POLICY "Staff can view client documents" ON public.client_documents
   FOR SELECT
   USING (
     tenant_id IN (
-      SELECT tenant_id FROM public.profiles 
-      WHERE id = auth.uid() AND role IN ('owner', 'admin', 'staff')
+      SELECT tenant_id FROM public.user_tenant_roles 
+      WHERE user_id = auth.uid() 
+      AND role IN ('owner', 'admin', 'staff')
+      AND is_active = true
     )
   );
 
@@ -151,8 +153,10 @@ CREATE POLICY "Staff can insert client documents" ON public.client_documents
   FOR INSERT
   WITH CHECK (
     tenant_id IN (
-      SELECT tenant_id FROM public.profiles 
-      WHERE id = auth.uid() AND role IN ('owner', 'admin', 'staff')
+      SELECT tenant_id FROM public.user_tenant_roles 
+      WHERE user_id = auth.uid() 
+      AND role IN ('owner', 'admin', 'staff')
+      AND is_active = true
     )
   );
 
@@ -161,8 +165,10 @@ CREATE POLICY "Staff can update client documents" ON public.client_documents
   FOR UPDATE
   USING (
     tenant_id IN (
-      SELECT tenant_id FROM public.profiles 
-      WHERE id = auth.uid() AND role IN ('owner', 'admin', 'staff')
+      SELECT tenant_id FROM public.user_tenant_roles 
+      WHERE user_id = auth.uid() 
+      AND role IN ('owner', 'admin', 'staff')
+      AND is_active = true
     )
   );
 
@@ -171,8 +177,10 @@ CREATE POLICY "Staff can delete client documents" ON public.client_documents
   FOR DELETE
   USING (
     tenant_id IN (
-      SELECT tenant_id FROM public.profiles 
-      WHERE id = auth.uid() AND role IN ('owner', 'admin', 'staff')
+      SELECT tenant_id FROM public.user_tenant_roles 
+      WHERE user_id = auth.uid() 
+      AND role IN ('owner', 'admin', 'staff')
+      AND is_active = true
     )
   );
 
@@ -242,8 +250,9 @@ CREATE POLICY "Staff can view audit logs" ON public.client_audit_log
     client_id IN (
       SELECT id FROM public.clients 
       WHERE tenant_id IN (
-        SELECT tenant_id FROM public.profiles 
-        WHERE id = auth.uid()
+        SELECT tenant_id FROM public.user_tenant_roles 
+        WHERE user_id = auth.uid() 
+        AND is_active = true
       )
     )
   );
