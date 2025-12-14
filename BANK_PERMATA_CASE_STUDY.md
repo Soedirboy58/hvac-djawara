@@ -28,25 +28,27 @@
 
 ### Step 1: Insert Client (Bank Permata)
 ```sql
+-- IMPORTANT: Tabel clients tidak punya kolom client_type, pic_name, pic_phone
+-- Gunakan kolom yang ada saja
 INSERT INTO public.clients (
   tenant_id,
   name,
   phone,
   email,
   address,
-  client_type,
-  pic_name,
-  pic_phone
+  city,
+  province,
+  notes
 ) VALUES (
   (SELECT id FROM tenants WHERE slug = 'hvac-djawara'),
   'Bank Permata',
   '0271-123456',
   'purbalingga@bankmandiri.co.id',
   'Jl. Raya Purbalingga No. 1',
-  'corporate',
-  'Bapak Hendra (Branch Manager)',
-  '08123456789'
-) RETURNING id; -- Save as @client_id
+  'Purbalingga',
+  'Jawa Tengah',
+  'PIC: Bapak Hendra (Branch Manager) - 08123456789'
+) RETURNING id; -- Salin UUID yang dikembalikan dan ganti @client_id di bawah
 ```
 
 ### Step 2: Insert Marketing Partner (Freelance)
@@ -392,16 +394,19 @@ $$ LANGUAGE plpgsql;
 
 ### Test Generate
 ```sql
--- Generate all schedules
-SELECT * FROM generate_schedules_by_units('@contract_id');
+-- GANTI '@contract_id' dengan UUID actual dari RETURNING sebelumnya
+-- Contoh: '123e4567-e89b-12d3-a456-426614174000'
 
--- View results grouped
+-- Generate all schedules (ganti UUID!)
+SELECT * FROM generate_schedules_by_units('paste-uuid-contract-disini');
+
+-- View results grouped (ganti UUID!)
 SELECT 
   scheduled_date,
   COUNT(*) as total_units,
   STRING_AGG(notes, ', ') as units_to_service
 FROM public.generated_schedules
-WHERE contract_id = '@contract_id'
+WHERE contract_id = 'paste-uuid-contract-disini'
 GROUP BY scheduled_date
 ORDER BY scheduled_date;
 ```
