@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Calendar, momentLocalizer, View, SlotInfo } from 'react-big-calendar'
+import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop'
 import moment from 'moment'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Users, AlertCircle, Loader2 } from 'lucide-react'
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
+import { Calendar as CalendarIcon, Users, AlertCircle, Loader2, TrendingUp, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,12 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useSchedule, ScheduleEvent } from '@/hooks/use-schedule'
+import { useSchedule, ScheduleEvent, useUpdateSchedule, useCheckConflicts, useTechnicianWorkload } from '@/hooks/use-schedule'
 import { useTechnicians } from '@/hooks/use-orders'
 import { useRouter } from 'next/navigation'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { toast } from 'sonner'
 
 const localizer = momentLocalizer(moment)
+const DragAndDropCalendar = withDragAndDrop(Calendar)
 
 function SchedulePageContent() {
   const router = useRouter()
@@ -30,7 +34,14 @@ function SchedulePageContent() {
   const [selectedTechnician, setSelectedTechnician] = useState<string>('all')
   
   const { events, loading, error, refetch } = useSchedule()
+  const { updateSchedule, loading: updating } = useUpdateSchedule()
+  const { checkConflicts } = useCheckConflicts()
   const { technicians } = useTechnicians()
+  
+  // Calculate date range for workload
+  const startOfMonth = useMemo(() => moment(currentDate).startOf('month').toDate(), [currentDate])
+  const endOfMonth = useMemo(() => moment(currentDate).endOf('month').toDate(), [currentDate])
+  const { workload } = useTechnicianWorkload(startOfMonth, endOfMonth)
 
   // Filter events by selected technician
   const filteredEvents = selectedTechnician === 'all' 
@@ -65,6 +76,80 @@ function SchedulePageContent() {
       console.error('Error creating order:', err)
     }
   }, [router])
+
+  // Handle drag and drop events
+  const handleEventDrop = async ({ event, start, end }: any) => {
+    try {
+      // Check for conflicts first
+      const technicianId = event.resource?.technician?.id
+      if (!technicianId) {
+        toast.error('Teknisi tidak ditemukan')
+        return
+      }
+
+      const conflicts = await checkConflicts({
+        orderId: event.resource.id,
+        technicianId,
+        startTime: start,
+        endTime: end
+      })
+
+      if (conflicts.length > 0) {
+        toast.error(`⚠️ Konflik terdeteksi! Teknisi sudah memiliki ${conflicts.length} pekerjaan pada waktu ini.`, {
+          description: 'Tetap lanjutkan dengan memindahkan?',
+          action: {
+            label: 'Ya, Pindahkan',
+            onClick: () => moveEvent(event.resource.id, start, end)
+          }
+        })
+        return
+      }
+
+      // No conflicts, move directly
+      await moveEvent(event.resource.id, start, end)
+    } catch (err) {
+      console.error('Error dropping event:', err)
+      toast.error('Gagal memindahkan jadwal')
+    }
+  }
+
+  const handleEventResize = async ({ event, start, end }: any) => {
+    try {
+      const technicianId = event.resource?.technician?.id
+      if (!technicianId) return
+
+      const conflicts = await checkConflicts({
+        orderId: event.resource.id,
+        technicianId,
+        startTime: start,
+        endTime: end
+      })
+
+      if (conflicts.length > 0) {
+        toast.error('⚠️ Konflik waktu terdeteksi! Tidak dapat mengubah durasi.')
+        return
+      }
+
+      await moveEvent(event.resource.id, start, end)
+    } catch (err) {
+      console.error('Error resizing event:', err)
+      toast.error('Gagal mengubah durasi')
+    }
+  }
+
+  const moveEvent = async (orderId: string, start: Date, end: Date) => {
+    const scheduledDate = moment(start).format('YYYY-MM-DD')
+    const scheduledTime = moment(start).format('HH:mm:ss')
+    
+    await updateSchedule({
+      orderId,
+      scheduledDate,
+      scheduledTime
+    })
+
+    toast.success('✅ Jadwal berhasil dipindahkan!')
+    refetch()
+  }
 
   // Custom event styling
   const eventStyleGetter = useCallback((event: ScheduleEvent) => {
@@ -182,6 +267,70 @@ function SchedulePageContent() {
         </div>
       </div>
 
+      {/* Technician Workload Panel */}
+      {workload.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Technician Workload ({moment(currentDate).format('MMMM YYYY')})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {workload.map((tech) => {
+                const utilizationPercent = (tech.hoursScheduled / (tech.workDays * 8)) * 100
+                let statusColor = 'bg-green-100 text-green-700 border-green-200'
+                let statusText = 'Available'
+                
+                if (utilizationPercent > 90) {
+                  statusColor = 'bg-red-100 text-red-700 border-red-200'
+                  statusText = 'Overloaded'
+                } else if (utilizationPercent > 70) {
+                  statusColor = 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                  statusText = 'Busy'
+                }
+
+                return (
+                  <div key={tech.technicianId} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{tech.technicianName}</span>
+                      <Badge variant="outline" className={statusColor}>
+                        {statusText}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <div className="flex justify-between">
+                        <span>Orders:</span>
+                        <span className="font-medium">{tech.ordersCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Hours:</span>
+                        <span className="font-medium">{tech.hoursScheduled.toFixed(1)}h / {tech.workDays * 8}h</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Utilization:</span>
+                        <span className="font-medium">{utilizationPercent.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          utilizationPercent > 90 ? 'bg-red-500' : 
+                          utilizationPercent > 70 ? 'bg-yellow-500' : 
+                          'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(utilizationPercent, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Calendar */}
       <Card>
         <CardContent className="p-6">
@@ -199,7 +348,7 @@ function SchedulePageContent() {
             </div>
           ) : (
             <div style={{ height: '700px' }}>
-              <Calendar
+              <DragAndDropCalendar
                 localizer={localizer}
                 events={filteredEvents}
                 startAccessor="start"
@@ -209,9 +358,13 @@ function SchedulePageContent() {
                 onSelectSlot={handleSelectSlot}
                 onNavigate={handleNavigate}
                 onView={handleViewChange}
+                onEventDrop={handleEventDrop}
+                onEventResize={handleEventResize}
                 view={currentView}
                 date={currentDate}
                 selectable
+                resizable
+                draggableAccessor={() => true}
                 eventPropGetter={eventStyleGetter}
                 views={['month', 'week', 'day', 'agenda']}
                 step={30}
