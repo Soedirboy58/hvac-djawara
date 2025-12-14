@@ -19,10 +19,11 @@ import {
 import { useSchedule, ScheduleEvent } from '@/hooks/use-schedule'
 import { useTechnicians } from '@/hooks/use-orders'
 import { useRouter } from 'next/navigation'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const localizer = momentLocalizer(moment)
 
-export default function SchedulePage() {
+function SchedulePageContent() {
   const router = useRouter()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [currentView, setCurrentView] = useState<View>('month')
@@ -45,13 +46,24 @@ export default function SchedulePage() {
   }, [])
 
   const handleSelectEvent = useCallback((event: ScheduleEvent) => {
-    router.push(`/dashboard/orders/${event.resource.id}`)
+    try {
+      if (event?.resource?.id) {
+        router.push(`/dashboard/orders/${event.resource.id}`)
+      }
+    } catch (err) {
+      console.error('Error navigating to order:', err)
+    }
   }, [router])
 
   const handleSelectSlot = useCallback((slotInfo: SlotInfo) => {
-    // Navigate to create order with pre-filled date
-    const dateStr = moment(slotInfo.start).format('YYYY-MM-DD')
-    router.push(`/dashboard/orders/new?date=${dateStr}`)
+    try {
+      if (slotInfo?.start) {
+        const dateStr = moment(slotInfo.start).format('YYYY-MM-DD')
+        router.push(`/dashboard/orders/new?date=${dateStr}`)
+      }
+    } catch (err) {
+      console.error('Error creating order:', err)
+    }
   }, [router])
 
   // Custom event styling
@@ -173,43 +185,67 @@ export default function SchedulePage() {
       {/* Calendar */}
       <Card>
         <CardContent className="p-6">
-          <div style={{ height: '700px' }}>
-            <Calendar
-              localizer={localizer}
-              events={filteredEvents}
-              startAccessor="start"
-              endAccessor="end"
-              style={{ height: '100%' }}
-              onSelectEvent={handleSelectEvent}
-              onSelectSlot={handleSelectSlot}
-              onNavigate={handleNavigate}
-              onView={handleViewChange}
-              view={currentView}
-              date={currentDate}
-              selectable
-              eventPropGetter={eventStyleGetter}
-              views={['month', 'week', 'day', 'agenda']}
-              step={30}
-              showMultiDayTimes
-              defaultDate={new Date()}
-              messages={{
-                next: 'Next',
-                previous: 'Previous',
-                today: 'Today',
-                month: 'Month',
-                week: 'Week',
-                day: 'Day',
-                agenda: 'Agenda',
-                date: 'Date',
-                time: 'Time',
-                event: 'Event',
-                noEventsInRange: 'No scheduled orders in this range',
-              }}
-            />
-          </div>
+          {filteredEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+              <CalendarIcon className="h-16 w-16 mb-4 text-gray-300" />
+              <p className="text-lg font-medium">No scheduled orders</p>
+              <p className="text-sm mt-2">Orders with scheduled dates will appear here</p>
+              <Button
+                onClick={() => router.push('/dashboard/orders')}
+                className="mt-4"
+              >
+                View All Orders
+              </Button>
+            </div>
+          ) : (
+            <div style={{ height: '700px' }}>
+              <Calendar
+                localizer={localizer}
+                events={filteredEvents}
+                startAccessor="start"
+                endAccessor="end"
+                style={{ height: '100%' }}
+                onSelectEvent={handleSelectEvent}
+                onSelectSlot={handleSelectSlot}
+                onNavigate={handleNavigate}
+                onView={handleViewChange}
+                view={currentView}
+                date={currentDate}
+                selectable
+                eventPropGetter={eventStyleGetter}
+                views={['month', 'week', 'day', 'agenda']}
+                step={30}
+                showMultiDayTimes
+                defaultDate={new Date()}
+                popup
+                messages={{
+                  next: 'Next',
+                  previous: 'Previous',
+                  today: 'Today',
+                  month: 'Month',
+                  week: 'Week',
+                  day: 'Day',
+                  agenda: 'Agenda',
+                  date: 'Date',
+                  time: 'Time',
+                  event: 'Event',
+                  noEventsInRange: 'No scheduled orders in this range',
+                  showMore: (total) => `+${total} more`,
+                }}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function SchedulePage() {
+  return (
+    <ErrorBoundary>
+      <SchedulePageContent />
+    </ErrorBoundary>
   )
 }
 
