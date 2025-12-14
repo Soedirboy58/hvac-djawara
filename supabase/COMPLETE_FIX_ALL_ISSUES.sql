@@ -237,7 +237,22 @@ CREATE TABLE IF NOT EXISTS public.client_audit_log (
 );
 
 -- CRITICAL: Make changed_by nullable (drop NOT NULL constraint)
-ALTER TABLE public.client_audit_log ALTER COLUMN changed_by DROP NOT NULL;
+DO $$
+BEGIN
+  -- First, check current constraint
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'client_audit_log' 
+    AND column_name = 'changed_by' 
+    AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE public.client_audit_log ALTER COLUMN changed_by DROP NOT NULL;
+    RAISE NOTICE '✅ Dropped NOT NULL constraint from changed_by';
+  ELSE
+    RAISE NOTICE '✓ changed_by is already nullable';
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_audit_client ON public.client_audit_log(client_id);
 CREATE INDEX IF NOT EXISTS idx_audit_date ON public.client_audit_log(created_at DESC);
