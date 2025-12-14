@@ -288,7 +288,16 @@ BEGIN
     change_summary := 'Client deleted';
   END IF;
 
-  -- Insert audit log
+  -- Insert audit log (skip if no authenticated user)
+  IF auth.uid() IS NULL THEN
+    -- Skip audit logging if no user context (system operations)
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    ELSE
+      RETURN NEW;
+    END IF;
+  END IF;
+  
   IF TG_OP = 'DELETE' THEN
     INSERT INTO public.client_audit_log (
       client_id, changed_by, change_type, table_name, record_id,
