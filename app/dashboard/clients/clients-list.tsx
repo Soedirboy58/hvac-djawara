@@ -88,8 +88,8 @@ export function ClientsList({ tenantId }: ClientsListProps) {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-900">{client.name}</h3>
-                    <Badge variant={client.client_type === 'commercial' ? 'default' : 'secondary'} className="mt-1">
-                      {client.client_type}
+                    <Badge variant={client.client_type === 'rumah_tangga' ? 'secondary' : 'default'} className="mt-1">
+                      {client.client_type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Rumah Tangga'}
                     </Badge>
                   </div>
                   <Badge variant={client.portal_enabled ? 'success' : 'secondary'}>

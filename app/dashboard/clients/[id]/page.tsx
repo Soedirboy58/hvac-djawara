@@ -96,8 +96,8 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={client.client_type === 'commercial' ? 'default' : 'secondary'}>
-            {client.client_type || 'residential'}
+          <Badge variant={client.client_type === 'rumah_tangga' ? 'secondary' : 'default'}>
+            {client.client_type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Rumah Tangga'}
           </Badge>
           {!editMode && activeTab === 'info' && (
             <Button onClick={() => setEditMode(true)}>
@@ -221,8 +221,8 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                     </CardContent>
                   </Card>
 
-                  {/* Business Details (if commercial) */}
-                  {client.client_type === 'commercial' && (
+                  {/* Business Details (if not residential) */}
+                  {client.client_type !== 'rumah_tangga' && (
                     <Card>
                       <CardHeader>
                         <CardTitle>Business Details</CardTitle>

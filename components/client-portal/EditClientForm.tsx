@@ -31,7 +31,7 @@ export function EditClientForm({ client, onSave, onCancel }: EditClientFormProps
     email: client.email || '',
     phone: client.phone || '',
     address: client.address || '',
-    client_type: client.client_type || 'residential',
+    client_type: client.client_type || 'rumah_tangga',
     pic_name: client.pic_name || '',
     pic_phone: client.pic_phone || '',
     company_npwp: client.company_npwp || '',
