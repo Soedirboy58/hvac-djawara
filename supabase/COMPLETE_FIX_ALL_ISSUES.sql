@@ -19,6 +19,23 @@ BEGIN
   RAISE NOTICE '🔧 Part 1: Fixing client type constraint...';
 END $$;
 
+-- IMPORTANT: Update data FIRST before changing constraint
+-- Update existing client types to new values
+UPDATE public.clients 
+SET client_type = CASE 
+  WHEN client_type = 'residential' THEN 'rumah_tangga'
+  WHEN client_type = 'commercial' THEN 'perkantoran'
+  WHEN client_type = 'rumah_tangga' THEN 'rumah_tangga'
+  WHEN client_type = 'perkantoran' THEN 'perkantoran'
+  WHEN client_type = 'komersial' THEN 'komersial'
+  WHEN client_type = 'perhotelan' THEN 'perhotelan'
+  WHEN client_type = 'sekolah_universitas' THEN 'sekolah_universitas'
+  WHEN client_type = 'gedung_pertemuan' THEN 'gedung_pertemuan'
+  WHEN client_type = 'kantor_pemerintah' THEN 'kantor_pemerintah'
+  WHEN client_type = 'pabrik_industri' THEN 'pabrik_industri'
+  ELSE 'rumah_tangga'  -- Default untuk data yang tidak valid
+END;
+
 -- Drop old constraint
 ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_client_type_check;
 
@@ -34,15 +51,6 @@ ALTER TABLE public.clients ADD CONSTRAINT clients_client_type_check
     'kantor_pemerintah', 
     'pabrik_industri'
   ));
-
--- Update existing client types to new values
-UPDATE public.clients 
-SET client_type = CASE 
-  WHEN client_type = 'residential' THEN 'rumah_tangga'
-  WHEN client_type = 'commercial' THEN 'perkantoran'
-  ELSE client_type
-END
-WHERE client_type IN ('residential', 'commercial');
 
 DO $$
 BEGIN
