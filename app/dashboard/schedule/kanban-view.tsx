@@ -66,11 +66,23 @@ const columns: { id: OrderStatus; title: string; color: string; description: str
 
 export default function ScheduleKanbanView() {
   const router = useRouter()
-  const { orders, loading, error, refetch } = useOrders()
+  const { orders: serverOrders, loading, error, refetch } = useOrders()
   const { updateOrder } = useUpdateOrder()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  // Local state for optimistic updates
+  const [optimisticOrders, setOptimisticOrders] = useState<any[]>([])
+  
+  // Use optimistic orders if available, otherwise server orders
+  const orders = optimisticOrders.length > 0 ? optimisticOrders : serverOrders
+  
+  // Sync optimistic with server when server updates
+  useState(() => {
+    if (serverOrders.length > 0 && optimisticOrders.length === 0) {
+      setOptimisticOrders(serverOrders)
+    }
+  })
 
   // Setup sensors with delay for long press (250ms hold to drag)
   const sensors = useSensors(
@@ -121,18 +133,27 @@ export default function ScheduleKanbanView() {
     const order = orders.find(o => o.id === orderId)
     if (!order || order.status === newStatus) return
 
-    // Show immediate feedback (optimistic update)
-    toast.success(`Moving to ${newStatus}...`)
+    // Optimistic update - instant UI change
+    const updatedOrders = orders.map(o => 
+      o.id === orderId ? { ...o, status: newStatus } : o
+    )
+    setOptimisticOrders(updatedOrders)
+    
+    // Show success immediately
+    toast.success(`✓ Moved to ${columns.find(c => c.id === newStatus)?.title}`)
 
-    // Update order status
+    // Update server in background
     const success = await updateOrder(orderId, { status: newStatus })
     
-    if (success) {
-      // Refetch silently in background
-      setTimeout(() => refetch(), 500)
+    if (!success) {
+      // Revert on failure
+      toast.error('Update failed, reverting...')
+      setOptimisticOrders(serverOrders)
     } else {
-      toast.error('Failed to update order status')
-      refetch()
+      // Sync with server after 3 seconds
+      setTimeout(() => {
+        refetch().then(() => setOptimisticOrders([]))
+      }, 3000)
     }
   }
 

@@ -211,22 +211,48 @@ export default function OrderDetailModal({ order, open, onClose, onUpdate }: Ord
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Scheduled Date/Time */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Scheduled Date/Time - Editable */}
+                <div className="space-y-3">
                   <div>
-                    <Label className="text-xs text-gray-500">Scheduled Date</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Calendar className="h-4 w-4 text-gray-400" />
-                      <span>{order.scheduled_date ? moment(order.scheduled_date).format('DD MMM YYYY') : 'Not scheduled'}</span>
-                    </div>
+                    <Label htmlFor="scheduled_date">Scheduled Date</Label>
+                    <Input
+                      id="scheduled_date"
+                      type="date"
+                      defaultValue={order.scheduled_date || ''}
+                      className="mt-2"
+                    />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Scheduled Time</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Clock className="h-4 w-4 text-gray-400" />
-                      <span>{order.scheduled_time || 'Not set'}</span>
-                    </div>
+                    <Label htmlFor="scheduled_time">Scheduled Time</Label>
+                    <Input
+                      id="scheduled_time"
+                      type="time"
+                      defaultValue={order.scheduled_time?.slice(0, 5) || ''}
+                      className="mt-2"
+                    />
                   </div>
+                  <Button 
+                    onClick={async () => {
+                      const dateInput = document.getElementById('scheduled_date') as HTMLInputElement
+                      const timeInput = document.getElementById('scheduled_time') as HTMLInputElement
+                      
+                      if (dateInput.value && timeInput.value) {
+                        const success = await updateOrder(order.id, {
+                          scheduled_date: dateInput.value,
+                          scheduled_time: timeInput.value + ':00'
+                        })
+                        
+                        if (success) {
+                          toast.success('Schedule updated')
+                          onUpdate()
+                        }
+                      }
+                    }}
+                    disabled={updating}
+                    size="sm"
+                  >
+                    Update Schedule
+                  </Button>
                 </div>
 
                 {/* Technician Assignment */}
