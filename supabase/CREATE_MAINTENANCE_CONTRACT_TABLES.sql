@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.maintenance_contracts (
   marketing_fee_percentage DECIMAL(5,2), -- % fee dari margin (optional)
   
   -- Assignment
-  default_technician_id UUID REFERENCES public.profiles(id)
+  default_technician_id UUID REFERENCES public.profiles(id),
   
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -106,10 +106,10 @@ CREATE TABLE IF NOT EXISTS public.contract_units (
   is_active BOOLEAN DEFAULT true,
   notes TEXT,
   
-  create4_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Step 3: Create generated_schedules table
+-- Step 4: Create generated_schedules table
 CREATE TABLE IF NOT EXISTS public.generated_schedules (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
@@ -151,19 +151,19 @@ CREATE INDEX IF NOT EXISTS idx_contract_units_room_type ON public.contract_units
 CREATE INDEX IF NOT EXISTS idx_contract_units_frequency ON public.contract_units(maintenance_frequency);
 CREATE INDEX IF NOT EXISTS idx_contract_units_active ON public.contract_units(is_active);
 
-CREATE I6: Enable Row Level Security (RLS)
-ALTER TABLE public.maintenance_contracts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.contract_locationd_schedules_contract ON public.generated_schedules(contract_id);
+CREATE INDEX IF NOT EXISTS idx_generated_schedules_tenant ON public.generated_schedules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_generated_schedules_contract ON public.generated_schedules(contract_id);
 CREATE INDEX IF NOT EXISTS idx_generated_schedules_date ON public.generated_schedules(scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_generated_schedules_status ON public.generated_schedules(status);
-CREATE I7DEX IF NOT EXISTS idx_generated_schedules_order ON public.generated_schedules(service_order_id);
+CREATE INDEX IF NOT EXISTS idx_generated_schedules_order ON public.generated_schedules(service_order_id);
 
--- Step 5: Enable Row Level Security (RLS)
+-- Step 6: Enable Row Level Security (RLS)
 ALTER TABLE public.maintenance_contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contract_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contract_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.generated_schedules ENABLE ROW LEVEL SECURITY;
 
--- Step 6: Create RLS Policies
+-- Step 7: Create RLS Policies
 -- Policies for maintenance_contracts
 DROP POLICY IF EXISTS "Users can view contracts in their tenant" ON public.maintenance_contracts;
 CREATE POLICY "Users can view contracts in their tenant"
@@ -188,7 +188,14 @@ CREATE POLICY "Users can create contracts in their tenant"
 DROP POLICY IF EXISTS "Users can update contracts in their tenant" ON public.maintenance_contracts;
 CREATE POLICY "Users can update contracts in their tenant"
   ON public.maintenance_contracts FOR UPDATE
-  USING (locations
+  USING (
+    tenant_id IN (
+      SELECT tenant_id FROM public.user_tenant_roles
+      WHERE user_id = auth.uid() AND is_active = true
+    )
+  );
+
+-- Policies for contract_locations
 DROP POLICY IF EXISTS "Users can view contract locations" ON public.contract_locations;
 CREATE POLICY "Users can view contract locations"
   ON public.contract_locations FOR SELECT
@@ -208,14 +215,7 @@ CREATE POLICY "Users can manage contract locations"
   USING (
     contract_id IN (
       SELECT id FROM public.maintenance_contracts
-      WHERE tenant_id IN (
-        SELECT tenant_id FROM public.user_tenant_roles
-        WHERE user_id = auth.uid() AND is_active = true
-      )
-    )
-  );
-
--- Policies for contract_
+      WHERE tenant_id IN 
     tenant_id IN (
       SELECT tenant_id FROM public.user_tenant_roles
       WHERE user_id = auth.uid() AND is_active = true
@@ -249,7 +249,7 @@ CREATE POLICY "Users can manage contract units"
     )
   );
 
--- Policies for generated_schedules
+-- PolicEes for generated_schedules
 DROP POLICY IF EXISTS "Users can view schedules in their tenant" ON public.generated_schedules;
 CREATE POLICY "Users can view schedules in their tenant"
   ON public.generated_schedules FOR SELECT
@@ -261,7 +261,7 @@ CREATE POLICY "Users can view schedules in their tenant"
   );
 
 DROP POLICY IF EXISTS "Users can manage schedules in their tenant" ON public.generated_schedules;
-CREATE P9LICY "Users can manage schedules in their tenant"
+CREATE POLICY "Users can manage schedules in their tenant"
   ON public.generated_schedules FOR ALL
   USING (
     tenant_id IN (
@@ -270,18 +270,14 @@ CREATE P9LICY "Users can manage schedules in their tenant"
     )
   );
 
--- Step 7: Create helper function untuk auto-update updated_at
+-- Step 8: Create helper function untuk auto-update updated_at
 CREATE OR REPLACE FUNCTION update_maintenance_contract_updated_at()
-RETURNS TRIGGER AS $$locations - Store multiple cabang/lokasi per kontrak';
-  RAISE NOTICE '  3. contract_units - Store unit AC per lokasi';
-  RAISE NOTICE '  4. generated_schedules - Store jadwal auto-generated';
-  RAISE NOTICE '';
-  RAISE NOTICE 'Features:';
-  RAISE NOTICE '  ✓ Support multi-location contracts (multiple cabang)';
-  RAISE NOTICE '  ✓ Per-unit frequency (ATM monthly, other rooms quarterly)';
-  RAISE NOTICE '  ✓ Cost vs Selling price per unit (markup pricing)';
-  RAISE NOTICE '  ✓ Freelance marketing partner tracking';
-  RAISE NOTICE '  ✓ Room type grouping (atm, server, office
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER maintenance_contracts_updated_at
   BEFORE UPDATE ON public.maintenance_contracts
   FOR EACH ROW
@@ -296,19 +292,26 @@ CREATE TRIGGER generated_schedules_updated_at
 DO $$locations', 'contract_
 BEGIN
   RAISE NOTICE '';
+  RAISE 9: Verify tables created
+DO $$
+BEGIN
+  RAISE NOTICE '';
   RAISE NOTICE '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
   RAISE NOTICE '✅ MAINTENANCE CONTRACT TABLES CREATED!';
   RAISE NOTICE '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
   RAISE NOTICE '';
   RAISE NOTICE 'Tables created:';
   RAISE NOTICE '  1. maintenance_contracts - Store kontrak maintenance';
-  RAISE NOTICE '  2. contract_units - Store unit AC per kontrak';
-  RAISE NOTICE '  3. generated_schedules - Store jadwal auto-generated';
+  RAISE NOTICE '  2. contract_locations - Store multiple cabang/lokasi per kontrak';
+  RAISE NOTICE '  3. contract_units - Store unit AC per lokasi';
+  RAISE NOTICE '  4. generated_schedules - Store jadwal auto-generated';
   RAISE NOTICE '';
   RAISE NOTICE 'Features:';
-  RAISE NOTICE '  ✓ Support multiple frequencies (monthly, quarterly, custom)';
-  RAISE NOTICE '  ✓ Discount system for sales partners';
-  RAISE NOTICE '  ✓ Room-based service scope (2 ruang vs seluruh ruang)';
+  RAISE NOTICE '  ✓ Support multi-location contracts (multiple cabang)';
+  RAISE NOTICE '  ✓ Per-unit frequency (ATM monthly, other rooms quarterly)';
+  RAISE NOTICE '  ✓ Cost vs Selling price per unit (markup pricing)';
+  RAISE NOTICE '  ✓ Freelance marketing partner tracking';
+  RAISE NOTICE '  ✓ Room type grouping (atm, server, office)';
   RAISE NOTICE '  ✓ RLS policies enabled';
   RAISE NOTICE '  ✓ Auto-updated timestamps';
   RAISE NOTICE '';
@@ -323,6 +326,4 @@ SELECT
   data_type,
   is_nullable
 FROM information_schema.columns
-WHERE table_name IN ('maintenance_contracts', 'contract_units', 'generated_schedules')
-AND table_schema = 'public'
-ORDER BY table_name, ordinal_position;
+WHERE table_name IN ('maintenance_contracts', 'contract_location
