@@ -1,7 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core'
+import { useState, useMemo } from 'react'
+import { 
+  DndContext, 
+  DragEndEvent, 
+  DragOverlay, 
+  DragStartEvent, 
+  closestCorners,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -62,6 +71,16 @@ export default function ScheduleKanbanView() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Setup sensors with delay for long press (250ms hold to drag)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
+  )
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string)
@@ -144,6 +163,11 @@ export default function ScheduleKanbanView() {
 
   return (
     <div className="space-y-6">
+      {/* Helper Text */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+        <span className="font-medium">💡 Tip:</span> Click card untuk view detail • Hold card 0.3 detik untuk drag & drop ke kolom lain
+      </div>
+
       {/* Header Stats */}
       <div className="grid grid-cols-6 gap-3">
         {columns.map(col => (
@@ -159,9 +183,11 @@ export default function ScheduleKanbanView() {
 
       {/* Kanban Board */}
       <DndContext
+        sensors={sensors}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         collisionDetection={closestCorners}
+        autoScroll={{ threshold: { x: 0.2, y: 0.2 } }}
       >
         <div className="grid grid-cols-6 gap-3 overflow-x-auto">
           {columns.map(column => (
