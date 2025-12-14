@@ -162,7 +162,13 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
           id="service_type"
           name="service_type"
           value={formData.service_type}
-          onChange={handleChange}
+          onChange={(e) => {
+            handleChange(e);
+            // Reset contract request if user changes away from maintenance
+            if (e.target.value !== 'maintenance') {
+              setIsContractRequest(false);
+            }
+          }}
           className="w-full p-2 border rounded-md"
           required
         >
@@ -186,25 +192,26 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
         />
       </div>
 
-      {/* Contract Option */}
-      <div className="border-t pt-4">
-        <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg">
-          <input
-            type="checkbox"
-            id="is_contract"
-            checked={isContractRequest}
-            onChange={(e) => setIsContractRequest(e.target.checked)}
-            className="mt-1"
-          />
-          <div>
-            <Label htmlFor="is_contract" className="text-base font-semibold cursor-pointer">
-              💼 Ajukan Kontrak Maintenance Berkala
-            </Label>
-            <p className="text-sm text-gray-600 mt-1">
-              Hemat biaya dengan layanan maintenance rutin! Hati tenang, AC awet, perawatan terjadwal otomatis.
-            </p>
+      {/* Contract Option - Only show if service_type is maintenance */}
+      {formData.service_type === 'maintenance' && (
+        <div className="border-t pt-4">
+          <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg">
+            <input
+              type="checkbox"
+              id="is_contract"
+              checked={isContractRequest}
+              onChange={(e) => setIsContractRequest(e.target.checked)}
+              className="mt-1"
+            />
+            <div>
+              <Label htmlFor="is_contract" className="text-base font-semibold cursor-pointer">
+                💼 Ajukan Kontrak Maintenance Berkala
+              </Label>
+              <p className="text-sm text-gray-600 mt-1">
+                Hemat biaya dengan layanan maintenance rutin! Hati tenang, AC awet, perawatan terjadwal otomatis.
+              </p>
+            </div>
           </div>
-        </div>
 
         {isContractRequest && (
           <div className="mt-4 space-y-4 p-4 border rounded-lg bg-gray-50">
@@ -258,7 +265,8 @@ export function RequestServiceForm({ variant = 'default', onSuccess }: RequestSe
               </select>
             </div>
           </div>
-        )}
+        </div>
+      )}
       </div>
 
       {!isContractRequest && (
