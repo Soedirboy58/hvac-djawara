@@ -207,8 +207,26 @@ COMMENT ON FUNCTION calculate_next_maintenance_date IS
 -- Function: Update next_scheduled_date after insert/update
 CREATE OR REPLACE FUNCTION update_next_scheduled_date()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_interval_days INTEGER;
+    v_base_date DATE;
 BEGIN
-    NEW.next_scheduled_date := calculate_next_maintenance_date(NEW.id);
+    -- Calculate interval
+    v_interval_days := get_maintenance_interval_days(
+        NEW.frequency,
+        NEW.custom_interval_days
+    );
+    
+    -- Determine base date
+    IF NEW.last_generated_date IS NOT NULL THEN
+        v_base_date := NEW.last_generated_date;
+    ELSE
+        v_base_date := NEW.start_date;
+    END IF;
+    
+    -- Calculate next date directly
+    NEW.next_scheduled_date := v_base_date + (v_interval_days || ' days')::INTERVAL;
+    
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

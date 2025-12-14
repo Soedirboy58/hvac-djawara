@@ -51,6 +51,7 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
   const [loading, setLoading] = useState(true)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -111,30 +112,49 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
         throw new Error('No active tenant found')
       }
 
-      // Save simple maintenance schedule
-      const { error: saveError } = await supabase
-        .from('property_maintenance_schedules')
-        .insert({
-          tenant_id: profile.active_tenant_id,
-          client_id: clientId,
-          property_id: selectedProperty,
-          frequency: schedule.frequency,
-          custom_interval_days: schedule.custom_days,
-          start_date: schedule.start_date,
-          maintenance_type: schedule.maintenance_type,
-          notes: schedule.notes,
-          apply_to_all_units: true,
-          is_active: true
-        })
+      if (editingId) {
+        // UPDATE existing schedule
+        const { error: updateError } = await supabase
+          .from('property_maintenance_schedules')
+          .update({
+            property_id: selectedProperty,
+            frequency: schedule.frequency,
+            custom_interval_days: schedule.custom_days,
+            start_date: schedule.start_date,
+            maintenance_type: schedule.maintenance_type,
+            notes: schedule.notes,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingId)
 
-      if (saveError) throw saveError
+        if (updateError) throw updateError
+      } else {
+        // INSERT new schedule
+        const { error: insertError } = await supabase
+          .from('property_maintenance_schedules')
+          .insert({
+            tenant_id: profile.active_tenant_id,
+            client_id: clientId,
+            property_id: selectedProperty,
+            frequency: schedule.frequency,
+            custom_interval_days: schedule.custom_days,
+            start_date: schedule.start_date,
+            maintenance_type: schedule.maintenance_type,
+            notes: schedule.notes,
+            apply_to_all_units: true,
+            is_active: true
+          })
+
+        if (insertError) throw insertError
+      }
 
       setSuccess(true)
       setTimeout(() => {
         setSuccess(false)
         setMode('choose')
         setSelectedProperty(null)
-        loadData() // Reload to show new schedule
+        setEditingId(null)
+        loadData() // Reload to show updated schedule
       }, 2000)
     } catch (err) {
       console.error('Error saving schedule:', err)
@@ -186,6 +206,7 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
   }
 
   async function handleEdit(sched: any) {
+    setEditingId(sched.id)
     setSelectedProperty(sched.property_id)
     setSchedule({
       frequency: sched.frequency,
@@ -195,8 +216,6 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
       notes: sched.notes || ''
     })
     setMode('simple')
-    // Note: For now, this will create a new schedule. 
-    // To truly edit, need to add editingId state and update logic
   }
 
   if (loading) {
@@ -430,10 +449,10 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Home className="w-5 h-5" />
-            Simple Maintenance Setup
+            {editingId ? 'Edit Maintenance Schedule' : 'Simple Maintenance Setup'}
           </CardTitle>
           <p className="text-sm text-gray-500">
-            Quick setup for recurring maintenance per property
+            {editingId ? 'Update schedule details and frequency' : 'Quick setup for recurring maintenance per property'}
           </p>
         </CardHeader>
 
@@ -583,11 +602,12 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
               onClick={() => {
                 setMode('choose')
                 setSelectedProperty(null)
+                setEditingId(null)
                 setError(null)
               }}
               className="w-1/3"
             >
-              Back
+              {editingId ? 'Cancel Edit' : 'Back'}
             </Button>
             <Button 
               onClick={handleSimpleSave} 
@@ -595,11 +615,11 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
               className="w-2/3"
             >
               {saving ? (
-                <>Saving...</>
+                <>{editingId ? 'Updating...' : 'Saving...'}</>
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Save Schedule
+                  {editingId ? 'Update Schedule' : 'Save Schedule'}
                 </>
               )}
             </Button>
