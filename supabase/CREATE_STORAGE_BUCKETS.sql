@@ -42,12 +42,12 @@ WITH CHECK (bucket_id = 'client-documents');
 CREATE POLICY "Users can update own documents"
 ON storage.objects FOR UPDATE
 TO authenticated
-USING (bucket_id = 'client-documents' AND auth.uid()::text = owner);
+USING (bucket_id = 'client-documents' AND owner = auth.uid());
 
 CREATE POLICY "Users can delete own documents"
 ON storage.objects FOR DELETE
 TO authenticated
-USING (bucket_id = 'client-documents' AND auth.uid()::text = owner);
+USING (bucket_id = 'client-documents' AND owner = auth.uid());
 
 -- ================================================
 -- 2. AC PHOTOS BUCKET
@@ -83,12 +83,12 @@ WITH CHECK (bucket_id = 'ac-photos');
 CREATE POLICY "Users can update AC photos"
 ON storage.objects FOR UPDATE
 TO authenticated
-USING (bucket_id = 'ac-photos' AND auth.uid()::text = owner);
+USING (bucket_id = 'ac-photos' AND owner = auth.uid());
 
 CREATE POLICY "Users can delete AC photos"
 ON storage.objects FOR DELETE
 TO authenticated
-USING (bucket_id = 'ac-photos' AND auth.uid()::text = owner);
+USING (bucket_id = 'ac-photos' AND owner = auth.uid());
 
 -- ================================================
 -- VERIFICATION

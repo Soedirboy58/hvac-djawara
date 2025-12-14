@@ -85,7 +85,7 @@ export function DocumentManager({ clientId }: DocumentManagerProps) {
         .from('client_documents')
         .select(`
           *,
-          profiles!uploaded_by (name)
+          profiles!client_documents_uploaded_by_fkey (full_name)
         `)
         .eq('client_id', clientId)
         .eq('status', 'active')
@@ -95,7 +95,7 @@ export function DocumentManager({ clientId }: DocumentManagerProps) {
 
       const formatted = data?.map(d => ({
         ...d,
-        uploaded_by_name: d.profiles?.name || 'System'
+        uploaded_by_name: d.profiles?.full_name || 'System'
       })) || []
 
       setDocuments(formatted)
