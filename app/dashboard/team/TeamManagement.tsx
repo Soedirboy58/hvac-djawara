@@ -54,6 +54,7 @@ export default function TeamManagement() {
   const [loading, setLoading] = useState(true);
   const [addDialog, setAddDialog] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
+  const [detailDialog, setDetailDialog] = useState(false);
   const [selectedTech, setSelectedTech] = useState<Technician | null>(null);
   
   // Form state
@@ -264,7 +265,14 @@ export default function TeamManagement() {
                 </TableRow>
               ) : (
                 technicians.map((tech) => (
-                  <TableRow key={tech.id}>
+                  <TableRow 
+                    key={tech.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setSelectedTech(tech);
+                      setDetailDialog(true);
+                    }}
+                  >
                     <TableCell>
                       <div>
                         <p className="font-medium">{tech.full_name}</p>
@@ -308,7 +316,8 @@ export default function TeamManagement() {
                           <p className="text-sm text-muted-foreground">
                             ⭐ {tech.average_rating.toFixed(1)}
                           </p>
-                        )}
+                        )}e) => {
+                          e.stopPropagation();
                       </div>
                     </TableCell>
                     <TableCell>
@@ -394,9 +403,13 @@ export default function TeamManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="technician">Technician</SelectItem>
-                  <SelectItem value="supervisor">Supervisor</SelectItem>
-                  <SelectItem value="team_lead">Team Lead</SelectItem>
+                  <SelectItem value="admin_finance">Admin Finance</SelectItem>
+                  <SelectItem value="admin_operasional">Admin Operasional</SelectItem>
+                  <SelectItem value="supervisor">Supervisor / Chief Engineer</SelectItem>
+                  <SelectItem value="senior_technician">Senior Teknisi</SelectItem>
+                  <SelectItem value="technician">Teknisi</SelectItem>
+                  <SelectItem value="helper">Helper</SelectItem>
+                  <SelectItem value="intern">Magang</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -409,7 +422,155 @@ export default function TeamManagement() {
           </div>
         </DialogContent>
       </Dialog>
+Detail Technician Dialog */}
+      <Dialog open={detailDialog} onOpenChange={setDetailDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Technician Details</DialogTitle>
+          </DialogHeader>
+          {selectedTech && (
+            <div className="space-y-6">
+              {/* Profile Section */}
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Profile Information</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Full Name:</span>
+                        <span className="font-medium">{selectedTech.full_name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Employee ID:</span>
+                        <span className="font-medium">{selectedTech.employee_id || "-"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Email:</span>
+                        <span className="font-medium">{selectedTech.email}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Phone:</span>
+                        <span className="font-medium">{selectedTech.phone || "-"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Role:</span>
+                        <Badge variant="secondary">{selectedTech.role}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Status:</span>
+                        {getStatusBadge(selectedTech.status)}
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Availability:</span>
+                        {getAvailabilityBadge(selectedTech.availability_status)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Performance Metrics</h3>
+                    <div className="space-y-3">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-center">
+                            <p className="text-3xl font-bold">{selectedTech.total_jobs_completed}</p>
+                            <p className="text-sm text-muted-foreground">Total Jobs Completed</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-center">
+                            <p className="text-3xl font-bold">
+                              {selectedTech.average_rating > 0 
+                                ? `⭐ ${selectedTech.average_rating.toFixed(1)}` 
+                                : "N/A"}
+                            </p>
+                            <p className="text-sm text-muted-foreground">Average Rating</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Skills & Certifications */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Skills & Specializations</h3>
+                <div className="flex flex-wrap gap-2">
+                  {selectedTech.specializations && selectedTech.specializations.length > 0 ? (
+                    selectedTech.specializations.map((skill, idx) => (
+                      <Badge key={idx} variant="outline" className="bg-blue-50">
+                        {skill}
+                      </Badge>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No specializations added yet</p>
+                  )}
+                </div>
+              </div>
+
+              {selectedTech.certifications && selectedTech.certifications.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Certifications</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTech.certifications.map((cert, idx) => (
+                      <Badge key={idx} variant="outline" className="bg-green-50">
+                        {cert}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Verification Status */}
+              <div className="p-4 bg-muted rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Verification Status</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedTech.is_verified ? "Account verified" : "Waiting for verification"}
+                    </p>
+                  </div>
+                  <div>
+                    {selectedTech.is_verified ? (
+                      <CheckCircle className="h-8 w-8 text-green-500" />
+                    ) : (
+                      <XCircle className="h-8 w-8 text-red-500" />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDetailDialog(false);
+                    setTokenDialog(true);
+                  }}
+                >
+                  View Token
+                </Button>
+                <Button
+                  onClick={() => {
+                    // TODO: Navigate to edit page
+                    toast.info("Edit feature coming soon");
+                  }}
+                >
+                  Edit Profile
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 
       {/* Token Dialog */}
       <Dialog open={tokenDialog} onOpenChange={setTokenDialog}>
         <DialogContent>
