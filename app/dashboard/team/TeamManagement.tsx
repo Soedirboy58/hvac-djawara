@@ -44,6 +44,8 @@ interface Technician {
   is_verified: boolean;
   total_jobs_completed: number;
   average_rating: number;
+  specializations: string[] | null;
+  certifications: string[] | null;
   verification_token: string | null;
   token_expires_at: string | null;
   created_at: string;
