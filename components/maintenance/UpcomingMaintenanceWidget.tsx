@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Calendar, AlertCircle, CheckCircle, Clock, RefreshCw } from "lucide-react";
+import { Calendar, AlertCircle, CheckCircle, Clock, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,13 @@ export default function UpcomingMaintenanceWidget() {
   const [selectedOrder, setSelectedOrder] = useState<UpcomingMaintenance | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleReason, setRescheduleReason] = useState("");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  
+  // Bulk selection state
+  const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
 
   useEffect(() => {
     fetchUpcoming();
@@ -76,16 +84,43 @@ export default function UpcomingMaintenanceWidget() {
       const result = await response.json();
 
       if (result.success) {
-        toast.success(`${result.count} service order berhasil dibuat!`);
+        const count = result.count || 0;
+        if (count > 0) {
+          toast.success(`${count} service order berhasil dibuat!`);
+        } else {
+          toast.info("Tidak ada order yang perlu dibuat saat ini");
+        }
         fetchUpcoming();
+        setSelectedSchedules([]); // Clear selection
       } else {
-        toast.error("Gagal generate orders");
+        toast.error(result.error || "Gagal generate orders");
       }
     } catch (error) {
       console.error("Error generating orders:", error);
       toast.error("Terjadi kesalahan");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleToggleSelect = (scheduleId: string) => {
+    setSelectedSchedules(prev =>
+      prev.includes(scheduleId)
+        ? prev.filter(id => id !== scheduleId)
+        : [...prev, scheduleId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    const pageItems = paginatedData.filter(m => !m.order_exists);
+    const pageIds = pageItems.map(m => m.schedule_id);
+    
+    if (pageIds.every(id => selectedSchedules.includes(id))) {
+      // Deselect all on current page
+      setSelectedSchedules(prev => prev.filter(id => !pageIds.includes(id)));
+    } else {
+      // Select all on current page
+      setSelectedSchedules(prev => [...new Set([...prev, ...pageIds])]);
     }
   };
 
@@ -153,6 +188,17 @@ export default function UpcomingMaintenanceWidget() {
 
   const needsAction = upcoming.filter((m) => !m.order_exists && m.days_until <= 7);
 
+  // Pagination
+  const totalPages = Math.ceil(upcoming.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedData = upcoming.slice(startIndex, endIndex);
+
+  // Check if all items on current page are selected
+  const pageSelectableItems = paginatedData.filter(m => !m.order_exists);
+  const isAllPageSelected = pageSelectableItems.length > 0 && 
+    pageSelectableItems.every(m => selectedSchedules.includes(m.schedule_id));
+
   if (loading) {
     return (
       <Card>
@@ -209,8 +255,40 @@ export default function UpcomingMaintenanceWidget() {
           </Card>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedSchedules.length > 0 && (
+          <Card className="border-blue-500 bg-blue-50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold">
+                    {selectedSchedules.length} schedule dipilih
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Pilih action untuk schedule yang dipilih
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedSchedules([])}
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button onClick={handleGenerateOrders} disabled={generating}>
+                    <RefreshCw
+                      className={`h-4 w-4 mr-2 ${generating ? "animate-spin" : ""}`}
+                    />
+                    {generating ? "Generating..." : "Generate Selected"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Action Button */}
-        {needsAction.length > 0 && (
+        {needsAction.length > 0 && selectedSchedules.length === 0 && (
           <Card className="border-yellow-500 bg-yellow-50">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -226,7 +304,7 @@ export default function UpcomingMaintenanceWidget() {
                   <RefreshCw
                     className={`h-4 w-4 mr-2 ${generating ? "animate-spin" : ""}`}
                   />
-                  {generating ? "Generating..." : "Generate Orders"}
+                  {generating ? "Generating..." : "Generate All"}
                 </Button>
               </div>
             </CardContent>
@@ -247,6 +325,12 @@ export default function UpcomingMaintenanceWidget() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox 
+                        checked={isAllPageSelected}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Client / Property</TableHead>
                     <TableHead>Frequency</TableHead>
                     <TableHead>Scheduled Date</TableHead>
@@ -256,8 +340,15 @@ export default function UpcomingMaintenanceWidget() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upcoming.map((item) => (
+                  {paginatedData.map((item) => (
                     <TableRow key={item.schedule_id}>
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedSchedules.includes(item.schedule_id)}
+                          onCheckedChange={() => handleToggleSelect(item.schedule_id)}
+                          disabled={item.order_exists}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">{item.client_name}</p>
@@ -312,6 +403,38 @@ export default function UpcomingMaintenanceWidget() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            
+            {/* Pagination */}
+            {upcoming.length > itemsPerPage && (
+              <div className="flex items-center justify-between mt-4 px-2">
+                <p className="text-sm text-muted-foreground">
+                  Showing {startIndex + 1}-{Math.min(endIndex, upcoming.length)} of {upcoming.length} schedules
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
