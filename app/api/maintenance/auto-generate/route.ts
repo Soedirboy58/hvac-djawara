@@ -40,12 +40,12 @@ export async function GET(request: Request) {
   try {
     const supabase = createClient()
     
-    // Get upcoming maintenance from view
+    // Get upcoming maintenance from view (include overdue)
     const { data, error } = await supabase
       .from('v_upcoming_maintenance')
       .select('*')
-      .lte('days_until', 30) // Next 30 days
-      .order('next_scheduled_date', { ascending: true })
+      .lte('days_until', 90) // Include overdue and next 90 days
+      .order('days_until', { ascending: true })
 
     if (error) {
       return NextResponse.json(
