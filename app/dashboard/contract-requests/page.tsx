@@ -22,8 +22,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, Send, CheckCircle, XCircle } from "lucide-react";
+import { Eye, Send, CheckCircle, XCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
+import QuotationForm from "@/components/QuotationForm";
 
 interface ContractRequest {
   id: string;
@@ -49,10 +50,25 @@ export default function ContractRequestsPage() {
   const [quotationAmount, setQuotationAmount] = useState("");
   const [quotationNotes, setQuotationNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showQuotationForm, setShowQuotationForm] = useState(false);
+  const [quotationRequest, setQuotationRequest] = useState<ContractRequest | null>(null);
+  const [tenantId, setTenantId] = useState<string>("");
 
   const fetchRequests = async () => {
     try {
       const supabase = createClient();
+      
+      // Get user's tenant
+      const { data: userData } = await supabase
+        .from("user_roles")
+        .select("tenant_id")
+        .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
+        .single();
+      
+      if (userData) {
+        setTenantId(userData.tenant_id);
+      }
+
       const { data, error } = await supabase
         .from("contract_requests")
         .select("*")
@@ -230,15 +246,15 @@ export default function ContractRequestsPage() {
                       {request.status === "pending" && (
                         <>
                           <Button
-                            variant="ghost"
                             size="sm"
+                            className="bg-primary hover:bg-primary/90"
                             onClick={() => {
-                              setSelectedRequest(request);
-                              setQuotationAmount("");
-                              setQuotationNotes("");
+                              setQuotationRequest(request);
+                              setShowQuotationForm(true);
                             }}
                           >
-                            <Send className="h-4 w-4 text-blue-500" />
+                            <FileText className="h-4 w-4 mr-2" />
+                            Buat Penawaran
                           </Button>
                         </>
                       )}
@@ -358,6 +374,29 @@ export default function ContractRequestsPage() {
                 </div>
               )}
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Quotation Form Dialog */}
+      <Dialog open={showQuotationForm} onOpenChange={setShowQuotationForm}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Buat Surat Penawaran</DialogTitle>
+            <DialogDescription>
+              Buat penawaran professional untuk {quotationRequest?.company_name}
+            </DialogDescription>
+          </DialogHeader>
+          {quotationRequest && tenantId && (
+            <QuotationForm
+              contractRequest={quotationRequest}
+              tenantId={tenantId}
+              onSuccess={() => {
+                setShowQuotationForm(false);
+                fetchRequests();
+              }}
+              onCancel={() => setShowQuotationForm(false)}
+            />
           )}
         </DialogContent>
       </Dialog>
