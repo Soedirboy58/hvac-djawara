@@ -40,23 +40,26 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient()
     
-    // Get upcoming maintenance from view (include overdue)
+    // Get ALL active maintenance schedules (let frontend filter)
     const { data, error } = await supabase
       .from('v_upcoming_maintenance')
       .select('*')
-      .lte('days_until', 90) // Include overdue and next 90 days
       .order('days_until', { ascending: true })
 
     if (error) {
+      console.error('Error fetching maintenance:', error)
       return NextResponse.json(
-        { error: 'Failed to fetch upcoming maintenance' },
+        { error: 'Failed to fetch upcoming maintenance', details: error.message },
         { status: 500 }
       )
     }
 
+    console.log('Fetched maintenance schedules:', data?.length || 0)
+
     return NextResponse.json({
       success: true,
       upcoming_maintenance: data || [],
+      count: data?.length || 0,
     })
   } catch (error) {
     console.error('Error:', error)

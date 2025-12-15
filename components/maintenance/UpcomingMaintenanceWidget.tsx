@@ -158,9 +158,13 @@ export default function UpcomingMaintenanceWidget() {
     }
   };
 
-  const getUrgencyBadge = (daysUntil: number) => {
-    if (daysUntil < 0) {
-      return <Badge variant="destructive">Overdue</Badge>;
+  const getUrgencyBadge = (daysUntil: number, orderExists: boolean) => {
+    if (orderExists && daysUntil > 30) {
+      return <Badge className="bg-green-500">✅ Order Created</Badge>;
+    } else if (daysUntil < -3) {
+      return <Badge variant="destructive">Overdue ({Math.abs(daysUntil)}d)</Badge>;
+    } else if (daysUntil >= -3 && daysUntil <= 0) {
+      return <Badge className="bg-orange-500">Due Soon ({Math.abs(daysUntil)}d)</Badge>;
     } else if (daysUntil <= 3) {
       return <Badge className="bg-orange-500">Urgent ({daysUntil}d)</Badge>;
     } else if (daysUntil <= 7) {
@@ -181,18 +185,22 @@ export default function UpcomingMaintenanceWidget() {
     return labels[freq] || freq;
   };
 
-  // Group by urgency
-  const overdue = upcoming.filter((m) => m.days_until < 0);
-  const urgent = upcoming.filter((m) => m.days_until >= 0 && m.days_until <= 7);
+  // Group by urgency (Overdue = lewat >3 hari)
+  const overdue = upcoming.filter((m) => m.days_until < -3);
+  const urgent = upcoming.filter((m) => m.days_until >= -3 && m.days_until <= 7);
   const upcoming30 = upcoming.filter((m) => m.days_until > 7 && m.days_until <= 30);
+  const recentlyCompleted = upcoming.filter((m) => m.order_exists && m.days_until > 30);
 
   const needsAction = upcoming.filter((m) => !m.order_exists && m.days_until <= 7);
+  
+  // Combine data for display: show overdue, urgent, upcoming30, AND recently completed
+  const displayData = [...overdue, ...urgent, ...upcoming30, ...recentlyCompleted];
 
-  // Pagination
-  const totalPages = Math.ceil(upcoming.length / itemsPerPage);
+  // Pagination (use displayData instead of upcoming)
+  const totalPages = Math.ceil(displayData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedData = upcoming.slice(startIndex, endIndex);
+  const paginatedData = displayData.slice(startIndex, endIndex);
 
   // Check if all items on current page are selected
   const pageSelectableItems = paginatedData.filter(m => !m.order_exists);
@@ -363,7 +371,7 @@ export default function UpcomingMaintenanceWidget() {
                           <p>
                             {new Date(item.next_scheduled_date).toLocaleDateString("id-ID")}
                           </p>
-                          {getUrgencyBadge(item.days_until)}
+                          {getUrgencyBadge(item.days_until, item.order_exists)}
                         </div>
                       </TableCell>
                       <TableCell>{item.unit_count} units</TableCell>
