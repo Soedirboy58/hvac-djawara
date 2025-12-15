@@ -69,10 +69,10 @@ CREATE POLICY "Admins can view quotations"
   ON quotations FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM user_roles ur
+      SELECT 1 FROM user_tenant_roles ur
       WHERE ur.user_id = auth.uid()
       AND ur.tenant_id = quotations.tenant_id
-      AND ur.role IN ('admin', 'manager')
+      AND ur.role IN ('admin', 'owner', 'coordinator')
     )
   );
 
@@ -81,10 +81,10 @@ CREATE POLICY "Admins can create quotations"
   ON quotations FOR INSERT
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM user_roles ur
+      SELECT 1 FROM user_tenant_roles ur
       WHERE ur.user_id = auth.uid()
       AND ur.tenant_id = quotations.tenant_id
-      AND ur.role IN ('admin', 'manager')
+      AND ur.role IN ('admin', 'owner', 'coordinator')
     )
   );
 
@@ -93,10 +93,10 @@ CREATE POLICY "Admins can update quotations"
   ON quotations FOR UPDATE
   USING (
     EXISTS (
-      SELECT 1 FROM user_roles ur
+      SELECT 1 FROM user_tenant_roles ur
       WHERE ur.user_id = auth.uid()
       AND ur.tenant_id = quotations.tenant_id
-      AND ur.role IN ('admin', 'manager')
+      AND ur.role IN ('admin', 'owner', 'coordinator')
     )
   );
 
@@ -105,10 +105,10 @@ CREATE POLICY "Admins can delete quotations"
   ON quotations FOR DELETE
   USING (
     EXISTS (
-      SELECT 1 FROM user_roles ur
+      SELECT 1 FROM user_tenant_roles ur
       WHERE ur.user_id = auth.uid()
       AND ur.tenant_id = quotations.tenant_id
-      AND ur.role IN ('admin', 'manager')
+      AND ur.role IN ('admin', 'owner', 'coordinator')
     )
   );
 
