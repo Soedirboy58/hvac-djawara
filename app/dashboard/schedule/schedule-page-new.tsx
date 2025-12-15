@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar as CalendarIcon, Kanban } from 'lucide-react'
+import { Calendar as CalendarIcon, Kanban, Clock } from 'lucide-react'
 import ScheduleCalendarView from './calendar-view'
 import ScheduleKanbanView from './kanban-view'
+import UpcomingMaintenanceWidget from '@/components/maintenance/UpcomingMaintenanceWidget'
 
 export default function SchedulePageWithTabs() {
   const [activeTab, setActiveTab] = useState('calendar')
@@ -19,7 +20,7 @@ export default function SchedulePageWithTabs() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="calendar" className="flex items-center gap-2">
             <CalendarIcon className="h-4 w-4" />
             Calendar View
@@ -27,6 +28,10 @@ export default function SchedulePageWithTabs() {
           <TabsTrigger value="kanban" className="flex items-center gap-2">
             <Kanban className="h-4 w-4" />
             Kanban Board
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Maintenance Schedule
           </TabsTrigger>
         </TabsList>
 
@@ -36,6 +41,10 @@ export default function SchedulePageWithTabs() {
 
         <TabsContent value="kanban" className="mt-6">
           <ScheduleKanbanView />
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="mt-6">
+          <UpcomingMaintenanceWidget />
         </TabsContent>
       </Tabs>
     </div>
