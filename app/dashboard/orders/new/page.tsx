@@ -65,8 +65,7 @@ export default function NewOrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
-  const [approvalDocuments, setApprovalDocuments] = useState<ApprovalDocument[]>([])
-  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const [selectedTechnicians, setSelectedTechnicians] = useState<string[]>([])
   
   const [formData, setFormData] = useState({
     client_id: '',
@@ -281,80 +280,8 @@ export default function NewOrderPage() {
     }
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    setUploadingFiles(true)
-    try {
-      const supabase = createClient()
-      
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-
-      const uploadedDocs: ApprovalDocument[] = []
-
-      for (const file of Array.from(files)) {
-        // Validate file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error(`File ${file.name} is too large (max 10MB)`)
-          continue
-        }
-
-        // Upload to storage
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-        const filePath = `${user.id}/${fileName}`
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('order-documents')
-          .upload(filePath, file)
-
-        if (uploadError) {
-          console.error('Upload error:', uploadError)
-          toast.error(`Failed to upload ${file.name}`)
-          continue
-        }
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('order-documents')
-          .getPublicUrl(filePath)
-
-        // Create document metadata
-        const doc: ApprovalDocument = {
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
-          name: file.name,
-          url: publicUrl,
-          type: file.type,
-          size: file.size,
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: user.id,
-          category: 'approval' // Default category
-        }
-
-        uploadedDocs.push(doc)
-      }
-
-      if (uploadedDocs.length > 0) {
-        setApprovalDocuments([...approvalDocuments, ...uploadedDocs])
-        toast.success(`${uploadedDocs.length} document(s) uploaded successfully!`)
-      }
-    } catch (error: any) {
-      console.error('Error uploading files:', error)
-      toast.error(error.message || 'Failed to upload files')
-    } finally {
-      setUploadingFiles(false)
-      // Reset file input
-      e.target.value = ''
-    }
-  }
-
-  const removeDocument = (docId: string) => {
-    setApprovalDocuments(approvalDocuments.filter(doc => doc.id !== docId))
-    toast.success('Document removed')
-  }
+  // File upload and document management - Coming Soon
+  // TODO: Uncomment after running 04_CREATE_DOCUMENT_STORAGE.sql
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -415,21 +342,25 @@ export default function NewOrderPage() {
 
       if (orderError) throw orderError
 
-      // If technician assigned, create work order assignment
-      if (formData.assigned_to && newOrder.id) {
+      // If technicians assigned, create work order assignments for all
+      if (selectedTechnicians.length > 0 && newOrder.id) {
+        const assignments = selectedTechnicians.map(techId => ({
+          order_id: newOrder.id,
+          technician_id: techId,
+          assigned_by: user.id,
+          assignment_date: new Date().toISOString(),
+          status: 'assigned',
+        }))
+
         const { error: assignError } = await supabase
           .from('work_order_assignments')
-          .insert({
-            order_id: newOrder.id,
-            technician_id: formData.assigned_to,
-            assigned_by: user.id,
-            assignment_date: new Date().toISOString(),
-            status: 'assigned',
-          })
+          .insert(assignments)
 
         if (assignError) {
-          console.error('Error assigning technician:', assignError)
-          toast.error('Order created but failed to assign technician')
+          console.error('Error assigning technicians:', assignError)
+          toast.error('Order created but failed to assign some technicians')
+        } else {
+          toast.success(`${selectedTechnicians.length} technician(s) assigned successfully!`)
         }
       }
 
@@ -911,27 +842,45 @@ export default function NewOrderPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="technician">Assign Technician (Optional)</Label>
-                <Select 
-                  value={formData.assigned_to || undefined} 
-                  onValueChange={(value) => setFormData({ ...formData, assigned_to: value })}
-                >
-                  <SelectTrigger id="technician">
-                    <SelectValue placeholder="Leave unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {technicians.map((tech) => (
-                      <SelectItem key={tech.id} value={tech.id}>
-                        👤 {tech.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {technicians.length === 0 
-                    ? "No verified technicians available. Order will be unassigned." 
-                    : "Technician will receive notification and see this in their work queue"}
+                <Label>Assign Technicians (Optional)</Label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Select multiple technicians for this job (e.g., technician + helper)
                 </p>
+                {technicians.length === 0 ? (
+                  <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                    <p className="text-sm text-gray-500">No verified technicians available. Order will be unassigned.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-4 border border-gray-200 rounded-lg bg-white">
+                    {technicians.map((tech) => (
+                      <label 
+                        key={tech.id} 
+                        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTechnicians.includes(tech.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTechnicians([...selectedTechnicians, tech.id])
+                            } else {
+                              setSelectedTechnicians(selectedTechnicians.filter(id => id !== tech.id))
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          👤 {tech.full_name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {selectedTechnicians.length > 0 && (
+                  <p className="text-xs text-green-600 mt-2">
+                    ✓ {selectedTechnicians.length} technician(s) selected - All will receive notification
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -971,7 +920,7 @@ export default function NewOrderPage() {
                     <p className="text-xs text-green-600 mt-2">
                       ✓ Client will see this schedule in their portal<br />
                       ✓ Supports 24-hour format for flexible scheduling<br />
-                      {formData.assigned_to && '✓ Assigned technician will receive notification'}
+                      {selectedTechnicians.length > 0 && `✓ ${selectedTechnicians.length} technician(s) will receive notification`}
                     </p>
                   </div>
                 </div>
