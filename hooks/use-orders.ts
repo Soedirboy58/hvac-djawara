@@ -35,6 +35,17 @@ export interface ServiceOrder {
   created_by?: string
   created_at: string
   updated_at: string
+  // Aggregated fields from view
+  assigned_technician_names?: string
+  assigned_technician_ids?: string
+  technician_count?: number
+  client_name?: string
+  client_phone?: string
+  client_email?: string
+  client_address?: string
+  client_type?: string
+  creator_name?: string
+  // Legacy join fields (kept for backward compatibility)
   client?: {
     id: string
     name: string
@@ -100,14 +111,10 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       console.log('Active tenant ID:', profile.active_tenant_id)
 
+      // Use the order_with_technicians view to get aggregated technician data
       let query = supabase
-        .from('service_orders')
-        .select(`
-          *,
-          client:clients!client_id(id, name, phone, email, address),
-          technician:profiles!assigned_to(id, full_name),
-          creator:profiles!created_by(id, full_name)
-        `)
+        .from('order_with_technicians')
+        .select('*')
         .eq('tenant_id', profile.active_tenant_id)
         .order('created_at', { ascending: false })
 

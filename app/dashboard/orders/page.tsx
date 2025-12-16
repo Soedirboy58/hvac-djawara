@@ -392,15 +392,15 @@ export default function OrdersPage() {
                       <TableCell className="font-medium">{order.order_number}</TableCell>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{order.client_name || 'Unknown'}</div>
-                          <div className="text-sm text-muted-foreground">{order.client_phone}</div>
+                          <div className="font-medium">{order.client_name || order.client?.name || 'Unknown'}</div>
+                          <div className="text-sm text-muted-foreground">{order.client_phone || order.client?.phone}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">{order.service_title}</div>
                           <Badge variant="outline" className="mt-1">
-                            {order.service_type}
+                            {order.order_type}
                           </Badge>
                         </div>
                       </TableCell>
@@ -422,10 +422,17 @@ export default function OrdersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {order.assigned_technicians ? (
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm">{order.assigned_technicians}</span>
+                        {order.assigned_technician_names ? (
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-blue-600" />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{order.assigned_technician_names}</span>
+                              {order.technician_count && order.technician_count > 1 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {order.technician_count} technicians
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">Unassigned</span>

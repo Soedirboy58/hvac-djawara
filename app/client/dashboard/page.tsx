@@ -6,7 +6,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, FileText, CheckCircle, Calendar } from 'lucide-react'
+import { Package, FileText, CheckCircle, Calendar, Users } from 'lucide-react'
 
 export default async function ClientDashboardPage() {
   const supabase = await createClient()
@@ -44,9 +44,9 @@ export default async function ClientDashboardPage() {
     .eq('client_id', clientId)
     .eq('is_active', true)
 
-  // Get recent orders
+  // Get recent orders with technician info from the view
   const { data: recentOrders } = await supabase
-    .from('service_orders')
+    .from('order_with_technicians')
     .select('*')
     .eq('client_id', clientId)
     .order('created_at', { ascending: false })
@@ -138,37 +138,118 @@ export default async function ClientDashboardPage() {
               {recentOrders.map((order) => (
                 <div
                   key={order.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  className="p-5 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
                 >
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {order.order_number}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {order.service_title || order.order_type}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(order.created_at).toLocaleDateString('id-ID', {
+                  {/* Header Section */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-semibold text-gray-900 text-lg">
+                          {order.order_number}
+                        </p>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            order.status === 'completed'
+                              ? 'bg-green-100 text-green-800'
+                              : order.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-800'
+                              : order.status === 'scheduled'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : order.status === 'cancelled'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          {order.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-base font-medium text-gray-700">
+                        {order.service_title || order.order_type}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Project Timeline */}
+                  {(order.scheduled_date || order.scheduled_time) && (
+                    <div className="bg-blue-50 rounded-md p-3 mb-3">
+                      <div className="flex items-start gap-2">
+                        <Calendar className="w-4 h-4 text-blue-600 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-blue-900">Project Schedule</p>
+                          <div className="mt-1 space-y-1">
+                            {order.scheduled_date && (
+                              <p className="text-sm text-blue-700">
+                                📅 Start: {new Date(order.scheduled_date).toLocaleDateString('id-ID', {
+                                  day: 'numeric',
+                                  month: 'long',
+                                  year: 'numeric',
+                                })}
+                                {order.scheduled_time && ` at ${order.scheduled_time}`}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Service Description / Work Notes */}
+                  {order.service_description && (
+                    <div className="bg-gray-50 rounded-md p-3 mb-3">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                        Work Description / Notes
+                      </p>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {order.service_description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Additional Notes */}
+                  {order.notes && (
+                    <div className="bg-amber-50 rounded-md p-3 mb-3">
+                      <p className="text-xs font-medium text-amber-700 uppercase tracking-wide mb-1">
+                        📝 Additional Notes
+                      </p>
+                      <p className="text-sm text-amber-900 leading-relaxed">
+                        {order.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Technician Assignment */}
+                  {order.assigned_technician_names && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                      <Users className="w-4 h-4" />
+                      <span className="font-medium">Technician PIC:</span>
+                      <span className="text-gray-900">{order.assigned_technician_names}</span>
+                      {order.technician_count && order.technician_count > 1 && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                          {order.technician_count} persons
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Location */}
+                  {order.location_address && (
+                    <div className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-gray-400">📍</span>
+                      <span className="flex-1">{order.location_address}</span>
+                    </div>
+                  )}
+
+                  {/* Footer - Created Date */}
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <p className="text-xs text-gray-500">
+                      Created: {new Date(order.created_at).toLocaleDateString('id-ID', {
                         day: 'numeric',
                         month: 'long',
                         year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </p>
-                  </div>
-                  <div className="text-right">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        order.status === 'completed'
-                          ? 'bg-green-100 text-green-800'
-                          : order.status === 'in_progress'
-                          ? 'bg-blue-100 text-blue-800'
-                          : order.status === 'cancelled'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}
-                    >
-                      {order.status}
-                    </span>
                   </div>
                 </div>
               ))}
