@@ -126,18 +126,37 @@ export default function NewOrderPage() {
         setClients(clientsData || [])
       }
 
-      // Load technicians from technicians table
+      // Load technicians from technicians table (verified or active)
       const { data: techData, error: techError } = await supabase
         .from('technicians')
-        .select('id, full_name')
+        .select('id, full_name, status, employee_id')
         .eq('tenant_id', profile.active_tenant_id)
         .eq('is_active', true)
-        .eq('status', 'verified')
+        .in('status', ['verified', 'active'])
         .order('full_name')
 
       if (techError) {
         console.error('Technicians error:', techError)
+        // Fallback: try loading from profiles via user_tenant_roles
+        const { data: profileTechs, error: profileError } = await supabase
+          .from('user_tenant_roles')
+          .select('user_id, profiles!inner(id, full_name)')
+          .eq('tenant_id', profile.active_tenant_id)
+          .in('role', ['technician', 'tech_head'])
+          .eq('is_active', true)
+        
+        if (!profileError && profileTechs) {
+          const mappedTechs = profileTechs.map((t: any) => ({
+            id: t.profiles.id,
+            full_name: t.profiles.full_name
+          }))
+          console.log('Loaded technicians from profiles:', mappedTechs)
+          setTechnicians(mappedTechs)
+        } else {
+          console.error('Both technician queries failed')
+        }
       } else {
+        console.log('Loaded technicians:', techData)
         setTechnicians(techData || [])
       }
     } catch (err: any) {
