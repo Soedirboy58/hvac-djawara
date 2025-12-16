@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,29 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-
-interface Client {
-  id: string
-  name: string
-  phone: string
-}
-
-interface Technician {
-  id: string
-  full_name: string
-}
+import { useClients } from '@/hooks/use-clients'
+import { useTechnicians } from '@/hooks/use-orders'
 
 export default function NewOrderPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [dataLoading, setDataLoading] = useState(true)
-  const [clients, setClients] = useState<Client[]>([])
-  const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const supabase = createClient()
+  const { clients = [], loading: clientsLoading } = useClients()
+  const { technicians = [], loading: techsLoading } = useTechnicians()
   
+  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     client_id: '',
     order_type: '',
@@ -45,81 +35,11 @@ export default function NewOrderPage() {
     location_address: '',
     scheduled_date: '',
     scheduled_time: '',
-    priority: 'normal',
+    priority: 'normal' as 'low' | 'normal' | 'high' | 'urgent',
     assigned_to: '',
     notes: '',
+    estimated_cost: '',
   })
-
-  // Load clients and technicians
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setDataLoading(true)
-        setError(null)
-        const supabase = createClient()
-
-        // Get current user and tenant
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          throw new Error('Not authenticated')
-        }
-
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('active_tenant_id')
-          .eq('id', user.id)
-          .single()
-
-        if (!profile?.active_tenant_id) {
-          throw new Error('No active tenant')
-        }
-
-        // Load clients
-        const { data: clientsData, error: clientsError } = await supabase
-          .from('clients')
-          .select('id, name, phone')
-          .eq('tenant_id', profile.active_tenant_id)
-          .eq('is_active', true)
-          .order('name')
-
-        if (clientsError) {
-          console.error('Clients error:', clientsError)
-        } else {
-          setClients(clientsData || [])
-        }
-
-        // Load technicians from user_tenant_roles
-        const { data: techData, error: techError } = await supabase
-          .from('user_tenant_roles')
-          .select(`
-            user_id,
-            profiles!user_tenant_roles_user_id_fkey(id, full_name)
-          `)
-          .eq('tenant_id', profile.active_tenant_id)
-          .in('role', ['technician', 'tech_head', 'helper'])
-          .eq('is_active', true)
-
-        if (techError) {
-          console.error('Technicians error:', techError)
-        } else {
-          const techList = (techData || []).map((item: any) => ({
-            id: item.profiles?.id || '',
-            full_name: item.profiles?.full_name || 'Unknown',
-          })).filter(t => t.id)
-          
-          setTechnicians(techList)
-        }
-      } catch (err: any) {
-        console.error('Error loading data:', err)
-        setError(err.message)
-        toast.error(err.message || 'Failed to load form data')
-      } finally {
-        setDataLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -132,8 +52,6 @@ export default function NewOrderPage() {
     setLoading(true)
 
     try {
-      const supabase = createClient()
-      
       // Get current user and tenant
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -165,7 +83,7 @@ export default function NewOrderPage() {
           priority: formData.priority,
           assigned_to: formData.assigned_to || null,
           notes: formData.notes || null,
-          status: formData.assigned_to ? 'scheduled' : 'listing',
+          status: formData.assigned_to ? 'scheduled' : 'pending',
           created_by: user.id,
         })
         .select()
@@ -173,8 +91,8 @@ export default function NewOrderPage() {
 
       if (error) throw error
 
-      toast.success('Order created successfully!')
-      router.push(`/dashboard/orders`)
+      toast.success('Order created successfully')
+      router.push(`/dashboard/orders/${data.id}`)
     } catch (error: any) {
       console.error('Error creating order:', error)
       toast.error(error.message || 'Failed to create order')
@@ -183,36 +101,17 @@ export default function NewOrderPage() {
     }
   }
 
-  if (dataLoading) {
+  // Loading state
+  if (clientsLoading || techsLoading) {
     return (
       <div className="p-6">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center space-y-3">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-muted-foreground">Loading form data...</p>
             </div>
           </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="max-w-3xl mx-auto">
-          <Card className="border-red-200 bg-red-50">
-            <CardHeader>
-              <CardTitle className="text-red-900">Error Loading Form</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-red-700 mb-4">{error}</p>
-              <Button onClick={() => window.location.reload()}>
-                Reload Page
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       </div>
     )
@@ -237,7 +136,7 @@ export default function NewOrderPage() {
           <Card>
             <CardHeader>
               <CardTitle>Client Information</CardTitle>
-              <CardDescription>Select an existing client</CardDescription>
+              <CardDescription>Select an existing client or create a new one</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -245,13 +144,13 @@ export default function NewOrderPage() {
                 <Select 
                   value={formData.client_id} 
                   onValueChange={(value) => setFormData({ ...formData, client_id: value })}
-                  disabled={clients.length === 0}
+                  disabled={!clients || clients.length === 0}
                 >
                   <SelectTrigger id="client">
-                    <SelectValue placeholder={clients.length > 0 ? "Select a client" : "No clients available"} />
+                    <SelectValue placeholder={clients && clients.length > 0 ? "Select a client" : "No clients available"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.length > 0 ? (
+                    {clients && clients.length > 0 ? (
                       clients.map((client) => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name} - {client.phone}
@@ -262,7 +161,7 @@ export default function NewOrderPage() {
                     )}
                   </SelectContent>
                 </Select>
-                {clients.length === 0 && (
+                {(!clients || clients.length === 0) && (
                   <p className="text-sm text-amber-600">
                     ⚠️ You need to create a client first. Go to Clients menu.
                   </p>
@@ -332,22 +231,36 @@ export default function NewOrderPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="priority">Priority</Label>
-                <Select 
-                  value={formData.priority} 
-                  onValueChange={(value) => setFormData({ ...formData, priority: value })}
-                >
-                  <SelectTrigger id="priority">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">🟢 Low</SelectItem>
-                    <SelectItem value="normal">🔵 Normal</SelectItem>
-                    <SelectItem value="high">🟠 High</SelectItem>
-                    <SelectItem value="urgent">🔴 Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select 
+                    value={formData.priority} 
+                    onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                  >
+                    <SelectTrigger id="priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">🟢 Low</SelectItem>
+                      <SelectItem value="normal">🔵 Normal</SelectItem>
+                      <SelectItem value="high">🟠 High</SelectItem>
+                      <SelectItem value="urgent">🔴 Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="estimated_cost">Estimated Cost (optional)</Label>
+                  <Input
+                    id="estimated_cost"
+                    type="number"
+                    placeholder="0"
+                    value={formData.estimated_cost}
+                    onChange={(e) => setFormData({ ...formData, estimated_cost: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">Rough estimate in IDR</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -397,11 +310,6 @@ export default function NewOrderPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {technicians.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No technicians available. Order will be unassigned.
-                  </p>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -422,15 +330,8 @@ export default function NewOrderPage() {
             <Button type="button" variant="outline" onClick={() => router.back()}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || clients.length === 0}>
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                'Create Order'
-              )}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Creating...' : 'Create Order'}
             </Button>
           </div>
         </form>
