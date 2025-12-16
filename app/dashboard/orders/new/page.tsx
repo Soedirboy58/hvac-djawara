@@ -310,7 +310,7 @@ export default function NewOrderPage() {
 
         // Create document metadata
         const doc: ApprovalDocument = {
-          id: crypto.randomUUID(),
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
           name: file.name,
           url: publicUrl,
           type: file.type,
