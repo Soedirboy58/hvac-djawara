@@ -148,38 +148,37 @@ export default function NewOrderPage() {
         setClients(clientsData || [])
       }
 
-      // Load technicians from technicians table (verified or active)
+      // Load technicians from user_tenant_roles (more reliable)
       const { data: techData, error: techError } = await supabase
-        .from('technicians')
-        .select('id, full_name, status, employee_id')
+        .from('user_tenant_roles')
+        .select(`
+          user_id,
+          role,
+          profiles!inner(
+            id,
+            full_name,
+            email
+          )
+        `)
         .eq('tenant_id', profile.active_tenant_id)
+        .in('role', ['technician', 'tech_head'])
         .eq('is_active', true)
-        .in('status', ['verified', 'active'])
-        .order('full_name')
+        .order('profiles(full_name)')
 
       if (techError) {
         console.error('Technicians error:', techError)
-        // Fallback: try loading from profiles via user_tenant_roles
-        const { data: profileTechs, error: profileError } = await supabase
-          .from('user_tenant_roles')
-          .select('user_id, profiles!inner(id, full_name)')
-          .eq('tenant_id', profile.active_tenant_id)
-          .in('role', ['technician', 'tech_head'])
-          .eq('is_active', true)
-        
-        if (!profileError && profileTechs) {
-          const mappedTechs = profileTechs.map((t: any) => ({
-            id: t.profiles.id,
-            full_name: t.profiles.full_name
-          }))
-          console.log('Loaded technicians from profiles:', mappedTechs)
-          setTechnicians(mappedTechs)
-        } else {
-          console.error('Both technician queries failed')
-        }
+        toast.error('Failed to load technicians')
+        setTechnicians([])
+      } else if (techData && techData.length > 0) {
+        const mappedTechs = techData.map((t: any) => ({
+          id: t.profiles.id,
+          full_name: t.profiles.full_name || t.profiles.email
+        }))
+        console.log('✅ Loaded technicians:', mappedTechs)
+        setTechnicians(mappedTechs)
       } else {
-        console.log('Loaded technicians:', techData)
-        setTechnicians(techData || [])
+        console.log('⚠️ No technicians found with role technician/tech_head')
+        setTechnicians([])
       }
 
       // Load sales/marketing team
