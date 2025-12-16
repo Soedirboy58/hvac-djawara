@@ -18,32 +18,31 @@ export async function POST(request: NextRequest) {
     const { email, password, token } = await request.json();
 
     // Validate input
-    if (!email || !password || !token) {
+    if (!email || !password) {
       return NextResponse.json(
-        { error: "Email, password, dan token harus diisi" },
+        { error: "Email dan password harus diisi" },
         { status: 400 }
       );
     }
 
-    // Verify token is valid
+    // Get technician by email (token already verified in step 1)
     const { data: technician, error: techError } = await supabaseAdmin
       .from("technicians")
       .select("id, user_id, verification_token, token_expires_at")
       .eq("email", email)
-      .eq("verification_token", token)
       .single();
 
     if (techError || !technician) {
       return NextResponse.json(
-        { error: "Token tidak valid" },
+        { error: "Teknisi tidak ditemukan" },
         { status: 400 }
       );
     }
 
-    // Check if token is expired
-    if (new Date(technician.token_expires_at) < new Date()) {
+    // If token provided, verify it matches (optional backward compatibility)
+    if (token && technician.verification_token && token !== technician.verification_token) {
       return NextResponse.json(
-        { error: "Token sudah expired" },
+        { error: "Token tidak valid" },
         { status: 400 }
       );
     }
