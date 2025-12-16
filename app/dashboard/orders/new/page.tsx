@@ -38,6 +38,17 @@ interface SalesPerson {
   role: string
 }
 
+interface ApprovalDocument {
+  id: string
+  name: string
+  url: string
+  type: string
+  size: number
+  uploadedAt: string
+  uploadedBy: string
+  category: 'spk' | 'approval' | 'proposal' | 'other'
+}
+
 const TIME_SLOTS = [
   '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
   '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
@@ -54,6 +65,8 @@ export default function NewOrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
+  const [approvalDocuments, setApprovalDocuments] = useState<ApprovalDocument[]>([])
+  const [uploadingFiles, setUploadingFiles] = useState(false)
   
   const [formData, setFormData] = useState({
     client_id: '',
@@ -69,6 +82,7 @@ export default function NewOrderPage() {
     priority: 'normal',
     assigned_to: '',
     sales_referral_id: '',
+    order_source: 'admin_manual',
     notes: '',
   })
 
@@ -253,6 +267,81 @@ export default function NewOrderPage() {
     }
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingFiles(true)
+    try {
+      const supabase = createClient()
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const uploadedDocs: ApprovalDocument[] = []
+
+      for (const file of Array.from(files)) {
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`File ${file.name} is too large (max 10MB)`)
+          continue
+        }
+
+        // Upload to storage
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `${user.id}/${fileName}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('order-documents')
+          .upload(filePath, file)
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError)
+          toast.error(`Failed to upload ${file.name}`)
+          continue
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('order-documents')
+          .getPublicUrl(filePath)
+
+        // Create document metadata
+        const doc: ApprovalDocument = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          url: publicUrl,
+          type: file.type,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: user.id,
+          category: 'approval' // Default category
+        }
+
+        uploadedDocs.push(doc)
+      }
+
+      if (uploadedDocs.length > 0) {
+        setApprovalDocuments([...approvalDocuments, ...uploadedDocs])
+        toast.success(`${uploadedDocs.length} document(s) uploaded successfully!`)
+      }
+    } catch (error: any) {
+      console.error('Error uploading files:', error)
+      toast.error(error.message || 'Failed to upload files')
+    } finally {
+      setUploadingFiles(false)
+      // Reset file input
+      e.target.value = ''
+    }
+  }
+
+  const removeDocument = (docId: string) => {
+    setApprovalDocuments(approvalDocuments.filter(doc => doc.id !== docId))
+    toast.success('Document removed')
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -300,6 +389,8 @@ export default function NewOrderPage() {
           estimated_end_time: formData.end_time || null,
           priority: formData.priority,
           sales_referral_id: formData.sales_referral_id || null,
+          order_source: formData.order_source,
+          approval_documents: approvalDocuments,
           notes: formData.notes || null,
           status: orderStatus,
           created_by: user.id,
@@ -623,8 +714,30 @@ export default function NewOrderPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="sales_referral">Sales/Marketing Referral (Optional)</Label>
+              <div className="space-y-2">                <Label htmlFor=\"order_source\">Order Source <span className=\"text-red-500\">*</span></Label>
+                <Select 
+                  value={formData.order_source} 
+                  onValueChange={(value) => setFormData({ ...formData, order_source: value })}
+                >
+                  <SelectTrigger id=\"order_source\">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=\"landing_page\">🌐 Landing Page (Auto)</SelectItem>
+                    <SelectItem value=\"customer_request\">📞 Customer Request</SelectItem>
+                    <SelectItem value=\"approved_proposal\">✅ Approved Proposal</SelectItem>
+                    <SelectItem value=\"admin_manual\">✏️ Admin Manual Entry</SelectItem>
+                    <SelectItem value=\"phone_call\">☎️ Phone Call</SelectItem>
+                    <SelectItem value=\"email\">📧 Email</SelectItem>
+                    <SelectItem value=\"walk_in\">🚶 Walk-in Customer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className=\"text-xs text-muted-foreground\">
+                  Track how this order was created. Helps with analytics and technician verification.
+                </p>
+              </div>
+
+              <div className=\"space-y-2\">                <Label htmlFor="sales_referral">Sales/Marketing Referral (Optional)</Label>
                 <Select 
                   value={formData.sales_referral_id || undefined} 
                   onValueChange={(value) => setFormData({ ...formData, sales_referral_id: value })}
@@ -648,7 +761,61 @@ export default function NewOrderPage() {
                   Track who brought this job for commission/performance tracking
                 </p>
               </div>
-            </CardContent>
+              {/* Approval Documents Upload */}
+              {(formData.order_source === 'approved_proposal' || formData.order_source === 'customer_request') && (
+                <div className=\"space-y-2 p-4 bg-blue-50 border border-blue-200 rounded-lg\">
+                  <Label htmlFor=\"documents\">📎 Upload Approval Documents</Label>
+                  <p className=\"text-xs text-blue-700 mb-2\">
+                    Upload SPK (Surat Perintah Kerja), approval proofs, or proposals. Max 10MB per file.
+                  </p>
+                  <Input
+                    id=\"documents\"
+                    type=\"file\"
+                    multiple
+                    accept=\".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx\"
+                    onChange={handleFileUpload}
+                    disabled={uploadingFiles}
+                    className=\"cursor-pointer\"
+                  />
+                  {uploadingFiles && (
+                    <p className=\"text-xs text-blue-600 flex items-center gap-2\">
+                      <Loader2 className=\"w-3 h-3 animate-spin\" />
+                      Uploading files...
+                    </p>
+                  )}
+                  
+                  {/* Document List */}
+                  {approvalDocuments.length > 0 && (
+                    <div className=\"mt-3 space-y-2\">
+                      <p className=\"text-xs font-semibold text-blue-900\">Uploaded Documents:</p>
+                      {approvalDocuments.map((doc) => (
+                        <div key={doc.id} className=\"flex items-center justify-between p-2 bg-white border border-blue-100 rounded\">
+                          <div className=\"flex items-center gap-2 flex-1 min-w-0\">
+                            <span className=\"text-lg\">📄</span>
+                            <div className=\"flex-1 min-w-0\">
+                              <p className=\"text-sm font-medium text-gray-900 truncate\">{doc.name}</p>
+                              <p className=\"text-xs text-gray-500\">{(doc.size / 1024).toFixed(1)} KB</p>
+                            </div>
+                          </div>
+                          <Button
+                            type=\"button\"
+                            variant=\"ghost\"
+                            size=\"sm\"
+                            onClick={() => removeDocument(doc.id)}
+                            className=\"text-red-600 hover:text-red-700 hover:bg-red-50\"
+                          >
+                            <X className=\"w-4 h-4\" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className=\"text-xs text-blue-600 mt-2\">
+                    💡 These documents help technicians verify the work scope and authorization
+                  </p>
+                </div>
+              )}            </CardContent>
           </Card>
 
           {/* Schedule & Assignment */}
