@@ -153,7 +153,6 @@ export default function NewOrderPage() {
         .from('technicians')
         .select('id, full_name, status, phone, email')
         .eq('tenant_id', profile.active_tenant_id)
-        .eq('is_active', true)
         .in('status', ['verified', 'active'])
         .order('full_name')
 
