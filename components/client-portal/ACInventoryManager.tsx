@@ -26,6 +26,7 @@ import {
   X
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 interface ACUnit {
   id: string
@@ -211,11 +212,48 @@ export function ACInventoryManager({ clientId }: ACInventoryManagerProps) {
         if (insertError) throw insertError
       }
 
-      resetForm()
+      // Success notification
+      toast.success(editingId ? 'AC Unit updated successfully!' : 'AC Unit added successfully!', {
+        description: `${dataToSave.brand} ${dataToSave.model} has been ${editingId ? 'updated' : 'saved'}.`,
+      })
+
+      // Reset form but keep it open for adding more units
+      const wasEditing = !!editingId
+      setFormData({
+        property_id: formData.property_id, // Keep same property selected
+        room_name: '',
+        barcode_number: '',
+        brand: '',
+        model: '',
+        ac_type: 'split_wall',
+        capacity_pk: 1,
+        capacity_btu: 9000,
+        unit_photo_url: '',
+        model_photo_url: '',
+        install_date: '',
+        warranty_expires_at: '',
+        last_service_date: '',
+        condition_status: 'good',
+        notes: ''
+      })
+      setUnitPhotoFile(null)
+      setModelPhotoFile(null)
+      setEditingId(null)
+      setError(null)
+      
+      // Close form only if it was editing, keep open for adding multiple units
+      if (wasEditing) {
+        setShowForm(false)
+      }
+
       fetchData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving AC unit:', err)
-      setError(err instanceof Error ? err.message : 'Failed to save AC unit')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save AC unit'
+      setError(errorMessage)
+      toast.error('Failed to save AC unit', {
+        description: errorMessage,
+      })
     } finally {
       setUploading(false)
     }
@@ -272,8 +310,8 @@ export function ACInventoryManager({ clientId }: ACInventoryManagerProps) {
       capacity_btu: 9000,
       unit_photo_url: '',
       model_photo_url: '',
-      installation_date: '',
-      warranty_until: '',
+      install_date: '',
+      warranty_expires_at: '',
       last_service_date: '',
       condition_status: 'good',
       notes: ''
@@ -282,6 +320,7 @@ export function ACInventoryManager({ clientId }: ACInventoryManagerProps) {
     setModelPhotoFile(null)
     setEditingId(null)
     setShowForm(false)
+    setError(null)
   }
 
   const conditionColors = {
