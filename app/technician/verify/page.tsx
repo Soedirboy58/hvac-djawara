@@ -232,22 +232,6 @@ export default function TechnicianVerifyPage() {
                   Memverifikasi...
                 </>
               ) : (
-                "Verifikasi Toke
-                disabled={loading}
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Token terdiri dari 32 karakter
-              </p>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Memverifikasi...
-                </>
-              ) : (
                 "Verifikasi & Buat Akun"
               )}
             </Button>
