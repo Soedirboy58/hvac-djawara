@@ -32,6 +32,12 @@ interface Technician {
   full_name: string
 }
 
+interface SalesPerson {
+  id: string
+  full_name: string
+  role: string
+}
+
 const TIME_SLOTS = [
   '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
   '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
@@ -44,6 +50,7 @@ export default function NewOrderPage() {
   const [dataLoading, setDataLoading] = useState(true)
   const [clients, setClients] = useState<Client[]>([])
   const [technicians, setTechnicians] = useState<Technician[]>([])
+  const [salesTeam, setSalesTeam] = useState<SalesPerson[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
@@ -61,6 +68,7 @@ export default function NewOrderPage() {
     end_time: '',
     priority: 'normal',
     assigned_to: '',
+    sales_referral_id: '',
     notes: '',
   })
 
@@ -158,6 +166,27 @@ export default function NewOrderPage() {
       } else {
         console.log('Loaded technicians:', techData)
         setTechnicians(techData || [])
+      }
+
+      // Load sales/marketing team
+      const { data: salesData, error: salesError } = await supabase
+        .from('user_tenant_roles')
+        .select('user_id, role, profiles!inner(id, full_name)')
+        .eq('tenant_id', profile.active_tenant_id)
+        .in('role', ['sales', 'marketing', 'business_dev', 'account_manager'])
+        .eq('is_active', true)
+        .order('profiles(full_name)')
+
+      if (salesError) {
+        console.error('Sales team error:', salesError)
+      } else {
+        const mappedSales = (salesData || []).map((s: any) => ({
+          id: s.profiles.id,
+          full_name: s.profiles.full_name,
+          role: s.role
+        }))
+        console.log('Loaded sales team:', mappedSales)
+        setSalesTeam(mappedSales)
       }
     } catch (err: any) {
       console.error('Error loading data:', err)
@@ -270,6 +299,7 @@ export default function NewOrderPage() {
           estimated_end_date: formData.end_date || null,
           estimated_end_time: formData.end_time || null,
           priority: formData.priority,
+          sales_referral_id: formData.sales_referral_id || null,
           notes: formData.notes || null,
           status: orderStatus,
           created_by: user.id,
@@ -591,6 +621,32 @@ export default function NewOrderPage() {
                     <SelectItem value="urgent">🔴 Urgent</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sales_referral">Sales/Marketing Referral (Optional)</Label>
+                <Select 
+                  value={formData.sales_referral_id || undefined} 
+                  onValueChange={(value) => setFormData({ ...formData, sales_referral_id: value })}
+                >
+                  <SelectTrigger id="sales_referral">
+                    <SelectValue placeholder="Select referral source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesTeam.length > 0 ? (
+                      salesTeam.map((sales) => (
+                        <SelectItem key={sales.id} value={sales.id}>
+                          💼 {sales.full_name} ({sales.role})
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>No sales team available</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Track who brought this job for commission/performance tracking
+                </p>
               </div>
             </CardContent>
           </Card>
