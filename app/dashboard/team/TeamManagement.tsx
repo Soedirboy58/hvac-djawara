@@ -58,7 +58,9 @@ export default function TeamManagement() {
   const [addDialog, setAddDialog] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
   const [detailDialog, setDetailDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
   const [selectedTech, setSelectedTech] = useState<Technician | null>(null);
+  const [deleting, setDeleting] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -200,6 +202,39 @@ export default function TeamManagement() {
   const copyToken = (token: string) => {
     navigator.clipboard.writeText(token);
     toast.success("Token copied to clipboard!");
+  };
+
+  const handleDeleteTechnician = async () => {
+    if (!selectedTech) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch("/api/technician/delete", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          technicianId: selectedTech.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Gagal menghapus teknisi");
+      }
+
+      toast.success(data.message || "Teknisi berhasil dihapus");
+      setDeleteDialog(false);
+      setSelectedTech(null);
+      fetchTechnicians(); // Reload data
+    } catch (error: any) {
+      console.error("Delete error:", error);
+      toast.error(error.message || "Gagal menghapus teknisi");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -371,17 +406,30 @@ export default function TeamManagement() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTech(tech);
-                          setTokenDialog(true);
-                        }}
-                      >
-                        View Token
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTech(tech);
+                            setTokenDialog(true);
+                          }}
+                        >
+                          View Token
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTech(tech);
+                            setDeleteDialog(true);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -698,6 +746,66 @@ export default function TeamManagement() {
               <p className="text-xs text-muted-foreground">
                 Send this token via WhatsApp or Email to the technician. They will use it to activate their account.
               </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus Teknisi</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin menghapus teknisi ini?
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTech && (
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm font-medium text-red-900 mb-2">
+                  ⚠️ Peringatan: Tindakan ini tidak dapat dibatalkan!
+                </p>
+                <div className="text-sm text-red-800 space-y-1">
+                  <p><strong>Nama:</strong> {selectedTech.full_name}</p>
+                  <p><strong>Email:</strong> {selectedTech.email}</p>
+                  {selectedTech.employee_id && (
+                    <p><strong>ID:</strong> {selectedTech.employee_id}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p className="font-medium">Yang akan dihapus:</p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>Data teknisi dari database</li>
+                  {selectedTech.user_id && (
+                    <li>Akun login dari sistem autentikasi</li>
+                  )}
+                  <li>Riwayat kerja dan statistik</li>
+                  <li>Token verifikasi</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteDialog(false);
+                    setSelectedTech(null);
+                  }}
+                  disabled={deleting}
+                >
+                  Batal
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteTechnician}
+                  disabled={deleting}
+                >
+                  {deleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
