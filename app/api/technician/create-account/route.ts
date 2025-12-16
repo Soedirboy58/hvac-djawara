@@ -51,7 +51,11 @@ export async function POST(request: NextRequest) {
     // Check if user already exists
     if (technician.user_id) {
       return NextResponse.json(
-        { error: "Akun sudah dibuat sebelumnya" },
+        { 
+          error: "Akun sudah dibuat sebelumnya",
+          already_exists: true,
+          message: "Akun Anda sudah terdaftar. Silakan login dengan email dan password yang telah dibuat."
+        },
         { status: 400 }
       );
     }
@@ -68,10 +72,30 @@ export async function POST(request: NextRequest) {
         },
       });
 
-    if (signUpError || !authData.user) {
+    if (signUpError) {
       console.error("Sign up error:", signUpError);
+      
+      // Check if error is due to user already existing
+      if (signUpError.message?.includes("already been registered")) {
+        return NextResponse.json(
+          { 
+            error: "Akun sudah terdaftar",
+            already_exists: true,
+            message: "Akun Anda sudah terdaftar. Silakan login dengan email dan password yang telah dibuat."
+          },
+          { status: 400 }
+        );
+      }
+      
       return NextResponse.json(
         { error: signUpError?.message || "Gagal membuat akun" },
+        { status: 500 }
+      );
+    }
+    
+    if (!authData.user) {
+      return NextResponse.json(
+        { error: "Gagal membuat akun" },
         { status: 500 }
       );
     }

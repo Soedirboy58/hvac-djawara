@@ -6,14 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function TechnicianVerifyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [alreadyExists, setAlreadyExists] = useState(false);
   const [step, setStep] = useState<"verify" | "password">("verify");
   const [formData, setFormData] = useState({
     email: "",
@@ -84,6 +86,12 @@ export default function TechnicianVerifyPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if account already exists
+        if (data.already_exists) {
+          setAlreadyExists(true);
+          toast.error(data.message || "Akun sudah terdaftar");
+          return;
+        }
         throw new Error(data.error || "Gagal membuat akun");
       }
 
@@ -101,6 +109,45 @@ export default function TechnicianVerifyPage() {
       setLoading(false);
     }
   };
+
+  // Show "already exists" message with login link
+  if (alreadyExists) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="h-8 w-8 text-yellow-600" />
+            </div>
+            <CardTitle className="text-2xl">Akun Sudah Terdaftar</CardTitle>
+            <CardDescription>
+              Akun Anda sudah dibuat sebelumnya
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              <p className="font-medium mb-2">✅ Akun Anda sudah aktif!</p>
+              <p>
+                Silakan login dengan email <strong>{formData.email}</strong> dan 
+                password yang telah Anda buat sebelumnya.
+              </p>
+            </div>
+
+            <Link href="/technician/login" className="block">
+              <Button className="w-full" size="lg">
+                Login Sekarang
+              </Button>
+            </Link>
+
+            <div className="text-center text-sm text-muted-foreground">
+              <p>Lupa password?</p>
+              <p>Hubungi admin untuk reset</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (step === "password") {
     return (
@@ -159,6 +206,13 @@ export default function TechnicianVerifyPage() {
                   "Buat Akun & Login"
                 )}
               </Button>
+
+              <div className="text-center text-sm text-muted-foreground">
+                <p>Sudah punya akun?</p>
+                <Link href="/technician/login" className="text-blue-600 hover:underline">
+                  Login di sini
+                </Link>
+              </div>
             </form>
           </CardContent>
         </Card>
