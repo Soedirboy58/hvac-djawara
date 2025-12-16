@@ -17,6 +17,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/client'
 import { Upload, X, Loader2 } from 'lucide-react'
 import Image from 'next/image'
+import { toast } from 'sonner'
 
 const clientSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -182,11 +183,15 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
         }
       }
       
-      alert('Client saved successfully!')
+      toast.success('Client saved successfully!', {
+        description: `${data.name} has been ${client ? 'updated' : 'added'} to your client list.`,
+      })
       router.push('/dashboard/clients')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving client:', error)
-      alert('Failed to save client')
+      toast.error('Failed to save client', {
+        description: error.message || 'Please check your permissions and try again.',
+      })
     } finally {
       setIsSubmitting(false)
     }
