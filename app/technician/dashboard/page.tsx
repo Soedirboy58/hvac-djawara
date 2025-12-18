@@ -247,7 +247,7 @@ export default function TechnicianDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-500">
-                {technician?.total_jobs_completed || 0}
+                {completedOrders.length}
               </div>
             </CardContent>
           </Card>
