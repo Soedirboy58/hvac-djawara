@@ -13,6 +13,8 @@ GROUP BY role
 ORDER BY count DESC;
 
 -- Step 2: Check all technicians (old and new role names)
+-- Note: Only checking 'technician' and 'tech_head' (existing roles)
+-- After running EXPAND_USER_ROLES.sql, you can add: 'teknisi', 'senior_teknisi'
 SELECT 
   p.full_name,
   au.email,
@@ -24,7 +26,8 @@ FROM user_tenant_roles utr
 INNER JOIN profiles p ON utr.user_id = p.id
 LEFT JOIN auth.users au ON p.id = au.id
 LEFT JOIN tenants t ON utr.tenant_id = t.id
-WHERE utr.role IN ('technician', 'teknisi', 'tech_head', 'senior_teknisi')
+WHERE utr.role IN ('technician', 'tech_head')
+-- Add these after running EXPAND_USER_ROLES.sql: 'teknisi', 'senior_teknisi'
 ORDER BY utr.is_active DESC, p.full_name;
 
 -- Step 3: Check if role_hierarchy view exists
@@ -36,23 +39,24 @@ FROM pg_views
 WHERE viewname = 'role_hierarchy';
 
 -- Step 4: If view exists, check its contents
-SELECT * FROM role_hierarchy 
-WHERE role_name IN ('technician', 'teknisi', 'tech_head', 'senior_teknisi')
-ORDER BY sort_order;
+-- Note: This will only work after running EXPAND_USER_ROLES.sql
+-- SELECT * FROM role_hierarchy 
+-- WHERE role_name IN ('technician', 'teknisi', 'tech_head', 'senior_teknisi')
+-- ORDER BY sort_order;
 
 -- Step 5: Check technicians table
 SELECT 
   t.id,
-  t.name as technician_name,
+  p.full_name as technician_name,
   t.phone,
   t.email,
-  t.specialization,
-  p.full_name as profile_name,
-  utr.role
+  t.specializations,
+  utr.role,
+  utr.is_active
 FROM technicians t
 LEFT JOIN profiles p ON t.user_id = p.id
 LEFT JOIN user_tenant_roles utr ON p.id = utr.user_id
-ORDER BY t.name;
+ORDER BY p.full_name;
 
 -- ============================================
 -- Fix: Ensure all technicians are visible
@@ -62,19 +66,21 @@ ORDER BY t.name;
 -- they might not have user_tenant_roles entry. Let's check:
 
 SELECT 
-  t.name as technician_name,
+  p.full_name as technician_name,
   t.email as technician_email,
-  p.full_name as profile_name,
   au.email as auth_email,
   CASE 
-    WHEN utr.id IS NULL THEN '❌ No role assigned'
+    WHEN utr.id IS NULL THEN '❌ No role assigned in user_tenant_roles'
+    WHEN utr.role = 'technician' THEN '✅ Has role: technician'
     ELSE '✅ Has role: ' || utr.role
-  END as status
+  END as status,
+  t.specializations
 FROM technicians t
 LEFT JOIN profiles p ON t.user_id = p.id
 LEFT JOIN auth.users au ON p.id = au.id
 LEFT JOIN user_tenant_roles utr ON p.id = utr.user_id
-WHERE utr.id IS NULL OR utr.role IN ('technician', 'teknisi');
+ORDER BY p.full_name;
+-- This shows ALL technicians and their role assignment status
 
 -- ============================================
 -- Solution: Link technicians to user_tenant_roles
@@ -98,16 +104,15 @@ WHERE utr.id IS NULL OR utr.role IN ('technician', 'teknisi');
 -- Verification Queries
 -- ============================================
 
--- Check total people by category (after SQL executed)
+-- Check total people by category (current existing roles only)
 SELECT 
   CASE 
-    WHEN role IN ('owner', 'direktur') THEN 'Executive'
-    WHEN role IN ('manager', 'supervisor', 'admin_finance', 'admin_logistic') THEN 'Management'
-    WHEN role = 'admin' THEN 'Administrative'
-    WHEN role IN ('sales_partner', 'marketing', 'business_dev') THEN 'Sales & Marketing'
-    WHEN role IN ('tech_head', 'senior_teknisi') THEN 'Senior Technical'
-    WHEN role IN ('technician', 'teknisi') THEN 'Technical'
-    WHEN role IN ('helper', 'magang') THEN 'Support'
+    WHEN role = 'owner' THEN 'Executive'
+    WHEN role IN ('admin_finance', 'admin_logistic') THEN 'Management'
+    WHEN role IN ('sales_partner') THEN 'Sales & Marketing'
+    WHEN role = 'tech_head' THEN 'Senior Technical'
+    WHEN role = 'technician' THEN 'Technical'
+    WHEN role = 'helper' THEN 'Support'
     WHEN role = 'client' THEN 'External'
     ELSE 'Other'
   END as category,
@@ -117,8 +122,29 @@ FROM user_tenant_roles
 GROUP BY category
 ORDER BY total DESC;
 
+-- Use this version AFTER running EXPAND_USER_ROLES.sql:
+-- SELECT 
+--   CASE 
+--     WHEN role IN ('owner', 'direktur') THEN 'Executive'
+--     WHEN role IN ('manager', 'supervisor', 'admin_finance', 'admin_logistic') THEN 'Management'
+--     WHEN role = 'admin' THEN 'Administrative'
+--     WHEN role IN ('sales_partner', 'marketing', 'business_dev') THEN 'Sales & Marketing'
+--     WHEN role IN ('tech_head', 'senior_teknisi') THEN 'Senior Technical'
+--     WHEN role IN ('technician', 'teknisi') THEN 'Technical'
+--     WHEN role IN ('helper', 'magang') THEN 'Support'
+--     WHEN role = 'client' THEN 'External'
+--     ELSE 'Other'
+--   END as category,
+--   COUNT(*) as total,
+--   COUNT(CASE WHEN is_active THEN 1 END) as active
+-- FROM user_tenant_roles
+-- GROUP BY category
+-- ORDER BY total DESC;
+
 -- Check specific user's roles
--- SEau.email,
+-- SELECT 
+--   p.full_name,
+--   au.email,
 --   utr.role,
 --   utr.is_active,
 --   t.name as tenant_name
@@ -126,6 +152,4 @@ ORDER BY total DESC;
 -- LEFT JOIN auth.users au ON p.id = au.id
 -- LEFT JOIN user_tenant_roles utr ON p.id = utr.user_id
 -- LEFT JOIN tenants t ON utr.tenant_id = t.id
--- WHERE auIN user_tenant_roles utr ON p.id = utr.user_id
--- LEFT JOIN tenants t ON utr.tenant_id = t.id
--- WHERE p.email = 'technician@example.com';
+-- WHERE au.email = 'technician@example.com';
