@@ -1,58 +1,66 @@
 -- ============================================
--- NUCLEAR OPTION - Drop Audit Table & Fix Delete
--- This WILL work!
+-- SIMPLIFIED FIX - Just create working delete functions
 -- ============================================
 
--- STEP 1: Drop audit table if it exists (it's just logging anyway)
-DROP TABLE IF EXISTS client_audit_log CASCADE;
-
--- STEP 2: Now fix remaining FK constraints
+-- Just fix known FK constraints that we can control
 DO $$
-DECLARE
-  v_constraint_name TEXT;
-  v_table_name TEXT;
-  v_column_name TEXT;
 BEGIN
-  RAISE NOTICE 'Fixing FK constraints...';
-  
-  FOR v_table_name, v_column_name, v_constraint_name IN
-    SELECT 
-      tc.table_name,
-      kcu.column_name,
-      tc.constraint_name
-    FROM information_schema.table_constraints AS tc
-    JOIN information_schema.key_column_usage AS kcu
-      ON tc.constraint_name = kcu.constraint_name
-    JOIN information_schema.constraint_column_usage AS ccu
-      ON ccu.constraint_name = tc.constraint_name
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-      AND ccu.table_name = 'clients'
-      AND tc.table_name != 'service_orders'
-  LOOP
+  -- Fix contract_requests if it exists
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'contract_requests') THEN
     BEGIN
-      EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', v_table_name, v_constraint_name);
-      EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES clients(id) ON DELETE CASCADE', 
-        v_table_name, v_constraint_name, v_column_name);
-      RAISE NOTICE '  ✓ Fixed: %.%', v_table_name, v_column_name;
+      ALTER TABLE contract_requests DROP CONSTRAINT IF EXISTS contract_requests_client_id_fkey;
+      ALTER TABLE contract_requests ADD CONSTRAINT contract_requests_client_id_fkey 
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
     EXCEPTION WHEN OTHERS THEN
-      RAISE NOTICE '  - Skipped: % (%)', v_table_name, SQLERRM;
+      NULL;
     END;
-  END LOOP;
+  END IF;
+
+  -- Fix client_properties if it exists
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'client_properties') THEN
+    BEGIN
+      ALTER TABLE client_properties DROP CONSTRAINT IF EXISTS client_properties_client_id_fkey;
+      ALTER TABLE client_properties ADD CONSTRAINT client_properties_client_id_fkey 
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+
+  -- Fix client_portal_invitations if it exists
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'client_portal_invitations') THEN
+    BEGIN
+      ALTER TABLE client_portal_invitations DROP CONSTRAINT IF EXISTS client_portal_invitations_client_id_fkey;
+      ALTER TABLE client_portal_invitations ADD CONSTRAINT client_portal_invitations_client_id_fkey 
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
 END $$;
 
--- STEP 3: Simple delete function
+-- Create smart delete function that handles child records manually
 CREATE OR REPLACE FUNCTION delete_client_safe(p_client_id UUID)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  v_has_orders BOOLEAN;
 BEGIN
-  -- Check service orders
-  IF EXISTS (SELECT 1 FROM service_orders WHERE client_id = p_client_id LIMIT 1) THEN
+  -- Check if client has service orders (these we DON'T want to delete)
+  SELECT EXISTS(SELECT 1 FROM service_orders WHERE client_id = p_client_id LIMIT 1) INTO v_has_orders;
+  
+  IF v_has_orders THEN
     RETURN jsonb_build_object('success', false, 'error', 'Client has existing service orders');
   END IF;
 
-  -- Delete client (CASCADE will handle rest)
+  -- Manually delete child records first
+  DELETE FROM contract_requests WHERE client_id = p_client_id;
+  DELETE FROM client_properties WHERE client_id = p_client_id;
+  DELETE FROM client_portal_invitations WHERE client_id = p_client_id;
+
+  -- Now delete the client
   DELETE FROM clients WHERE id = p_client_id;
 
   RETURN jsonb_build_object('success', true, 'message', 'Client deleted successfully');
