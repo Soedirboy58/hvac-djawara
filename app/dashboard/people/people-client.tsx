@@ -46,9 +46,9 @@ import { createClient } from '@/lib/supabase/client'
 interface Profile {
   id: string
   full_name: string
-  email: string
-  phone: string
-  avatar_url: string | null
+  email?: string
+  phone?: string | null
+  avatar_url?: string | null
 }
 
 interface TeamMember {
@@ -57,7 +57,7 @@ interface TeamMember {
   role: string
   is_active: boolean
   created_at: string
-  profiles: Profile
+  profiles: Profile | any
 }
 
 interface RoleHierarchy {
@@ -105,9 +105,13 @@ export function PeopleManagementClient({
 
   // Filter team members
   const filteredMembers = teamMembers.filter(member => {
+    const profile = typeof member.profiles === 'object' ? member.profiles : {}
+    const fullName = profile.full_name || ''
+    const email = profile.email || ''
+    
     const matchesSearch = 
-      member.profiles.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.profiles.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.role.toLowerCase().includes(searchTerm.toLowerCase())
 
     if (selectedCategory === 'all') return matchesSearch
@@ -352,7 +356,13 @@ export function PeopleManagementClient({
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {members.map((member) => (
+              {members.map((member) => {
+                const profile = typeof member.profiles === 'object' ? member.profiles : {}
+                const fullName = profile.full_name || 'Unknown'
+                const email = profile.email || ''
+                const phone = profile.phone || ''
+                
+                return (
                 <div
                   key={member.id}
                   className={`flex items-center justify-between p-4 rounded-lg border ${
@@ -361,13 +371,13 @@ export function PeopleManagementClient({
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
-                      {member.profiles.full_name.charAt(0).toUpperCase()}
+                      {fullName.charAt(0).toUpperCase()}
                     </div>
                     
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-gray-900">
-                          {member.profiles.full_name}
+                          {fullName}
                         </h4>
                         <Badge variant="outline" className="text-xs">
                           {getRoleDisplayName(member.role)}
@@ -380,16 +390,16 @@ export function PeopleManagementClient({
                       </div>
                       
                       <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                        {member.profiles.email && (
+                        {email && (
                           <span className="flex items-center gap-1">
                             <Mail className="w-3 h-3" />
-                            {member.profiles.email}
+                            {email}
                           </span>
                         )}
-                        {member.profiles.phone && (
+                        {phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3" />
-                            {member.profiles.phone}
+                            {phone}
                           </span>
                         )}
                       </div>
@@ -425,7 +435,7 @@ export function PeopleManagementClient({
                     </Button>
                   </div>
                 </div>
-              ))}
+              )}))}
             </div>
           </CardContent>
         </Card>
