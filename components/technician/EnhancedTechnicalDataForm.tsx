@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Loader2, Plus, Trash2, PenTool, Save } from "lucide-react";
+import { Upload, X, Loader2, Plus, Trash2, PenTool, Save, MapPin, Navigation } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import SignatureCanvas from "react-signature-canvas";
@@ -50,7 +50,6 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     // Technical measurements
     problem: "",
     tindakan: "",
-    biaya: "",
     lama_kerja: "",
     jarak_tempuh: "",
     lain_lain: "",
@@ -72,7 +71,114 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [signatureDate, setSignatureDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [uploading, setUploading] = useState(false);
-  const [showSignatures, setShowSignatures] = useState(false);
+  const [calculatingDistance, setCalculatingDistance] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch and auto-populate order data
+  useEffect(() => {
+    fetchOrderData();
+  }, [orderId]);
+
+  const fetchOrderData = async () => {
+    try {
+      const supabase = createClient();
+      
+      // Fetch order with client data
+      const { data: orderData, error } = await supabase
+        .from('service_orders')
+        .select(`
+          *,
+          clients (
+            name,
+            email,
+            phone,
+            address,
+            client_type
+          )
+        `)
+        .eq('id', orderId)
+        .single();
+      
+      if (error) throw error;
+      
+      if (orderData) {
+        // Auto-populate form with order data
+        setFormData(prev => ({
+          ...prev,
+          nama_personal: orderData.clients?.name || "",
+          nama_instansi: orderData.clients?.client_type === 'perusahaan' ? orderData.clients?.name : "",
+          no_telephone: orderData.clients?.phone || "",
+          alamat_lokasi: orderData.location_address || orderData.clients?.address || "",
+          jenis_pekerjaan: orderData.service_title || "",
+          lama_kerja: orderData.estimated_duration?.toString() || "",
+        }));
+        
+        setClientName(orderData.clients?.name || "");
+      }
+      
+      // Fetch technician name
+      const { data: techData } = await supabase
+        .from('technicians')
+        .select('full_name')
+        .eq('id', technicianId)
+        .single();
+      
+      if (techData) {
+        setTechnicianName(techData.full_name);
+      }
+      
+    } catch (error: any) {
+      console.error('Error fetching order data:', error);
+      toast.error('Gagal memuat data order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate distance using GPS
+  const calculateDistance = async () => {
+    try {
+      setCalculatingDistance(true);
+      
+      // Get current position
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+      
+      const { latitude: lat, longitude: lng } = position.coords;
+      
+      // Hardcoded company office coordinates (you should configure this)
+      // TODO: Get from company settings
+      const officeCoords = {
+        lat: -7.4246, // Example: Purwokerto
+        lng: 109.2389
+      };
+      
+      // Calculate distance using Haversine formula
+      const R = 6371; // Earth radius in km
+      const dLat = (officeCoords.lat - lat) * Math.PI / 180;
+      const dLng = (officeCoords.lng - lng) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat * Math.PI / 180) * Math.cos(officeCoords.lat * Math.PI / 180) *
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c;
+      
+      setFormData(prev => ({
+        ...prev,
+        jarak_tempuh: distance.toFixed(1)
+      }));
+      
+      toast.success(`Jarak: ${distance.toFixed(1)} km dari kantor`);
+      
+    } catch (error: any) {
+      console.error('Error calculating distance:', error);
+      toast.error('Gagal menghitung jarak. Aktifkan GPS.');
+    } finally {
+      setCalculatingDistance(false);
+    }
+  };
 
   // Handlers
   const handleInputChange = (field: string, value: string) => {
@@ -234,7 +340,6 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         // Technical data
         problem: formData.problem,
         tindakan: formData.tindakan,
-        biaya: formData.biaya ? parseFloat(formData.biaya) : null,
         lama_kerja: formData.lama_kerja ? parseFloat(formData.lama_kerja) : null,
         jarak_tempuh: formData.jarak_tempuh ? parseFloat(formData.jarak_tempuh) : null,
         lain_lain: formData.lain_lain,
@@ -281,8 +386,26 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-3 text-muted-foreground">Memuat data order...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Info Banner */}
+      <Card className="bg-blue-50 border-blue-200">
+        <CardContent className="pt-6">
+          <p className="text-sm text-blue-800">
+            ℹ️ Data di bawah sudah terisi otomatis dari order. Silakan lengkapi data teknis dan dokumentasi.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* BAST Header Info */}
       <Card>
         <CardHeader>
@@ -516,7 +639,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           <CardTitle className="text-lg">Informasi Tambahan</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label>Lama Kerja (jam)</Label>
               <Input
@@ -524,24 +647,40 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
                 step="0.5"
                 value={formData.lama_kerja}
                 onChange={(e) => handleInputChange('lama_kerja', e.target.value)}
+                disabled
+                className="bg-gray-50"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                * Auto dari estimasi order
+              </p>
             </div>
             <div>
-              <Label>Jarak Tempuh (km)</Label>
-              <Input
-                type="number"
-                value={formData.jarak_tempuh}
-                onChange={(e) => handleInputChange('jarak_tempuh', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Biaya (Rp)</Label>
-              <Input
-                type="number"
-                value={formData.biaya}
-                onChange={(e) => handleInputChange('biaya', e.target.value)}
-                placeholder="0"
-              />
+              <Label>Jarak Tempuh dari Kantor (km)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={formData.jarak_tempuh}
+                  onChange={(e) => handleInputChange('jarak_tempuh', e.target.value)}
+                  placeholder="0.0"
+                  readOnly
+                  className="bg-gray-50"
+                />
+                <Button
+                  type="button"
+                  onClick={calculateDistance}
+                  disabled={calculatingDistance}
+                  className="flex-shrink-0"
+                >
+                  {calculatingDistance ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Navigation className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                * Klik tombol untuk hitung jarak otomatis
+              </p>
             </div>
           </div>
         </CardContent>
