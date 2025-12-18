@@ -104,12 +104,13 @@ export default function TechnicianDashboard() {
         return;
       }
 
-      // Fetch service orders separately
+      // Fetch service orders separately (exclude completed and cancelled)
       const orderIds = assignmentsData.map(a => a.service_order_id);
       const { data: ordersData, error: ordersError } = await supabase
         .from("service_orders")
         .select("id, order_number, service_title, service_description, location_address, scheduled_date, status, priority, estimated_duration")
-        .in("id", orderIds);
+        .in("id", orderIds)
+        .not("status", "in", "(completed,cancelled)");
 
       if (ordersError) {
         console.error("Error fetching orders:", ordersError);
@@ -169,8 +170,8 @@ export default function TechnicianDashboard() {
     );
   }
 
-  const pendingOrders = workOrders.filter((o) => o.assignment_status === "assigned");
-  const inProgressOrders = workOrders.filter((o) => o.assignment_status === "in_progress" || o.assignment_status === "accepted");
+  const pendingOrders = workOrders.filter((o) => o.status === "scheduled" && o.assignment_status === "assigned");
+  const inProgressOrders = workOrders.filter((o) => o.status === "in_progress" || (o.status === "scheduled" && (o.assignment_status === "in_progress" || o.assignment_status === "accepted")));
 
   return (
     <div className="min-h-screen bg-gray-50">

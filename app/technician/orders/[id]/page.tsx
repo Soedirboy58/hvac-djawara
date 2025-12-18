@@ -19,9 +19,11 @@ import {
   Loader2,
   Upload,
   MapPinned,
+  FileText,
 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
+import TechnicalDataForm from "@/components/technician/TechnicalDataForm";
 
 interface WorkOrder {
   id: string;
@@ -273,6 +275,7 @@ export default function WorkOrderDetailPage() {
 
   const isCheckedIn = workLog?.check_in_time && !workLog?.check_out_time;
   const isCompleted = workLog?.check_out_time;
+  const isOrderCompleted = workOrder.status === "completed";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -364,116 +367,147 @@ export default function WorkOrderDetailPage() {
           </Card>
         )}
 
-        {/* Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Catatan Pekerjaan</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Tulis catatan pekerjaan..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={4}
-              disabled={isCompleted}
+        {/* Show different content based on order status */}
+        {isOrderCompleted ? (
+          // Technical Data Form for completed orders
+          <>
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <FileText className="h-8 w-8 text-blue-600" />
+                  <div>
+                    <h3 className="font-semibold text-blue-900">Lengkapi Data Teknis</h3>
+                    <p className="text-sm text-blue-700">
+                      Order ini sudah selesai. Silakan lengkapi data teknis dan dokumentasi pekerjaan.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <TechnicalDataForm
+              orderId={orderId}
+              technicianId={technicianId}
+              onSuccess={() => {
+                toast.success("Data teknis berhasil disimpan!");
+                router.push("/technician/dashboard");
+              }}
             />
-          </CardContent>
-        </Card>
-
-        {/* Photos */}
-        {isCheckedIn && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Foto Pekerjaan</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="photo-before">Foto Sebelum</Label>
-                <Input
-                  id="photo-before"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => setPhotoBefore(e.target.files?.[0] || null)}
-                  disabled={isCompleted || !!workLog?.photo_before_url}
-                />
-                {workLog?.photo_before_url && (
-                  <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="photo-after">Foto Sesudah</Label>
-                <Input
-                  id="photo-after"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => setPhotoAfter(e.target.files?.[0] || null)}
+          </>
+        ) : (
+          <>
+            {/* Notes */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Catatan Pekerjaan</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="Tulis catatan pekerjaan..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={4}
                   disabled={isCompleted}
                 />
-                {workLog?.photo_after_url && (
-                  <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
 
-        {/* Actions */}
-        <div className="space-y-3 pb-6">
-          {!workLog && (
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleCheckIn}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <MapPinned className="mr-2 h-5 w-5" />
-                  Check-in & Mulai Pekerjaan
-                </>
+            {/* Photos */}
+            {isCheckedIn && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Foto Pekerjaan</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="photo-before">Foto Sebelum</Label>
+                    <Input
+                      id="photo-before"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => setPhotoBefore(e.target.files?.[0] || null)}
+                      disabled={isCompleted || !!workLog?.photo_before_url}
+                    />
+                    {workLog?.photo_before_url && (
+                      <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="photo-after">Foto Sesudah</Label>
+                    <Input
+                      id="photo-after"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => setPhotoAfter(e.target.files?.[0] || null)}
+                      disabled={isCompleted}
+                    />
+                    {workLog?.photo_after_url && (
+                      <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Actions */}
+            <div className="space-y-3 pb-6">
+              {!workLog && (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleCheckIn}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <MapPinned className="mr-2 h-5 w-5" />
+                      Check-in & Mulai Pekerjaan
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
-          )}
 
-          {isCheckedIn && (
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleCheckOut}
-              disabled={uploading || !photoBefore}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-2 h-5 w-5" />
-                  Check-out & Selesaikan
-                </>
+              {isCheckedIn && (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleCheckOut}
+                  disabled={uploading || !photoBefore}
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-5 w-5" />
+                      Check-out & Selesaikan
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
-          )}
 
-          {isCompleted && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-2" />
-              <p className="font-medium text-green-800">Pekerjaan Selesai</p>
-              <p className="text-sm text-green-600">
-                Terima kasih atas kerja kerasnya!
-              </p>
+              {isCompleted && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                  <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                  <p className="font-medium text-green-800">Pekerjaan Selesai</p>
+                  <p className="text-sm text-green-600">
+                    Terima kasih atas kerja kerasnya!
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
