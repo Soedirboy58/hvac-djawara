@@ -139,8 +139,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       if (assignmentData) {
         setAssignmentId(assignmentData.id);
       } else {
-        console.warn('No assignment found for this order and technician');
-        toast.warning('Tidak ditemukan assignment untuk order ini');
+        console.log('No formal assignment found - will save work log without assignment_id');
+        setAssignmentId(null);
       }
       
     } catch (error: any) {
@@ -318,11 +318,6 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     
     if (!sigTechnicianRef.current?.isEmpty() === false || !sigClientRef.current?.isEmpty() === false) {
       toast.error("Tanda tangan Teknisi dan PIC wajib diisi");
-      return;
-    }
-    
-    if (!assignmentId) {
-      toast.error("Tidak ditemukan assignment untuk order ini. Hubungi admin.");
       return;
     }
     
