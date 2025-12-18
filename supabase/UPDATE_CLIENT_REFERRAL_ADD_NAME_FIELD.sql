@@ -40,7 +40,7 @@ WITH active_referrals AS (
   SELECT 
     p.id as sales_person_id,
     p.full_name as sales_person_name,
-    utr.role as sales_role,
+    utr.role::text as sales_role,
     'active' as partner_type,
     COUNT(c.id) as total_clients_referred,
     COUNT(CASE WHEN c.created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as clients_last_30_days,
@@ -59,7 +59,7 @@ passive_referrals AS (
   SELECT 
     NULL::uuid as sales_person_id,
     c.referred_by_name as sales_person_name,
-    NULL as sales_role,
+    NULL::text as sales_role,
     'passive' as partner_type,
     COUNT(c.id) as total_clients_referred,
     COUNT(CASE WHEN c.created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as clients_last_30_days,
