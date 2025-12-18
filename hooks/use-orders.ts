@@ -35,6 +35,8 @@ export interface ServiceOrder {
   created_by?: string
   created_at: string
   updated_at: string
+  estimated_end_date?: string
+  estimated_end_time?: string
   // Aggregated fields from view
   assigned_technician_names?: string
   assigned_technician_ids?: string
@@ -45,6 +47,8 @@ export interface ServiceOrder {
   client_address?: string
   client_type?: string
   creator_name?: string
+  service_location?: string
+  completion_date?: string
   // Legacy join fields (kept for backward compatibility)
   client?: {
     id: string
@@ -111,10 +115,14 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       console.log('Active tenant ID:', profile.active_tenant_id)
 
-      // Use the order_with_technicians view to get aggregated technician data
+      // Fetch service orders with basic joins
       let query = supabase
-        .from('order_with_technicians')
-        .select('*')
+        .from('service_orders')
+        .select(`
+          *,
+          client:clients(id, name, phone, email, address),
+          creator:profiles!created_by(id, full_name)
+        `)
         .eq('tenant_id', profile.active_tenant_id)
         .order('created_at', { ascending: false })
 
@@ -133,15 +141,46 @@ export function useOrders(options: UseOrdersOptions = {}) {
         query = query.limit(options.limit)
       }
 
-      const { data, error: fetchError } = await query
+      const { data: ordersData, error: fetchError } = await query
 
       if (fetchError) {
         console.error('Error fetching orders from database:', fetchError)
         throw new Error(`Database error: ${fetchError.message}`)
       }
 
-      console.log('Successfully fetched orders:', data?.length || 0)
-      setOrders(data || [])
+      // Fetch technician assignments for all orders
+      if (ordersData && ordersData.length > 0) {
+        const orderIds = ordersData.map(o => o.id)
+        
+        const { data: assignments } = await supabase
+          .from('work_order_assignments')
+          .select('service_order_id, technician_id, technicians(id, full_name)')
+          .in('service_order_id', orderIds)
+
+        // Aggregate technician data per order
+        const enrichedOrders = ordersData.map(order => {
+          const orderAssignments = assignments?.filter(a => a.service_order_id === order.id) || []
+          const techNames = orderAssignments
+            .map(a => a.technicians?.full_name)
+            .filter(Boolean)
+            .join(', ')
+          
+          return {
+            ...order,
+            assigned_technician_names: techNames || undefined,
+            technician_count: orderAssignments.length,
+            client_name: order.client?.name,
+            client_phone: order.client?.phone,
+            service_location: order.location_address,
+          }
+        })
+
+        console.log('Successfully fetched orders:', enrichedOrders.length)
+        setOrders(enrichedOrders)
+      } else {
+        console.log('No orders found')
+        setOrders([])
+      }
     } catch (err) {
       console.error('Error fetching orders:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch orders')
