@@ -152,30 +152,51 @@ export function useOrders(options: UseOrdersOptions = {}) {
       if (ordersData && ordersData.length > 0) {
         const orderIds = ordersData.map(o => o.id)
         
-        const { data: assignments } = await supabase
+        // Fetch assignments with technician data
+        const { data: assignments, error: assignError } = await supabase
           .from('work_order_assignments')
-          .select('service_order_id, technician_id, technicians(id, full_name)')
+          .select(`
+            service_order_id,
+            technician_id,
+            technicians (
+              id,
+              full_name
+            )
+          `)
           .in('service_order_id', orderIds)
+
+        if (assignError) {
+          console.error('Error fetching assignments:', assignError)
+        }
+
+        console.log('Fetched assignments:', assignments?.length || 0)
 
         // Aggregate technician data per order
         const enrichedOrders = ordersData.map(order => {
           const orderAssignments = assignments?.filter(a => a.service_order_id === order.id) || []
           const techNames = orderAssignments
-            .map(a => a.technicians?.full_name)
+            .map(a => {
+              // Handle nested technicians object
+              const tech = a.technicians
+              if (Array.isArray(tech)) {
+                return tech[0]?.full_name
+              }
+              return tech?.full_name
+            })
             .filter(Boolean)
             .join(', ')
           
           return {
             ...order,
             assigned_technician_names: techNames || undefined,
-            technician_count: orderAssignments.length,
+            technician_count: orderAssignments.length || 0,
             client_name: order.client?.name,
             client_phone: order.client?.phone,
             service_location: order.location_address,
           }
         })
 
-        console.log('Successfully fetched orders:', enrichedOrders.length)
+        console.log('Successfully fetched orders with technicians:', enrichedOrders.length)
         setOrders(enrichedOrders)
       } else {
         console.log('No orders found')
