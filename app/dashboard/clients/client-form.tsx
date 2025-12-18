@@ -28,6 +28,7 @@ const clientSchema = z.object({
   city: z.string().min(2, 'City is required'),
   notes: z.string().optional(),
   referred_by_id: z.string().optional(),
+  referred_by_name: z.string().optional(),
 })
 
 type ClientFormData = z.infer<typeof clientSchema>
@@ -42,6 +43,7 @@ interface SalesPerson {
   id: string
   full_name: string
   role: string
+  partnership_status?: string
 }
 
 export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps) {
@@ -65,26 +67,27 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
     },
   })
 
-  // Fetch ONLY active partners (who have activated their accounts)
+  // Fetch ALL partners (active + passive) for flexible referral tracking
   useEffect(() => {
     async function fetchSalesPeople() {
       setLoadingSalesPeople(true)
       try {
-        // Get only ACTIVE partners (those with user_id) from partnership_network view
+        // Get ALL partners from partnership_network view
         const { data, error } = await supabase
           .from('partnership_network')
           .select('id, full_name, role, partnership_status, user_id')
           .eq('tenant_id', tenantId)
-          .eq('partnership_status', 'active') // Only active partners
-          .not('user_id', 'is', null) // Must have user_id (activated account)
           .order('full_name')
 
         if (error) throw error
 
         const formattedData = data?.map(partner => ({
-          id: partner.user_id, // Use user_id (which exists in profiles table)
-          full_name: partner.full_name,
-          role: partner.role
+          id: partner.partnership_status === 'active' && partner.user_id 
+            ? partner.user_id // Active: use user_id for foreign key
+            : partner.full_name, // Passive: use name as identifier
+          full_name: `${partner.full_name}${partner.partnership_status === 'passive' ? ' (Passive Partner)' : ''}`,
+          role: partner.role,
+          partnership_status: partner.partnership_status
         })) || []
 
         setSalesPeople(formattedData)
@@ -173,6 +176,17 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
       let savedClientId = clientId
       let avatarUrl = avatarPreview
 
+      // Determine if selected referral is active (UUID) or passive (name string)
+      const selectedPerson = salesPeople.find(p => p.id === data.referred_by_id)
+      const isPassivePartner = selectedPerson?.partnership_status === 'passive'
+      
+      // For passive partners: use referred_by_name instead of referred_by_id
+      const referralData = data.referred_by_id 
+        ? (isPassivePartner 
+            ? { referred_by_id: null, referred_by_name: selectedPerson?.full_name.replace(' (Passive Partner)', '') }
+            : { referred_by_id: data.referred_by_id, referred_by_name: null })
+        : { referred_by_id: null, referred_by_name: null }
+
       if (clientId) {
         // Update existing client
         if (avatarFile) {
@@ -190,7 +204,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
             city: data.city,
             notes_internal: data.notes,
             avatar_url: avatarUrl,
-            referred_by_id: data.referred_by_id || null,
+            ...referralData,
             updated_at: new Date().toISOString()
           })
           .eq('id', clientId)
@@ -209,7 +223,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
             address: data.address,
             city: data.city,
             notes_internal: data.notes,
-            referred_by_id: data.referred_by_id || null,
+            ...referralData,
           })
           .select()
           .single()
@@ -228,7 +242,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
       }
       
       toast.success('Client saved successfully!', {
-        description: `${data.name} has been ${client ? 'updated' : 'added'} to your client list.`,
+        description: `${data.name} has been ${clientId ? 'updated' : 'added'} to your client list.`,
       })
       router.push('/dashboard/clients')
     } catch (error: any) {
@@ -417,6 +431,13 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
                 {...register('referred_by_id')}
                 disabled={loadingSalesPeople}
                 className="mt-1 flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                onChange={(e) => {
+                  // If selecting a passive partner (name-based), also populate referred_by_name
+                  const selectedPerson = salesPeople.find(p => p.id === e.target.value)
+                  if (selectedPerson?.partnership_status === 'passive') {
+                    // This is a passive partner - will use referred_by_name instead
+                  }
+                }}
               >
                 <option value="">-- Select Sales Person (Optional) --</option>
                 {salesPeople.map((person) => (
@@ -426,7 +447,9 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
                 ))}
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                Select the sales/marketing person who referred this client
+                {salesPeople.some(p => p.partnership_status === 'passive') 
+                  ? '✅ Passive partners can be selected without activation' 
+                  : 'Select the sales/marketing person who referred this client'}
               </p>
             </div>
           </div>
