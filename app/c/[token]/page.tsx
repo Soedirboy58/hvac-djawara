@@ -39,12 +39,18 @@ interface PublicClientPageProps {
 export default async function PublicClientPage({ params }: PublicClientPageProps) {
   const supabase = await createClient()
   
-  // Get client data by public token
-  const { data: clientData } = await supabase
-    .rpc('get_client_by_public_token', { p_token: params.token })
+  // Get client data by public token - DIRECT QUERY (simpler)
+  const { data: clientData, error: clientError } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('public_token', params.token)
     .single()
 
-  if (!clientData) {
+  console.log('Token:', params.token)
+  console.log('Client data:', clientData)
+  console.log('Client error:', clientError)
+
+  if (!clientData || clientError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -73,21 +79,21 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
   const { count: propertiesCount } = await supabase
     .from('client_properties')
     .select('*', { count: 'exact', head: true })
-    .eq('client_id', clientData.client_id)
+    .eq('client_id', clientData.id)
     .eq('is_active', true)
 
   // Get AC units count
   const { count: unitsCount } = await supabase
     .from('ac_units')
     .select('*', { count: 'exact', head: true })
-    .eq('client_id', clientData.client_id)
+    .eq('client_id', clientData.id)
     .eq('is_active', true)
 
   // Get client orders
   const { data: orders } = await supabase
     .from('service_orders')
     .select('*')
-    .eq('client_id', clientData.client_id)
+    .eq('client_id', clientData.id)
     .order('created_at', { ascending: false })
     .limit(5)
 
@@ -104,12 +110,12 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
         address
       )
     `)
-    .eq('client_id', clientData.client_id)
+    .eq('client_id', clientData.id)
     .eq('is_active', true)
     .order('next_scheduled_date', { ascending: true })
     .limit(5)
 
-  const isPremium = clientData.portal_enabled && clientData.portal_activated_at
+  const isPremium = clientData.user_id !== null
 
   function getStatusBadge(status: string) {
     const config: Record<string, { bg: string; icon: any }> = {
