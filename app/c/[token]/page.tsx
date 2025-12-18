@@ -156,7 +156,7 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                   <User className="w-6 h-6" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold">{clientData.client_name}</h1>
+                  <h1 className="text-3xl font-bold">{clientData.name}</h1>
                   {isPremium && (
                     <Badge className="bg-amber-500 text-white border-0 mt-1">
                       <Crown className="w-3 h-3 mr-1" />
@@ -231,21 +231,21 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                     <User className="w-5 h-5 text-gray-400 mt-1" />
                     <div>
                       <p className="text-sm font-medium text-gray-700">Full Name</p>
-                      <p className="text-gray-900">{clientData.client_name}</p>
+                      <p className="text-gray-900">{clientData.name}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <Mail className="w-5 h-5 text-gray-400 mt-1" />
                     <div>
                       <p className="text-sm font-medium text-gray-700">Email</p>
-                      <p className="text-gray-900">{clientData.client_email || '-'}</p>
+                      <p className="text-gray-900">{clientData.email || '-'}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <Phone className="w-5 h-5 text-gray-400 mt-1" />
                     <div>
                       <p className="text-sm font-medium text-gray-700">Phone</p>
-                      <p className="text-gray-900">{clientData.client_phone}</p>
+                      <p className="text-gray-900">{clientData.phone}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -260,7 +260,7 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                   <MapPin className="w-5 h-5 text-gray-400 mt-1" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-700">Address</p>
-                    <p className="text-gray-900">{clientData.client_address}</p>
+                    <p className="text-gray-900">{clientData.address}</p>
                   </div>
                 </div>
               </CardContent>
