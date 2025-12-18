@@ -1,6 +1,6 @@
 // ============================================
 // People Management Client Component
-// Interactive UI for managing team members
+// Interactive UI for managing team members with card-based layout
 // ============================================
 
 'use client'
@@ -38,10 +38,18 @@ import {
   Edit,
   Trash2,
   CheckCircle,
-  XCircle
+  XCircle,
+  Star,
+  Award,
+  TrendingUp,
+  QrCode,
+  Link as LinkIcon,
+  Copy,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import Image from 'next/image'
 
 interface Profile {
   id: string
@@ -581,7 +589,8 @@ export function PeopleManagementClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            {/* Card Grid Layout - Like Clients */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {members.map((member) => {
                 const profile = typeof member.profiles === 'object' ? member.profiles : {}
                 const fullName = profile.full_name || 'Unknown'
@@ -589,85 +598,95 @@ export function PeopleManagementClient({
                 const phone = profile.phone || ''
                 
                 return (
-                  <div
+                  <Card
                     key={member.id}
-                    className={`flex items-center justify-between p-4 rounded-lg border ${
-                      member.is_active ? 'bg-white' : 'bg-gray-50 opacity-60'
+                    className={`cursor-pointer hover:shadow-lg transition-all duration-200 ${
+                      !member.is_active ? 'opacity-60' : ''
                     }`}
+                    onClick={() => {
+                      setSelectedMember(member)
+                      setIsViewingMember(true)
+                    }}
                   >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
-                      {fullName.charAt(0).toUpperCase()}
-                    </div>
-                    
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-gray-900">
-                          {fullName}
-                        </h4>
-                        <Badge variant="outline" className="text-xs">
-                          {getRoleDisplayName(member.role)}
-                        </Badge>
-                        {!member.is_active && (
-                          <Badge variant="secondary" className="text-xs bg-red-100 text-red-800">
+                    <CardContent className="p-6">
+                      {/* Avatar and Status */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                          {fullName.charAt(0).toUpperCase()}
+                        </div>
+                        {member.is_active ? (
+                          <Badge className="bg-green-500 text-white">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Active
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-red-100 text-red-800">
+                            <XCircle className="w-3 h-3 mr-1" />
                             Inactive
                           </Badge>
                         )}
                       </div>
-                      
-                      <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+
+                      {/* Name and Role */}
+                      <div className="mb-4">
+                        <h3 className="font-bold text-lg text-gray-900 mb-1">
+                          {fullName}
+                        </h3>
+                        <Badge variant="outline" className="text-xs">
+                          {getRoleDisplayName(member.role)}
+                        </Badge>
+                      </div>
+
+                      {/* Contact Info */}
+                      <div className="space-y-2 text-sm text-gray-600 mb-4">
                         {email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {email}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span className="truncate">{email}</span>
+                          </div>
                         )}
                         {phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {phone}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            <span>{phone}</span>
+                          </div>
                         )}
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                          <Calendar className="w-4 h-4" />
+                          Joined {new Date(member.created_at).toLocaleDateString()}
+                        </div>
                       </div>
-                      
-                      <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
-                        <Calendar className="w-3 h-3" />
-                        Joined {new Date(member.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => {
-                        setSelectedMember(member)
-                        setIsViewingMember(true)
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    
-                    <Button
-                      variant={member.is_active ? "outline" : "default"}
-                      size="sm"
-                      onClick={() => toggleMemberStatus(member.id, member.is_active)}
-                    >
-                      {member.is_active ? (
-                        <>
-                          <XCircle className="w-4 h-4 mr-1" />
-                          Deactivate
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Activate
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  </div>
+                      {/* Quick Stats - Placeholder for future */}
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <div className="flex items-center gap-4 text-xs">
+                          <div className="flex items-center gap-1">
+                            <Star className="w-4 h-4 text-yellow-500" />
+                            <span className="font-semibold">-</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Award className="w-4 h-4 text-blue-500" />
+                            <span className="font-semibold">-</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <TrendingUp className="w-4 h-4 text-green-500" />
+                            <span className="font-semibold">-</span>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleMemberStatus(member.id, member.is_active)
+                          }}
+                          className="h-8"
+                        >
+                          {member.is_active ? 'Deactivate' : 'Activate'}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )
               })}
             </div>
@@ -790,81 +809,188 @@ export function PeopleManagementClient({
         </DialogContent>
       </Dialog>
 
-      {/* Member Detail Dialog */}
+      {/* Rich Member Profile Modal */}
       <Dialog open={isViewingMember} onOpenChange={setIsViewingMember}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Member Details</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Member Profile</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsViewingMember(false)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </DialogTitle>
           </DialogHeader>
 
           {selectedMember && (
-            <div className="space-y-4">
-              {/* Avatar & Basic Info */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-2xl">
-                  {(typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'U').charAt(0).toUpperCase()}
+            <div className="space-y-6">
+              {/* Header: Avatar, Name, Status & QR Code */}
+              <div className="grid grid-cols-3 gap-6">
+                {/* Left: Avatar & Info */}
+                <div className="col-span-2 space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
+                      {(typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                        {typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'Unknown'}
+                      </h3>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Badge variant="outline" className="text-sm">
+                          {getRoleDisplayName(selectedMember.role)}
+                        </Badge>
+                        {selectedMember.is_active ? (
+                          <Badge className="bg-green-500 text-white">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Active
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-red-100 text-red-800">
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Inactive
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Contact Info */}
+                      <div className="space-y-2 text-sm">
+                        {typeof selectedMember.profiles === 'object' && selectedMember.profiles.email && (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span>{selectedMember.profiles.email}</span>
+                          </div>
+                        )}
+                        {typeof selectedMember.profiles === 'object' && selectedMember.profiles.phone && (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            <span>{selectedMember.profiles.phone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <span>Joined {new Date(selectedMember.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'Unknown'}
-                  </h3>
-                  <Badge variant="outline" className="mt-1">
-                    {getRoleDisplayName(selectedMember.role)}
-                  </Badge>
+
+                {/* Right: QR Code */}
+                <div className="bg-gray-50 rounded-lg p-4 flex flex-col items-center justify-center border-2 border-dashed border-gray-300">
+                  <QrCode className="w-16 h-16 text-gray-400 mb-2" />
+                  <p className="text-xs text-gray-500 text-center">QR Code Profile</p>
+                  <p className="text-xs text-gray-400 mt-1">Coming Soon</p>
                 </div>
               </div>
 
-              {/* Contact Information */}
+              {/* Performance Metrics */}
+              <div className="grid grid-cols-3 gap-4">
+                {/* Rating */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className="w-5 h-5 fill-yellow-400 text-yellow-400"
+                          />
+                        ))}
+                      </div>
+                      <p className="text-3xl font-bold text-gray-900">-</p>
+                      <p className="text-sm text-gray-500 mt-1">Average Rating</p>
+                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Career Level */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <Award className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-gray-900">-</p>
+                      <p className="text-sm text-gray-500 mt-1">Career Level</p>
+                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Completed Orders */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <TrendingUp className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                      <p className="text-3xl font-bold text-gray-900">-</p>
+                      <p className="text-sm text-gray-500 mt-1">Total Orders</p>
+                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Track Record Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-green-600" />
+                    Track Record & Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-gray-500">
+                    <p className="text-sm">Track record data will be available soon</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      This will show order history, client acquisition, and performance metrics
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Certifications & Skills */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Award className="w-5 h-5 text-blue-600" />
+                    Certifications & Skills
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-gray-500">
+                    <p className="text-sm">No certifications added yet</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Certifications and skill badges will appear here
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Category & Additional Info */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">Email</Label>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span>{typeof selectedMember.profiles === 'object' ? selectedMember.profiles.email : 'N/A'}</span>
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    <span className="font-semibold text-blue-900">Category</span>
                   </div>
+                  <p className="text-sm text-gray-700">{getRoleCategory(selectedMember.role)}</p>
                 </div>
 
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">Phone</Label>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <span>{typeof selectedMember.profiles === 'object' && selectedMember.profiles.phone ? selectedMember.profiles.phone : 'N/A'}</span>
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-5 h-5 text-purple-600" />
+                    <span className="font-semibold text-purple-900">Member ID</span>
                   </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">Status</Label>
-                  <div>
-                    {selectedMember.is_active ? (
-                      <Badge className="bg-green-500">Active</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-red-500 text-white">Inactive</Badge>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">Joined Date</Label>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span>{new Date(selectedMember.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Category */}
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">
-                    Category: {getRoleCategory(selectedMember.role)}
-                  </span>
+                  <p className="text-xs text-gray-600 font-mono">{selectedMember.id.slice(0, 8)}...</p>
                 </div>
               </div>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex items-center justify-between">
             <Button
               type="button"
               variant="outline"
