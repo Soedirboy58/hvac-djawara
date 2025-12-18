@@ -1,7 +1,7 @@
 # 🤖 AI Agent Handoff Documentation
 
 **Purpose:** Central repository untuk semua dokumentasi handoff AI agent  
-**Last Updated:** December 16, 2025  
+**Last Updated:** December 18, 2025  
 **Status:** Active Development
 
 ---
@@ -11,6 +11,19 @@
 Baca dokumen dalam urutan ini untuk memahami project secara lengkap:
 
 ### 1️⃣ **START HERE** - Latest Session
+📄 **[AI_SESSION_HANDOFF_DEC18_2025.md](AI_SESSION_HANDOFF_DEC18_2025.md)**
+- **Tanggal:** December 18, 2025
+- **Focus:** People Management System + Sales Referral Tracking
+- **Status:** Code deployed, SQL pending
+- **Key Features:**
+  - Sales referral tracking for clients
+  - Comprehensive People Management page
+  - Expanded roles: direktur, manager, supervisor, marketing, etc.
+  - Role hierarchy by category
+  - Team member activation/deactivation
+- **Action Required:** Run `EXPAND_USER_ROLES.sql` then `ADD_CLIENT_REFERRAL_TRACKING.sql`
+
+### 2️⃣ Multi-Technician Assignment
 📄 **[AI_SESSION_HANDOFF_DEC16_2025.md](AI_SESSION_HANDOFF_DEC16_2025.md)**
 - **Tanggal:** December 16, 2025
 - **Focus:** Multi-Technician Assignment & Client Portal Enhancement
@@ -22,7 +35,7 @@ Baca dokumen dalam urutan ini untuk memahami project secara lengkap:
   - Form stability (hidden incomplete features)
 - **Action Required:** Run `CREATE_ORDER_TECHNICIANS_VIEW.sql`
 
-### 2️⃣ Client Portal Features
+### 3️⃣ Client Portal Features
 📄 **[AI_HANDOFF_CLIENT_FEATURES.md](AI_HANDOFF_CLIENT_FEATURES.md)**
 - **Focus:** Client portal architecture dan features
 - **Content:**
@@ -32,7 +45,7 @@ Baca dokumen dalam urutan ini untuk memahami project secara lengkap:
   - Authentication flow
 - **Status:** Foundational features implemented
 
-### 3️⃣ Contract Management Update
+### 4️⃣ Contract Management Update
 📄 **[AI_AGENT_HANDOFF_CONTRACT_UPDATE.md](AI_AGENT_HANDOFF_CONTRACT_UPDATE.md)**
 - **Focus:** Contract request system enhancement
 - **Content:**
@@ -41,7 +54,7 @@ Baca dokumen dalam urutan ini untuk memahami project secara lengkap:
   - Contract generation
 - **Status:** Core functionality complete
 
-### 4️⃣ Original Foundation
+### 5️⃣ Original Foundation
 📄 **[AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md)**
 - **Focus:** Initial project setup and architecture
 - **Content:**
