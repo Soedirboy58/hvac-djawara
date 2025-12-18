@@ -256,7 +256,15 @@ function OrderDetailContent() {
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Estimated Duration</p>
                   <p className="text-sm">{order.estimated_duration} minutes</p>
-                </div>Project Timeline</CardTitle>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Timeline & Dates */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Timeline</CardTitle>
               <CardDescription>Track order progress and important dates</CardDescription>
             </CardHeader>
             <CardContent>
@@ -338,7 +346,20 @@ function OrderDetailContent() {
                   <div className="absolute -left-6 top-1 w-4 h-4 rounded-full bg-gray-400 border-4 border-white"></div>
                   <div>
                     <p className="text-sm font-medium text-gray-700">Last Updated</p>
-                    <p className="text-xs t flex items-center gap-2">
+                    <p className="text-xs text-gray-500">{formatDateTime(order.updated_at)}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sidebar Actions */}
+        <div className="space-y-6">
+          {/* Assign Technician */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="w-5 h-5" />
                 Assign Technician
               </CardTitle>
@@ -401,7 +422,18 @@ function OrderDetailContent() {
               </Button>
               <p className="text-xs text-gray-500">
                 💡 Tip: You can assign multiple technicians by using "Edit Order" button above
-              </plassName="p-3 bg-gray-50 rounded-md">
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Notes Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Notes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {order.notes && (
+                <div className="p-3 bg-gray-50 rounded-md">
                   <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
                 </div>
               )}
