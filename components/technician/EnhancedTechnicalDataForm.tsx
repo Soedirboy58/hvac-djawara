@@ -334,6 +334,15 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     
     for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
+      
+      // If photo is already uploaded (from existing data), use existing URL
+      if (!photo.file) {
+        urls.push(photo.preview); // preview contains the existing URL
+        captions.push(photo.caption || `Foto ${i + 1}`);
+        continue;
+      }
+      
+      // Upload new photo
       const fileExt = photo.file.name.split(".").pop();
       const fileName = `${orderId}_doc_${Date.now()}_${i}.${fileExt}`;
       const filePath = `${technicianId}/${fileName}`;
@@ -342,7 +351,10 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         .from("work-photos")
         .upload(filePath, photo.file);
       
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Upload error:", uploadError);
+        throw uploadError;
+      }
       
       const { data: { publicUrl } } = supabase.storage
         .from("work-photos")
