@@ -3,7 +3,7 @@
 -- Just delete the client, let database handle cascade
 -- ============================================
 
--- Create simple delete function
+-- Create comprehensive delete function
 CREATE OR REPLACE FUNCTION delete_client_safe(p_client_id UUID)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -11,6 +11,10 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_order_count INT;
+  v_sql TEXT;
+  v_table_name TEXT;
+  v_column_name TEXT;
+  v_deleted_count INT := 0;
 BEGIN
   -- Check for service orders
   SELECT COUNT(*) INTO v_order_count
@@ -24,7 +28,35 @@ BEGIN
     );
   END IF;
 
-  -- Just delete the client - let CASCADE or FK errors happen naturally
+  -- Auto-detect and delete from all tables that reference clients
+  FOR v_table_name, v_column_name IN
+    SELECT 
+      tc.table_name,
+      kcu.column_name
+    FROM information_schema.table_constraints AS tc
+    JOIN information_schema.key_column_usage AS kcu
+      ON tc.constraint_name = kcu.constraint_name
+    JOIN information_schema.constraint_column_usage AS ccu
+      ON ccu.constraint_name = tc.constraint_name
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND ccu.table_name = 'clients'
+      AND ccu.column_name = 'id'
+      AND tc.table_name != 'service_orders'  -- Skip service_orders
+  LOOP
+    BEGIN
+      -- Build and execute delete statement
+      v_sql := format('DELETE FROM %I WHERE %I = $1', v_table_name, v_column_name);
+      EXECUTE v_sql USING p_client_id;
+      GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+      
+      RAISE NOTICE 'Deleted % rows from %.%', v_deleted_count, v_table_name, v_column_name;
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Error deleting from %: %', v_table_name, SQLERRM;
+    END;
+  END LOOP;
+
+  -- Now delete the client
   DELETE FROM clients WHERE id = p_client_id;
 
   RETURN jsonb_build_object(
@@ -34,7 +66,6 @@ BEGIN
 
 EXCEPTION
   WHEN foreign_key_violation THEN
-    -- If FK error, try to be more helpful
     RETURN jsonb_build_object(
       'success', false,
       'error', 'Cannot delete client: has related records',
