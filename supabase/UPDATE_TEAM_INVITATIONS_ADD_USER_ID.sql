@@ -34,8 +34,7 @@ SELECT
     ELSE 'inactive'
   END as partnership_status,
   t.name as tenant_name,
-  p.full_name as activated_user_name,
-  (SELECT COUNT(*) FROM clients c WHERE c.referred_by_id = ti.user_id) as total_clients_referred
+  p.full_name as activated_user_name
 FROM team_invitations ti
 LEFT JOIN tenants t ON ti.tenant_id = t.id
 LEFT JOIN profiles p ON ti.user_id = p.id
