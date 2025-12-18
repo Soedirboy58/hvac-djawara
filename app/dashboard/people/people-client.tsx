@@ -73,7 +73,7 @@ interface PeopleManagementClientProps {
   roleHierarchy: RoleHierarchy[]
 }
 
-interface PendingInvitation {
+interface PartnerRecord {
   id: string
   email: string
   full_name: string
@@ -83,6 +83,7 @@ interface PendingInvitation {
   expires_at: string
   status: string
   created_at: string
+  user_id: string | null // null = not activated yet
 }
 
 export function PeopleManagementClient({ 
@@ -91,7 +92,7 @@ export function PeopleManagementClient({
   roleHierarchy 
 }: PeopleManagementClientProps) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(initialTeamMembers)
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([])
+  const [partnerRecords, setPartnerRecords] = useState<PartnerRecord[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isAddingMember, setIsAddingMember] = useState(false)
@@ -104,23 +105,24 @@ export function PeopleManagementClient({
   })
   const supabase = createClient()
 
-  // Fetch pending invitations
-  const fetchInvitations = async () => {
+  // Fetch all partner records (both activated and not)
+  const fetchPartnerRecords = async () => {
     const { data } = await supabase
       .from('team_invitations')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .in('role', ['sales_partner', 'marketing', 'business_dev'])
+      .neq('status', 'cancelled')
       .order('created_at', { ascending: false })
     
     if (data) {
-      setPendingInvitations(data)
+      setPartnerRecords(data)
     }
   }
 
-  // Load invitations on mount
+  // Load partner records on mount
   React.useEffect(() => {
-    fetchInvitations()
+    fetchPartnerRecords()
   }, [])
 
   // Group roles by category
@@ -250,10 +252,10 @@ export function PeopleManagementClient({
       }
 
       // Show success message
-      toast.success('Invitation created successfully!')
+      toast.success('Partner record created! They can activate anytime via invitation link.')
 
-      // Refresh invitations list
-      await fetchInvitations()
+      // Refresh partner records list
+      await fetchPartnerRecords()
 
       // Reset form
       setNewMember({
@@ -286,53 +288,76 @@ export function PeopleManagementClient({
     }
   }
 
-  const cancelInvitation = async (invitationId: string) => {
+  const cancelPartner = async (partnerId: string) => {
     try {
       const { error } = await supabase
         .from('team_invitations')
         .update({ status: 'cancelled' })
-        .eq('id', invitationId)
+        .eq('id', partnerId)
 
       if (error) throw error
 
-      toast.success('Invitation cancelled')
-      fetchInvitations()
+      toast.success('Partner record removed')
+      fetchPartnerRecords()
     } catch (error: any) {
-      toast.error('Failed to cancel invitation')
+      toast.error('Failed to remove partner')
     }
   }
 
+  // Separate active and passive partners
+  const activePartners = partnerRecords.filter(p => p.status === 'accepted')
+  const passivePartners = partnerRecords.filter(p => p.status === 'pending')
+
   return (
     <div className="space-y-6">
-      {/* Pending Invitations */}
-      {pendingInvitations.length > 0 && (
+      {/* Partnership Overview */}
+      {partnerRecords.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Mail className="w-5 h-5" />
-              Pending Invitations ({pendingInvitations.length})
+              <Users className="w-5 h-5" />
+              Partnership Network ({partnerRecords.length})
             </CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              {activePartners.length} Active • {passivePartners.length} Passive (Not Activated)
+            </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pendingInvitations.map((invitation) => {
+              {partnerRecords.map((partner) => {
                 const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hvac-djawara.vercel.app'
-                const invitationUrl = `${baseUrl}/invite?token=${invitation.token}`
-                const expiryDate = new Date(invitation.expires_at)
+                const invitationUrl = `${baseUrl}/invite?token=${partner.token}`
+                const expiryDate = new Date(partner.expires_at)
                 const isExpired = expiryDate < new Date()
+                const isActivated = partner.status === 'accepted'
                 
                 return (
-                  <Card key={invitation.id} className="border-2 border-orange-200 bg-orange-50">
+                  <Card 
+                    key={partner.id} 
+                    className={`border-2 ${
+                      isActivated 
+                        ? 'border-green-200 bg-green-50' 
+                        : 'border-orange-200 bg-orange-50'
+                    }`}
+                  >
                     <CardContent className="pt-6">
                       <div className="space-y-3">
                         {/* Header */}
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="font-semibold text-gray-900">{invitation.full_name}</h4>
-                            <p className="text-sm text-gray-600">{invitation.email}</p>
+                            <h4 className="font-semibold text-gray-900">{partner.full_name}</h4>
+                            <p className="text-sm text-gray-600">{partner.email}</p>
+                            {partner.phone && (
+                              <p className="text-xs text-gray-500">{partner.phone}</p>
+                            )}
                           </div>
-                          <Badge variant="outline" className="text-xs bg-orange-100">
-                            {getRoleDisplayName(invitation.role)}
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              isActivated ? 'bg-green-100' : 'bg-orange-100'
+                            }`}
+                          >
+                            {getRoleDisplayName(partner.role)}
                           </Badge>
                         </div>
 
@@ -346,42 +371,81 @@ export function PeopleManagementClient({
                           </div>
                         </div>
 
-                        {/* Status & Date */}
-                        <div className="text-xs text-gray-500 space-y-1">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Expires: {expiryDate.toLocaleDateString()}
-                          </div>
-                          {isExpired && (
-                            <Badge variant="secondary" className="text-xs bg-red-100 text-red-800">
-                              Expired
+                        {/* Activation Status */}
+                        <div className="flex items-center justify-between">
+                          {isActivated ? (
+                            <Badge className="text-xs bg-green-500 text-white">
+                              ✓ Active Partner
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs bg-orange-500 text-white">
+                              ⏳ Passive Partner
                             </Badge>
                           )}
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => copyInvitationLink(invitation.token)}
-                          >
-                            Copy Link
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => cancelInvitation(invitation.id)}
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        </div>
+                        {isActivated ? (
+                          // Active Partner Info
+                          <div className="bg-white rounded-lg p-3 border">
+                            <div className="text-xs space-y-1">
+                              <div className="flex items-center gap-1 text-green-700">
+                                <CheckCircle className="w-3 h-3" />
+                                <span className="font-semibold">Has Dashboard Access</span>
+                              </div>
+                              <p className="text-gray-600">Can manage their clients & view performance</p>
+                            </div>
+                          </div>
+                        ) : (
+                          // Passive Partner - Show Invitation
+                          <>
+                            {/* QR Code placeholder */}
+                            <div className="bg-white rounded-lg p-3 flex items-center justify-center border-2 border-dashed border-gray-300">
+                              <div className="text-center">
+                                <div className="w-32 h-32 mx-auto bg-gray-100 rounded flex items-center justify-center">
+                                  <span className="text-xs text-gray-500">QR Code</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">Scan to activate</p>
+                              </div>
+                            </div>
 
-                        {/* Link preview */}
-                        <div className="text-xs text-gray-400 break-all bg-white rounded p-2 border">
-                          {invitationUrl}
-                        </div>
+                            {/* Status & Date */}
+                            <div className="text-xs text-gray-500 space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                Expires: {expiryDate.toLocaleDateString()}
+                              </div>
+                              {isExpired && (
+                                <Badge variant="secondary" className="text-xs bg-red-100 text-red-800">
+                                  Link Expired
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => copyInvitationLink(partner.token)}
+                              >
+                                Copy Link
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => cancelPartner(partner.id)}
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            {/* Link preview */}
+                            <div className="text-xs text-gray-400 break-all bg-white rounded p-2 border">
+                              {invitationUrl}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
