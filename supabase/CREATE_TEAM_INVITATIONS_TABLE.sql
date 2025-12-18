@@ -50,7 +50,7 @@ CREATE POLICY "Owners and admins can create invitations"
       FROM user_tenant_roles 
       WHERE user_id = auth.uid() 
         AND tenant_id = team_invitations.tenant_id
-        AND role IN ('owner', 'admin')
+        AND role IN ('owner', 'admin_finance', 'admin_logistic')
     )
   );
 
@@ -64,7 +64,7 @@ CREATE POLICY "Owners and admins can update invitations"
       FROM user_tenant_roles 
       WHERE user_id = auth.uid() 
         AND tenant_id = team_invitations.tenant_id
-        AND role IN ('owner', 'admin')
+        AND role IN ('owner', 'admin_finance', 'admin_logistic')
     )
   );
 

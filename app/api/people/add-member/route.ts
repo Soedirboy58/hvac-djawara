@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       .eq('user_id', user.id)
       .single()
 
-    if (!userRole || !['owner', 'admin'].includes(userRole.role)) {
+    if (!userRole || !['owner', 'admin_finance', 'admin_logistic'].includes(userRole.role)) {
       return NextResponse.json(
         { error: 'Only owners and admins can add members' },
         { status: 403 }
