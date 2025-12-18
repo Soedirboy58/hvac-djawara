@@ -43,41 +43,10 @@ export function AuditLogViewer({ clientId }: AuditLogViewerProps) {
   }, [clientId])
 
   async function fetchAuditLogs() {
-    try {
-      // Note: Audit logging is currently disabled
-      // The client_audit_log table was removed to fix delete functionality
-      setLogs([])
-      setLoading(false)
-      return
-      
-      /* Original code - disabled
-      const { data, error: fetchError } = await supabase
-        .from('client_audit_log')
-        .select(`
-          *,
-          profiles!changed_by (
-            id,
-            full_name
-          )
-        `)
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (fetchError) throw fetchError
-
-      const formatted = data?.map(log => ({
-        ...log,
-        staff_name: log.profiles?.full_name || 'System'
-      })) || []
-
-      setLogs(formatted)
-    } catch (err) {
-      console.error('Error fetching audit logs:', err)
-      setError('Failed to load audit logs')
-    } finally {
-      setLoading(false)
-    }
+    // Note: Audit logging is currently disabled
+    // The client_audit_log table was removed to fix delete functionality
+    setLogs([])
+    setLoading(false)
   }
 
   if (loading) {
