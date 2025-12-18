@@ -28,7 +28,7 @@ const navigation = [
   { name: 'Service Orders', href: '/dashboard/orders', icon: ClipboardList },
   { name: 'Contract Management', href: '/dashboard/contracts', icon: FileText },
   { name: 'Schedule', href: '/dashboard/schedule', icon: Calendar },
-  { name: 'Team', href: '/dashboard/team', icon: UserCog },
+  { name: 'People Management', href: '/dashboard/people', icon: UserCog },
   { name: 'Inventory', href: '/dashboard/inventory', icon: Package },
   { name: 'Finance', href: '/dashboard/finance', icon: DollarSign },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },

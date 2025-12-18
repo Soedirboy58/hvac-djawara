@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,6 +27,7 @@ const clientSchema = z.object({
   address: z.string().min(5, 'Address is required'),
   city: z.string().min(2, 'City is required'),
   notes: z.string().optional(),
+  referred_by_id: z.string().optional(),
 })
 
 type ClientFormData = z.infer<typeof clientSchema>
@@ -37,6 +38,12 @@ interface ClientFormProps {
   clientId?: string
 }
 
+interface SalesPerson {
+  id: string
+  full_name: string
+  role: string
+}
+
 export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -44,6 +51,8 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(initialData?.avatar_url || null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([])
+  const [loadingSalesPeople, setLoadingSalesPeople] = useState(false)
 
   const {
     register,
@@ -55,6 +64,47 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
       type: 'rumah_tangga'
     },
   })
+
+  // Fetch sales/marketing people
+  useEffect(() => {
+    async function fetchSalesPeople() {
+      setLoadingSalesPeople(true)
+      try {
+        const { data, error } = await supabase
+          .from('user_tenant_roles')
+          .select(`
+            user_id,
+            role,
+            profiles:user_id (
+              id,
+              full_name
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .in('role', ['sales_partner', 'marketing', 'business_dev'])
+          .order('profiles(full_name)')
+
+        if (error) throw error
+
+        const formattedData = data
+          ?.filter(item => item.profiles)
+          .map(item => ({
+            id: item.profiles.id,
+            full_name: item.profiles.full_name,
+            role: item.role
+          })) || []
+
+        setSalesPeople(formattedData)
+      } catch (error) {
+        console.error('Error fetching sales people:', error)
+      } finally {
+        setLoadingSalesPeople(false)
+      }
+    }
+
+    fetchSalesPeople()
+  }, [tenantId, supabase])
 
   async function handleAvatarSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -148,6 +198,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
             city: data.city,
             notes_internal: data.notes,
             avatar_url: avatarUrl,
+            referred_by_id: data.referred_by_id || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', clientId)
@@ -166,6 +217,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
             address: data.address,
             city: data.city,
             notes_internal: data.notes,
+            referred_by_id: data.referred_by_id || null,
           })
           .select()
           .single()
@@ -359,6 +411,31 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
               {errors.city && (
                 <p className="text-sm text-red-600 mt-1">{errors.city.message}</p>
               )}
+            </div>
+          </div>
+
+          {/* Sales Referral */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900">Referral Information</h3>
+            
+            <div>
+              <Label htmlFor="referred_by_id">Referred By (Sales/Marketing)</Label>
+              <select
+                id="referred_by_id"
+                {...register('referred_by_id')}
+                disabled={loadingSalesPeople}
+                className="mt-1 flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">-- Select Sales Person (Optional) --</option>
+                {salesPeople.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.full_name} ({person.role.replace('_', ' ')})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Select the sales/marketing person who referred this client
+              </p>
             </div>
           </div>
 
