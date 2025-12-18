@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { 
   Plus, 
   Search, 
@@ -142,22 +143,44 @@ export default function OrdersPage() {
   // Bulk actions
   const handleBulkDelete = async () => {
     if (selectedOrders.size === 0) return
-    if (!confirm(`Delete ${selectedOrders.size} orders?`)) return
+    if (!confirm(`Yakin ingin menghapus ${selectedOrders.size} order? Tindakan ini tidak bisa dibatalkan.`)) return
     
-    toast.promise(
-      Promise.all(
-        Array.from(selectedOrders).map(id => {
-          // Delete API call here
-          return Promise.resolve()
-        })
-      ),
-      {
-        loading: 'Deleting orders...',
-        success: `${selectedOrders.size} orders deleted`,
-        error: 'Failed to delete orders',
+    const supabase = createClient()
+    
+    try {
+      // Delete work_order_assignments first (foreign key constraint)
+      const { error: assignmentError } = await supabase
+        .from('work_order_assignments')
+        .delete()
+        .in('service_order_id', Array.from(selectedOrders))
+      
+      if (assignmentError) {
+        console.error('Error deleting assignments:', assignmentError)
+        toast.error('Gagal menghapus assignment teknisi')
+        return
       }
-    )
-    setSelectedOrders(new Set())
+
+      // Then delete the orders
+      const { error: orderError } = await supabase
+        .from('service_orders')
+        .delete()
+        .in('id', Array.from(selectedOrders))
+      
+      if (orderError) {
+        console.error('Error deleting orders:', orderError)
+        toast.error('Gagal menghapus order')
+        return
+      }
+
+      toast.success(`${selectedOrders.size} order berhasil dihapus`)
+      setSelectedOrders(new Set())
+      
+      // Refresh the page to reload data
+      router.refresh()
+    } catch (err) {
+      console.error('Delete error:', err)
+      toast.error('Terjadi kesalahan saat menghapus order')
+    }
   }
 
   const handleExport = () => {
@@ -483,7 +506,37 @@ export default function OrdersPage() {
                               Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                if (!confirm(`Yakin ingin menghapus order ${order.order_number}?`)) return
+                                
+                                const supabase = createClient()
+                                
+                                try {
+                                  // Delete assignments first
+                                  await supabase
+                                    .from('work_order_assignments')
+                                    .delete()
+                                    .eq('service_order_id', order.id)
+                                  
+                                  // Delete order
+                                  const { error } = await supabase
+                                    .from('service_orders')
+                                    .delete()
+                                    .eq('id', order.id)
+                                  
+                                  if (error) throw error
+                                  
+                                  toast.success('Order berhasil dihapus')
+                                  router.refresh()
+                                } catch (err) {
+                                  console.error('Delete error:', err)
+                                  toast.error('Gagal menghapus order')
+                                }
+                              }}
+                            >
                               <Trash2 className="w-4 h-4 mr-2" />
                               Delete
                             </DropdownMenuItem>
