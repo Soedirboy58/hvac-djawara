@@ -57,26 +57,12 @@ export default async function PeopleManagementPage() {
     { role_name: 'client', category: 'External', display_name: 'Client', sort_order: 17 },
   ]
 
-  // Fetch all team members
-  const { data: teamMembers } = await supabase
-    .from('user_tenant_roles')
-    .select(`
-      id,
-      user_id,
-      role,
-      is_active,
-      created_at,
-      profiles:user_id (
-        id,
-        full_name,
-        email,
-        phone,
-        avatar_url
-      )
-    `)
-    .eq('tenant_id', profile.active_tenant_id)
-    .order('is_active', { ascending: false })
-    .order('role')
+  // Fetch all team members - use raw SQL to get email from auth.users
+  const { data: teamMembers, error: teamError } = await supabase.rpc('get_team_members', {
+    p_tenant_id: profile.active_tenant_id
+  })
+
+  console.log('Team members data:', teamMembers, 'Error:', teamError)
 
   return (
     <div className="p-6">
