@@ -339,6 +339,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         service_order_id: orderId,
         technician_id: technicianId,
         assignment_id: assignmentId,
+        log_type: 'technical_report',
         
         // BAST fields
         nama_personal: formData.nama_personal,
