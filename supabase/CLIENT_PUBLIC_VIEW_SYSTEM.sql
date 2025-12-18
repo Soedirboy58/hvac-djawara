@@ -41,19 +41,17 @@ DECLARE
   v_base_url TEXT := 'https://hvac-djawara.vercel.app';
   v_client RECORD;
 BEGIN
-  -- Check if token already exists
-  SELECT public_view_token INTO v_token
+  -- Use new public_token column
+  SELECT public_token INTO v_token
   FROM public.clients
   WHERE id = p_client_id;
   
   -- Generate new token if not exists
   IF v_token IS NULL THEN
-    v_token := encode(gen_random_bytes(24), 'hex');
+    v_token := encode(gen_random_bytes(32), 'hex');
     
     UPDATE public.clients
-    SET 
-      public_view_token = v_token,
-      public_view_token_generated_at = NOW()
+    SET public_token = v_token
     WHERE id = p_client_id;
   END IF;
   

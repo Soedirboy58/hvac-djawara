@@ -39,6 +39,9 @@ interface PublicClientPageProps {
 export default async function PublicClientPage({ params }: PublicClientPageProps) {
   const supabase = await createClient()
   
+  // Check if user is logged in
+  const { data: { user } } = await supabase.auth.getUser()
+  
   // Get client data by public token - DIRECT QUERY (simpler)
   const { data: clientData, error: clientError } = await supabase
     .from('clients')
@@ -48,7 +51,7 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
 
   console.log('Token:', params.token)
   console.log('Client data:', clientData)
-  console.log('Client error:', clientError)
+  console.log('User:', user)
 
   if (!clientData || clientError) {
     return (
@@ -115,7 +118,13 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
     .order('next_scheduled_date', { ascending: true })
     .limit(5)
 
+  // Check if this client has premium account
   const isPremium = clientData.user_id !== null
+  
+  // If user is logged in AND this is their client account, redirect to premium dashboard
+  if (user && clientData.user_id === user.id) {
+    redirect('/client/dashboard')
+  }
 
   function getStatusBadge(status: string) {
     const config: Record<string, { bg: string; icon: any }> = {
