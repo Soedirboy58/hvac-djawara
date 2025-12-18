@@ -1,26 +1,37 @@
 -- ============================================
--- MINIMAL DELETE - Just delete, let DB handle errors
+-- COMPLETE DELETE - Handle all 10 child tables
 -- ============================================
 
--- Simple delete function - no child table assumptions
 CREATE OR REPLACE FUNCTION delete_client_safe(p_client_id UUID)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  -- Check if client has service orders (business rule: don't delete if has orders)
+  -- Business Rule 1: Don't delete if has service orders
   IF EXISTS (SELECT 1 FROM service_orders WHERE client_id = p_client_id LIMIT 1) THEN
     RETURN jsonb_build_object('success', false, 'error', 'Client has existing service orders');
   END IF;
 
-  -- Just delete the client - if there are FK constraints, the error will be caught
+  -- Business Rule 2: Don't delete if has maintenance contracts
+  IF EXISTS (SELECT 1 FROM maintenance_contracts WHERE client_id = p_client_id LIMIT 1) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Client has active maintenance contracts');
+  END IF;
+
+  -- Delete all child records (safe to delete these)
+  DELETE FROM property_maintenance_schedules WHERE client_id = p_client_id;
+  DELETE FROM notifications WHERE client_id = p_client_id;
+  DELETE FROM client_portal_sessions WHERE client_id = p_client_id;
+  DELETE FROM client_portal_activities WHERE client_id = p_client_id;
+  DELETE FROM client_documents WHERE client_id = p_client_id;
+  DELETE FROM client_properties WHERE client_id = p_client_id;
+  DELETE FROM ac_units WHERE client_id = p_client_id;
+
+  -- Now delete the client
   DELETE FROM clients WHERE id = p_client_id;
 
   RETURN jsonb_build_object('success', true, 'message', 'Client deleted successfully');
 EXCEPTION
-  WHEN foreign_key_violation THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Cannot delete: client has related records');
   WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
