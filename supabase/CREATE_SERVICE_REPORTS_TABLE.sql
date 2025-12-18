@@ -93,7 +93,7 @@ CREATE POLICY "Allow service role full access"
 CREATE TRIGGER update_service_reports_updated_at
   BEFORE UPDATE ON service_reports
   FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  EXECUTE FUNCTION public.handle_updated_at();
 
 -- RPC Functions for Client Portal Access
 -- ================================================
