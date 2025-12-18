@@ -55,16 +55,17 @@ export default async function ClientDashboardPage() {
 
   return (
     <div className="p-6">
-      {/* Welcome Section */}
+      {/* Welcome Section - Updated v2.1 */}
       <div className="mb-8">
         <div className="flex items-start justify-between gap-6">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {client?.name || 'Client'}!
+              Welcome back, {client?.name || 'Valued Client'}!
             </h1>
             <p className="text-gray-600 mt-1">
               Here's an overview of your services and contracts
             </p>
+            <p className="text-xs text-blue-600 mt-2">✓ Profile card should appear on the right →</p>
           </div>
           {/* Profile Information Card */}
           {client && (
