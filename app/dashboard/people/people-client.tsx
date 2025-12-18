@@ -97,6 +97,8 @@ export function PeopleManagementClient({
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
+  const [isViewingMember, setIsViewingMember] = useState(false)
   const [newMember, setNewMember] = useState({
     fullName: '',
     email: '',
@@ -123,7 +125,13 @@ export function PeopleManagementClient({
   // Load partner records on mount
   React.useEffect(() => {
     fetchPartnerRecords()
+    console.log('Fetching partner records...')
   }, [])
+
+  // Debug: Log partner records when they change
+  React.useEffect(() => {
+    console.log('Partner records updated:', partnerRecords)
+  }, [partnerRecords])
 
   // Group roles by category
   const rolesByCategory = roleHierarchy.reduce((acc, role) => {
@@ -616,7 +624,14 @@ export function PeopleManagementClient({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setSelectedMember(member)
+                        setIsViewingMember(true)
+                      }}
+                    >
                       <Edit className="w-4 h-4" />
                     </Button>
                     
@@ -758,6 +773,92 @@ export function PeopleManagementClient({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Member Detail Dialog */}
+      <Dialog open={isViewingMember} onOpenChange={setIsViewingMember}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Member Details</DialogTitle>
+          </DialogHeader>
+
+          {selectedMember && (
+            <div className="space-y-4">
+              {/* Avatar & Basic Info */}
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-2xl">
+                  {(typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'Unknown'}
+                  </h3>
+                  <Badge variant="outline" className="mt-1">
+                    {getRoleDisplayName(selectedMember.role)}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Email</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="w-4 h-4 text-gray-400" />
+                    <span>{typeof selectedMember.profiles === 'object' ? selectedMember.profiles.email : 'N/A'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Phone</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <span>{typeof selectedMember.profiles === 'object' && selectedMember.profiles.phone ? selectedMember.profiles.phone : 'N/A'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Status</Label>
+                  <div>
+                    {selectedMember.is_active ? (
+                      <Badge className="bg-green-500">Active</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="bg-red-500 text-white">Inactive</Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Joined Date</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span>{new Date(selectedMember.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category */}
+              <div className="p-3 bg-blue-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">
+                    Category: {getRoleCategory(selectedMember.role)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsViewingMember(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
