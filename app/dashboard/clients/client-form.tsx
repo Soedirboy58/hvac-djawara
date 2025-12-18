@@ -65,23 +65,25 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
     },
   })
 
-  // Fetch ALL partners (both active and passive)
+  // Fetch ONLY active partners (who have activated their accounts)
   useEffect(() => {
     async function fetchSalesPeople() {
       setLoadingSalesPeople(true)
       try {
-        // Get all partners from partnership_network view
+        // Get only ACTIVE partners (those with user_id) from partnership_network view
         const { data, error } = await supabase
           .from('partnership_network')
           .select('id, full_name, role, partnership_status, user_id')
           .eq('tenant_id', tenantId)
+          .eq('partnership_status', 'active') // Only active partners
+          .not('user_id', 'is', null) // Must have user_id (activated account)
           .order('full_name')
 
         if (error) throw error
 
         const formattedData = data?.map(partner => ({
-          id: partner.user_id || partner.id, // Use user_id if activated, otherwise use invitation id
-          full_name: `${partner.full_name}${partner.partnership_status === 'passive' ? ' (Passive Partner)' : ''}`,
+          id: partner.user_id, // Use user_id (which exists in profiles table)
+          full_name: partner.full_name,
           role: partner.role
         })) || []
 
