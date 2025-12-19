@@ -367,6 +367,12 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         
         console.log(`Public URL for photo ${i + 1}:`, publicUrl);
         
+        // Revoke old object URL before replacing
+        const oldPreview = photos[photoIndex]?.preview;
+        if (oldPreview && oldPreview.startsWith('blob:')) {
+          URL.revokeObjectURL(oldPreview);
+        }
+        
         // Update photo with uploaded URL
         setPhotos(prev => prev.map((p, idx) => 
           idx === photoIndex ? { 
@@ -926,7 +932,13 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
                       <img
                         src={photo.preview}
                         alt={`Preview ${index + 1}`}
-                        className="w-24 h-24 object-cover rounded"
+                        className="w-24 h-24 object-cover rounded bg-gray-100"
+                        crossOrigin="anonymous"
+                        loading="lazy"
+                        onError={(e) => {
+                          console.error('Image load error:', photo.preview);
+                          e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">Error</text></svg>';
+                        }}
                       />
                       {/* Upload Success Badge on Image */}
                       {photo.uploaded && (
