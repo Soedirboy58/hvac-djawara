@@ -3,6 +3,12 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('work-photos', 'work-photos', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Technicians can upload work photos" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can view work photos" ON storage.objects;
+DROP POLICY IF EXISTS "Technicians can update their photos" ON storage.objects;
+DROP POLICY IF EXISTS "Technicians can delete their photos" ON storage.objects;
+
 -- RLS Policies for work-photos bucket
 CREATE POLICY "Technicians can upload work photos"
 ON storage.objects FOR INSERT
