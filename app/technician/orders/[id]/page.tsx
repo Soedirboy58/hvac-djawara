@@ -390,9 +390,10 @@ export default function WorkOrderDetailPage() {
               technicianId={technicianId}
               onSuccess={() => {
                 toast.success("Laporan pekerjaan berhasil disimpan!");
-                // Use replace to force fresh data load
-                router.replace("/technician/dashboard");
-                router.refresh();
+                // Force hard navigation to dashboard with timestamp to bust cache
+                setTimeout(() => {
+                  window.location.href = "/technician/dashboard?refresh=" + Date.now();
+                }, 500);
               }}
             />
           </>
