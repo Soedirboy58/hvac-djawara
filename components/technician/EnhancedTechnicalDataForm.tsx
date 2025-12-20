@@ -6,10 +6,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Upload, X, Loader2, Plus, Trash2, PenTool, Save, MapPin, Navigation, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import SignatureCanvas from "react-signature-canvas";
+import { ACUnitDataTable, ACUnitData } from "./ACUnitDataTable";
+import { MaintenanceUnitTable, MaintenanceUnitData } from "./MaintenanceUnitTable";
 
 interface Sparepart {
   id: string;
@@ -34,6 +43,14 @@ interface TechnicalDataFormProps {
 }
 
 export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuccess }: TechnicalDataFormProps) {
+  // Work type selection
+  const [workType, setWorkType] = useState<string>("");
+  const [checkType, setCheckType] = useState<string>(""); // For Pengecekan: survey or performa
+  
+  // Conditional data
+  const [acUnits, setAcUnits] = useState<ACUnitData[]>([]);
+  const [maintenanceUnits, setMaintenanceUnits] = useState<MaintenanceUnitData[]>([]);
+  
   // Basic form data
   const [formData, setFormData] = useState({
     // BAST Fields
@@ -464,8 +481,46 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   // Submit form
   const handleSubmit = async () => {
     // Validation
-    if (!formData.problem || !formData.tindakan) {
-      toast.error("Problem dan Tindakan wajib diisi");
+    if (!workType) {
+      toast.error("Pilih kategori rincian pekerjaan terlebih dahulu");
+      return;
+    }
+    
+    // Conditional validation based on work type
+    if (workType === "pengecekan") {
+      if (!checkType) {
+        toast.error("Pilih jenis pengecekan");
+        return;
+      }
+      if (checkType === "performa" && acUnits.length === 0) {
+        toast.error("Tambahkan minimal 1 data unit untuk pengecekan performa");
+        return;
+      }
+      if (checkType === "survey" && !formData.rincian_pekerjaan) {
+        toast.error("Detail survey wajib diisi");
+        return;
+      }
+    }
+    
+    if (workType === "pemeliharaan" && maintenanceUnits.length === 0) {
+      toast.error("Tambahkan minimal 1 unit untuk pemeliharaan");
+      return;
+    }
+    
+    if (workType === "troubleshooting") {
+      if (!formData.rincian_pekerjaan || !formData.problem || !formData.tindakan) {
+        toast.error("Rincian pekerjaan, Problem, dan Tindakan wajib diisi untuk troubleshooting");
+        return;
+      }
+    }
+    
+    if (workType === "instalasi" && !formData.rincian_pekerjaan) {
+      toast.error("Detail instalasi wajib diisi");
+      return;
+    }
+    
+    if (workType === "lain-lain" && !formData.rincian_pekerjaan) {
+      toast.error("Rincian pekerjaan wajib diisi");
       return;
     }
     
@@ -498,6 +553,12 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         technician_id: technicianId,
         assignment_id: assignmentId,
         log_type: 'technical_report',
+        
+        // NEW: Conditional form data
+        work_type: workType,
+        check_type: checkType || null,
+        ac_units_data: workType === 'pengecekan' && checkType === 'performa' ? acUnits : null,
+        maintenance_units_data: workType === 'pemeliharaan' ? maintenanceUnits : null,
         
         // BAST fields
         nama_personal: formData.nama_personal,
@@ -739,6 +800,138 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         </CardContent>
       </Card>
 
+      {/* NEW: Rincian Pekerjaan Dropdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Kategori Rincian Pekerjaan</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Pilih Kategori <span className="text-red-500">*</span></Label>
+            <Select value={workType} onValueChange={setWorkType}>
+              <SelectTrigger>
+                <SelectValue placeholder="-- Pilih kategori pekerjaan --" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pengecekan">Pengecekan</SelectItem>
+                <SelectItem value="pemeliharaan">Pemeliharaan</SelectItem>
+                <SelectItem value="troubleshooting">Troubleshooting</SelectItem>
+                <SelectItem value="instalasi">Instalasi</SelectItem>
+                <SelectItem value="lain-lain">Lain-lain</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Form di bawah akan menyesuaikan dengan kategori yang dipilih
+            </p>
+          </div>
+
+          {/* Conditional Fields Based on Work Type */}
+          {workType === "pengecekan" && (
+            <div className="space-y-4 pt-4 border-t">
+              <div>
+                <Label>Jenis Pengecekan <span className="text-red-500">*</span></Label>
+                <Select value={checkType} onValueChange={setCheckType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="-- Pilih jenis pengecekan --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="survey">Survey Pemasangan AC</SelectItem>
+                    <SelectItem value="performa">Check Performa AC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {checkType === "performa" && (
+                <div className="space-y-4">
+                  <ACUnitDataTable data={acUnits} onChange={setAcUnits} />
+                </div>
+              )}
+
+              {checkType === "survey" && (
+                <div>
+                  <Label>Detail Survey</Label>
+                  <Textarea
+                    value={formData.rincian_pekerjaan}
+                    onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
+                    placeholder="Jelaskan hasil survey lokasi pemasangan..."
+                    rows={4}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {workType === "pemeliharaan" && (
+            <div className="space-y-4 pt-4 border-t">
+              <MaintenanceUnitTable 
+                data={maintenanceUnits} 
+                onChange={setMaintenanceUnits} 
+              />
+            </div>
+          )}
+
+          {workType === "troubleshooting" && (
+            <div className="space-y-4 pt-4 border-t">
+              <div>
+                <Label>Rincian Pekerjaan Service <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={formData.rincian_pekerjaan}
+                  onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
+                  placeholder="1. Diagnosa masalah&#10;2. Perbaikan yang dilakukan&#10;3. ..."
+                  rows={4}
+                />
+              </div>
+              <div>
+                <Label>Problem / Kerusakan <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={formData.problem}
+                  onChange={(e) => handleInputChange('problem', e.target.value)}
+                  placeholder="Jelaskan problem/kerusakan yang ditemukan..."
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Tindakan / Solusi <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={formData.tindakan}
+                  onChange={(e) => handleInputChange('tindakan', e.target.value)}
+                  placeholder="Jelaskan tindakan perbaikan yang dilakukan..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          {workType === "instalasi" && (
+            <div className="space-y-4 pt-4 border-t">
+              <div>
+                <Label>Detail Instalasi <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={formData.rincian_pekerjaan}
+                  onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
+                  placeholder="1. Pemasangan unit indoor&#10;2. Pemasangan unit outdoor&#10;3. Penarikan kabel&#10;4. ..."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+
+          {workType === "lain-lain" && (
+            <div className="space-y-4 pt-4 border-t">
+              <div>
+                <Label>Rincian Pekerjaan <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={formData.rincian_pekerjaan}
+                  onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
+                  placeholder="Jelaskan detail pekerjaan yang dilakukan..."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Waktu Pengerjaan */}
       <Card>
         <CardHeader>
@@ -766,59 +959,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         </CardContent>
       </Card>
 
-      {/* Rincian Pekerjaan */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Rincian Pekerjaan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={formData.rincian_pekerjaan}
-            onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
-            placeholder="1. Pengecekan kinerja AC&#10;2. Pembersihan filter&#10;3. ..."
-            rows={4}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Rincian Kerusakan */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Rincian Kerusakan AC</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            value={formData.rincian_kerusakan}
-            onChange={(e) => handleInputChange('rincian_kerusakan', e.target.value)}
-            placeholder="1. PCB Indoor rusak&#10;2. Kabel komunikasi bermasalah&#10;3. ..."
-            rows={3}
-          />
-          
-          <div>
-            <Label>Problem Detail <span className="text-red-500">*</span></Label>
-            <Textarea
-              value={formData.problem}
-              onChange={(e) => handleInputChange('problem', e.target.value)}
-              placeholder="Jelaskan masalah teknis secara detail..."
-              rows={3}
-              required
-            />
-          </div>
-          
-          <div>
-            <Label>Tindakan / Solusi <span className="text-red-500">*</span></Label>
-            <Textarea
-              value={formData.tindakan}
-              onChange={(e) => handleInputChange('tindakan', e.target.value)}
-              placeholder="Jelaskan tindakan perbaikan yang dilakukan..."
-              rows={3}
-              required
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sparepart / Material */}
+      {/* Sparepart / Material - Show for troubleshooting, instalasi, and pengecekan */}
+      {(workType === "troubleshooting" || workType === "instalasi" || workType === "pengecekan") && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -884,6 +1026,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Catatan & Rekomendasi */}
       <Card>
