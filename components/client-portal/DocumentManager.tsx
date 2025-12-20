@@ -434,14 +434,31 @@ export function DocumentManager({ clientId }: DocumentManagerProps) {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDownload(doc)}
-                        title="Download"
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
+                      {/* If it's a BAST technical report, use API route */}
+                      {doc.document_type === 'bast' && doc.related_order_id ? (
+                        <a
+                          href={`/api/reports/${doc.related_order_id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Download PDF"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </a>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDownload(doc)}
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"

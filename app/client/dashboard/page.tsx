@@ -272,13 +272,15 @@ export default async function ClientDashboardPage() {
                       })}
                     </p>
                     {order.status === 'completed' && (
-                      <Link
-                        href={`/client/orders/${order.id}/report`}
+                      <a
+                        href={`/api/reports/${order.id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         <Download className="w-4 h-4" />
                         Download PDF Report
-                      </Link>
+                      </a>
                     )}
                   </div>
                 </div>

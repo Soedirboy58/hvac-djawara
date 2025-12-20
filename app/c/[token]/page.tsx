@@ -374,12 +374,12 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                               : 'Not scheduled'}
                           </div>
                           {order.status === 'completed' && (
-                            <Link href={`/client/orders/${order.id}/report`} className="flex-shrink-0">
+                            <a href={`/api/reports/${order.id}/pdf`} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
                               <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                                 <Download className="w-4 h-4 mr-2" />
                                 Download PDF Report
                               </Button>
-                            </Link>
+                            </a>
                           )}
                         </div>
                       </div>
