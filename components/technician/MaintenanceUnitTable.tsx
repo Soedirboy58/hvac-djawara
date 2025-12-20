@@ -92,14 +92,15 @@ export function MaintenanceUnitTable({
       const supabase = createClient();
       
       const { data: inventoryData, error } = await supabase
-        .from("ac_inventory")
+        .from("ac_units")
         .select(`
           id,
           unit_code,
-          properties!inner(name),
+          client_properties!inner(property_name),
           location_detail,
-          brand_model,
-          capacity,
+          brand,
+          model,
+          capacity_pk,
           ac_type
         `)
         .order("unit_code");
@@ -108,12 +109,12 @@ export function MaintenanceUnitTable({
       
       const mapped = inventoryData?.map((item: any) => ({
         id: item.id,
-        unit_code: item.unit_code,
-        property_name: item.properties?.name || "",
+        unit_code: item.unit_code || "",
+        property_name: item.client_properties?.property_name || "",
         location_detail: item.location_detail || "",
-        brand_model: item.brand_model,
-        capacity: item.capacity,
-        ac_type: item.ac_type,
+        brand_model: `${item.brand || ""} ${item.model || ""}`.trim(),
+        capacity: item.capacity_pk ? `${item.capacity_pk} PK` : "",
+        ac_type: item.ac_type || "",
       })) || [];
       
       setInventoryUnits(mapped);
