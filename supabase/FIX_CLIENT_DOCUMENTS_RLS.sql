@@ -1,7 +1,11 @@
 -- Fix client_documents RLS policies for admin/staff access
 
--- Drop existing policies
+-- Drop ALL existing policies first
 DROP POLICY IF EXISTS "Staff can manage all client documents" ON public.client_documents;
+DROP POLICY IF EXISTS "Staff can view all client documents" ON public.client_documents;
+DROP POLICY IF EXISTS "Staff can insert client documents" ON public.client_documents;
+DROP POLICY IF EXISTS "Staff can update client documents" ON public.client_documents;
+DROP POLICY IF EXISTS "Staff can delete client documents" ON public.client_documents;
 DROP POLICY IF EXISTS "Clients can view own documents" ON public.client_documents;
 
 -- Staff/Admin can view and manage all documents in their tenant
