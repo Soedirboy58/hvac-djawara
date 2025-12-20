@@ -436,6 +436,12 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const saveSpareparts = async (workLogId: string) => {
     const supabase = createClient();
     
+    // First, delete existing spareparts for this work log to avoid duplicates
+    await supabase
+      .from("work_order_spareparts")
+      .delete()
+      .eq("work_log_id", workLogId);
+    
     const sparepartsData = spareparts
       .filter(sp => sp.name.trim())
       .map(sp => ({
