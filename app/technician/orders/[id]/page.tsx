@@ -204,54 +204,47 @@ export default function WorkOrderDetailPage() {
   const handleCheckOut = async () => {
     try {
       setUploading(true);
-      const location = await getCurrentLocation();
       const supabase = createClient();
 
       let photoBeforeUrl = workLog?.photo_before_url;
-      let photoAfterUrl = workLog?.photo_after_url;
 
-      // Upload photos if provided
+      // Upload photo before if provided
       if (photoBefore && !photoBeforeUrl) {
         photoBeforeUrl = await uploadPhoto(photoBefore, "before");
       }
-      if (photoAfter) {
-        photoAfterUrl = await uploadPhoto(photoAfter, "after");
-      }
 
-      // Update work log
+      // Update work log with photo before only
       const { error } = await supabase
         .from("technician_work_logs")
         .update({
-          check_out_time: new Date().toISOString(),
-          location_lat: location.lat,
-          location_lng: location.lng,
           notes: notes,
           photo_before_url: photoBeforeUrl,
-          photo_after_url: photoAfterUrl,
         })
         .eq("id", workLog!.id);
 
       if (error) throw error;
 
-      toast.success("Check-out berhasil!");
+      toast.success("Foto sebelum berhasil disimpan!");
 
-      // Update assignment status
+      // Update assignment status to completed so technician can fill technical report
       await supabase
         .from("work_order_assignments")
         .update({ assignment_status: "completed" })
         .eq("service_order_id", orderId)
         .eq("technician_id", technicianId);
 
-      // Update order status
+      // Update order status to completed - will trigger technical form display
       await supabase
         .from("service_orders")
         .update({ status: "completed" })
         .eq("id", orderId);
 
-      router.push("/technician/dashboard");
+      // Refresh the page to show technical form
+      fetchWorkOrderData();
+      
     } catch (error: any) {
-      console.error("Check-out error:", error);
-      toast.error(error.message || "Check-out gagal");
+      console.error("Save photo error:", error);
+      toast.error(error.message || "Gagal menyimpan foto");
     } finally {
       setUploading(false);
     }
@@ -415,15 +408,15 @@ export default function WorkOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Photos */}
+            {/* Photo Before */}
             {isCheckedIn && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Foto Pekerjaan</CardTitle>
+                  <CardTitle className="text-base">Foto Sebelum Pekerjaan</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label htmlFor="photo-before">Foto Sebelum</Label>
+                    <Label htmlFor="photo-before">Upload Foto Sebelum</Label>
                     <Input
                       id="photo-before"
                       type="file"
@@ -435,21 +428,9 @@ export default function WorkOrderDetailPage() {
                     {workLog?.photo_before_url && (
                       <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
                     )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="photo-after">Foto Sesudah</Label>
-                    <Input
-                      id="photo-after"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setPhotoAfter(e.target.files?.[0] || null)}
-                      disabled={isCompleted}
-                    />
-                    {workLog?.photo_after_url && (
-                      <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Foto sesudah akan diupload di form laporan teknis
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -493,7 +474,7 @@ export default function WorkOrderDetailPage() {
                   ) : (
                     <>
                       <CheckCircle2 className="mr-2 h-5 w-5" />
-                      Check-out & Selesaikan
+                      Simpan & Lanjut ke Laporan Teknis
                     </>
                   )}
                 </Button>
