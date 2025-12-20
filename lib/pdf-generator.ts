@@ -170,14 +170,12 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     styles: {
       fontSize: 9,
       cellPadding: 3,
-      overflow: 'linebreak',
-      cellWidth: 'wrap'
     },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 30, fillColor: colors.light },
-      1: { cellWidth: 55, overflow: 'linebreak' },
-      2: { fontStyle: 'bold', cellWidth: 25, fillColor: colors.light },
-      3: { cellWidth: 70, overflow: 'linebreak' },
+      0: { fontStyle: 'bold', cellWidth: 25, fillColor: colors.light },
+      1: { cellWidth: 60 },
+      2: { fontStyle: 'bold', cellWidth: 20, fillColor: colors.light },
+      3: { cellWidth: 75 },
     },
     margin: { left: 15, right: 15 },
   });
@@ -523,7 +521,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   
   autoTable(doc, {
     startY: sigStartY,
-    head: [["Pemilik / Penanggung Jawab", "Teknisi Yang Bertugas"]],
+    head: [["Pemilik/Penanggung Jawab", "Teknisi"]],
     body: [["", ""]],
     theme: "grid",
     headStyles: {
@@ -533,6 +531,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       halign: 'center',
       lineColor: colors.primary,
       lineWidth: 0.5,
+      fontSize: 9,
     },
     styles: {
       fontSize: 9,
@@ -542,10 +541,11 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       lineWidth: 0.5,
     },
     columnStyles: {
-      0: { cellWidth: 90, halign: 'center' },
-      1: { cellWidth: 90, halign: 'center' },
+      0: { cellWidth: 95, halign: 'center' },
+      1: { cellWidth: 85, halign: 'center' },
     },
     margin: { left: 15, right: 15 },
+    tableWidth: 'auto',
     didDrawCell: function(data) {
       // Draw signatures in the body cells
       if (data.section === 'body' && data.row.index === 0) {
