@@ -865,7 +865,9 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
             <div className="space-y-4 pt-4 border-t">
               <MaintenanceUnitTable 
                 data={maintenanceUnits} 
-                onChange={setMaintenanceUnits} 
+                onChange={setMaintenanceUnits}
+                orderId={orderId}
+                technicianId={technicianId}
               />
             </div>
           )}
