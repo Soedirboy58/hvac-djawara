@@ -1,6 +1,32 @@
 # Djawara HVAC Platform
 
-Multi-tenant SaaS platform for HVAC service management in Indonesia.
+> **Last Updated:** December 20, 2025  
+> **Status:** ✅ Production Ready - All Core Features Working  
+> **Latest Fix:** PDF Generation (Client-Side Architecture)
+
+---
+
+## 🤖 FOR AI AGENTS - START HERE
+
+**📖 Read These Documents First:**
+1. **[docs/ai-handoff/2025-12-20-PDF-GENERATION-FIX.md](docs/ai-handoff/2025-12-20-PDF-GENERATION-FIX.md)** ← Latest session (PDF system complete)
+2. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** ← System architecture overview
+3. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** ← Database structure reference
+
+**✅ Current System Status:**
+- PDF Generation: ✅ Working (client-side jsPDF)
+- Technical Reports: ✅ Complete workflow
+- Photo Upload: ✅ Real-time with progress
+- Timeline Updates: ✅ Badge detection working
+- All Portals: ✅ Admin, technician, client, public
+
+**🔧 Key Files:**
+- `components/technician/EnhancedTechnicalDataForm.tsx` - Report form (1215 lines)
+- `components/client-portal/DownloadPDFButton.tsx` - PDF download (65 lines)
+- `lib/pdf-generator.ts` - Client-side PDF gen (273 lines)
+- `app/api/reports/[orderId]/pdf/route.ts` - API endpoint (107 lines)
+
+---
 
 ## 🚀 Tech Stack
 
