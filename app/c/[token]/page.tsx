@@ -30,6 +30,7 @@ import {
   Download
 } from 'lucide-react'
 import Link from 'next/link'
+import { DownloadPDFButton } from '@/components/client-portal/DownloadPDFButton'
 
 interface PublicClientPageProps {
   params: {
@@ -374,31 +375,11 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                               : 'Not scheduled'}
                           </div>
                           {order.status === 'completed' && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const response = await fetch(`/api/reports/${order.id}/pdf`);
-                                  if (!response.ok) throw new Error('Failed');
-                                  
-                                  const data = await response.json();
-                                  const { generateTechnicalReportPDF } = await import('@/lib/pdf-generator');
-                                  const pdfBlob = await generateTechnicalReportPDF(data);
-                                  
-                                  const url = URL.createObjectURL(pdfBlob);
-                                  const a = document.createElement('a');
-                                  a.href = url;
-                                  a.download = `Laporan-${order.order_number}.pdf`;
-                                  a.click();
-                                  URL.revokeObjectURL(url);
-                                } catch (err) {
-                                  alert('Gagal download PDF');
-                                }
-                              }}
-                              className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm inline-flex items-center gap-2"
-                            >
-                              <Download className="w-4 h-4" />
-                              Download PDF Report
-                            </button>
+                            <DownloadPDFButton
+                              orderId={order.id}
+                              orderNumber={order.order_number}
+                              className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
+                            />
                           )}
                         </div>
                       </div>

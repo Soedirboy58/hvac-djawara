@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Package, FileText, CheckCircle, Calendar, Users, Download } from 'lucide-react'
 import Link from 'next/link'
+import { DownloadPDFButton } from '@/components/client-portal/DownloadPDFButton'
 
 export default async function ClientDashboardPage() {
   const supabase = await createClient()
@@ -272,33 +273,12 @@ export default async function ClientDashboardPage() {
                       })}
                     </p>
                     {order.status === 'completed' && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const response = await fetch(`/api/reports/${order.id}/pdf`);
-                            if (!response.ok) throw new Error('Failed to fetch');
-                            
-                            const data = await response.json();
-                            const { generateTechnicalReportPDF } = await import('@/lib/pdf-generator');
-                            const pdfBlob = await generateTechnicalReportPDF(data);
-                            
-                            const url = URL.createObjectURL(pdfBlob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `Laporan-${order.order_number}.pdf`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                          } catch (err) {
-                            alert('Gagal download PDF');
-                          }
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" />
-                        Download PDF Report
-                      </button>
+                      <DownloadPDFButton
+                        orderId={order.id}
+                        orderNumber={order.order_number}
+                        size="default"
+                        className="bg-blue-600 hover:bg-blue-700"
+                      />
                     )}
                   </div>
                 </div>

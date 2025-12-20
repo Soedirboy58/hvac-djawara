@@ -25,6 +25,7 @@ import {
   Eye
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { generateTechnicalReportPDF } from '@/lib/pdf-generator'
 
 interface Document {
   id: string
@@ -466,16 +467,34 @@ export function DocumentManager({ clientId }: DocumentManagerProps) {
                             try {
                               // Fetch report data
                               const response = await fetch(`/api/reports/${doc.related_order_id}/pdf`);
-                              if (!response.ok) throw new Error('Failed to fetch report data');
+                              if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.error || 'Failed to fetch report data');
+                              }
                               
                               const data = await response.json();
                               
-                              // Dynamic import to avoid SSR issues
-                              const { generateTechnicalReportPDF } = await import('@/lib/pdf-generator');
+                              // Generate PDF in browser
                               const pdfBlob = await generateTechnicalReportPDF(data);
                               
                               // Download PDF
                               const url = URL.createObjectURL(pdfBlob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `${doc.document_name}.pdf`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            } catch (err) {
+                              console.error('Error generating PDF:', err);
+                              alert(`Gagal generate PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                            }
+                          }}
+                          title="Download PDF"
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
                               const a = document.createElement('a');
                               a.href = url;
                               a.download = `${doc.document_name}.pdf`;
