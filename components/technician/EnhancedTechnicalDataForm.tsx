@@ -509,14 +509,24 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       }
       
       // Validate each unit has required fields
-      for (const unit of maintenanceUnits) {
+      for (let i = 0; i < maintenanceUnits.length; i++) {
+        const unit = maintenanceUnits[i];
+        console.log(`Unit ${i + 1} validation:`, {
+          nama_ruang: unit.nama_ruang,
+          merk_ac: unit.merk_ac,
+          kapasitas_ac: unit.kapasitas_ac,
+          kondisi_ac: unit.kondisi_ac,
+          status_ac: unit.status_ac,
+          catatan_rekomendasi: unit.catatan_rekomendasi
+        });
+        
         if (!unit.nama_ruang || !unit.merk_ac || !unit.kapasitas_ac || !unit.kondisi_ac || !unit.status_ac) {
-          toast.error("Semua field unit yang bertanda (*) wajib diisi");
+          toast.error(`Unit ${i + 1}: Semua field yang bertanda (*) wajib diisi`);
           return;
         }
         // If status is optimasi, catatan_rekomendasi is required
         if (unit.status_ac === "optimasi" && !unit.catatan_rekomendasi) {
-          toast.error("Catatan Perbaikan wajib diisi untuk AC yang perlu dioptimasi");
+          toast.error(`Unit ${i + 1}: Catatan Perbaikan wajib diisi untuk AC yang perlu dioptimasi`);
           return;
         }
       }
