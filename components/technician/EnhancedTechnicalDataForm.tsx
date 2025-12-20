@@ -219,6 +219,27 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           }
         }, 500);
         
+        // Load work type and conditional data
+        if (existingWorkLog.work_type) {
+          setWorkType(existingWorkLog.work_type);
+          console.log('Loaded work_type:', existingWorkLog.work_type);
+        }
+        
+        if (existingWorkLog.check_type) {
+          setCheckType(existingWorkLog.check_type);
+          console.log('Loaded check_type:', existingWorkLog.check_type);
+        }
+        
+        if (existingWorkLog.ac_units_data && Array.isArray(existingWorkLog.ac_units_data)) {
+          setAcUnits(existingWorkLog.ac_units_data);
+          console.log('Loaded AC units data:', existingWorkLog.ac_units_data.length, 'units');
+        }
+        
+        if (existingWorkLog.maintenance_units_data && Array.isArray(existingWorkLog.maintenance_units_data)) {
+          setMaintenanceUnits(existingWorkLog.maintenance_units_data);
+          console.log('Loaded maintenance units data:', existingWorkLog.maintenance_units_data.length, 'units');
+        }
+        
         // Load photos
         if (existingWorkLog.documentation_photos && existingWorkLog.documentation_photos.length > 0) {
           const loadedPhotos = existingWorkLog.documentation_photos.map((url: string, idx: number) => ({
