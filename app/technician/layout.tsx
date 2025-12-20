@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { TechnicianSidebar } from "@/components/layout/technician-sidebar";
 
 export default function TechnicianLayout({
   children,
@@ -11,15 +12,20 @@ export default function TechnicianLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
+
+  // Pages that don't need sidebar
+  const noSidebarPages = ["/technician/login", "/technician/verify"];
+  const showSidebar = !noSidebarPages.includes(pathname);
 
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Allow access to verify page without auth
-      if (window.location.pathname === "/technician/verify") {
+      // Allow access to verify and login pages without auth
+      if (noSidebarPages.includes(pathname)) {
         setLoading(false);
         return;
       }
@@ -46,7 +52,7 @@ export default function TechnicianLayout({
     };
 
     checkAuth();
-  }, [router]);
+  }, [router, pathname]);
 
   if (loading) {
     return (
@@ -56,9 +62,20 @@ export default function TechnicianLayout({
     );
   }
 
+  if (!showSidebar) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {children}
+      <TechnicianSidebar />
+      <main className="ml-64">
+        {children}
+      </main>
     </div>
   );
 }
