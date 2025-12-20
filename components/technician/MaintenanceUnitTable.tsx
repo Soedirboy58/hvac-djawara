@@ -512,9 +512,9 @@ export function MaintenanceUnitTable({
                 </div>
                 
                 {(!unit.photos || unit.photos.length < 4) && (
-                  <div>
+                  <div className="space-y-2">
                     <input
-                      id={`photo-${unit.id}`}
+                      id={`photo-gallery-${unit.id}`}
                       type="file"
                       accept="image/*"
                       multiple
@@ -527,20 +527,48 @@ export function MaintenanceUnitTable({
                         }
                       }}
                     />
-                    <label htmlFor={`photo-${unit.id}`}>
+                    <input
+                      id={`photo-camera-${unit.id}`}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) {
+                          handlePhotoSelect(unit.id, files);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    
+                    <div className="grid grid-cols-2 gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        asChild
                         className="w-full"
+                        onClick={() => document.getElementById(`photo-gallery-${unit.id}`)?.click()}
                       >
-                        <span className="cursor-pointer">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Tambah Foto ({4 - (unit.photos?.length || 0)} slot tersisa)
-                        </span>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Galeri
                       </Button>
-                    </label>
+                      
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => document.getElementById(`photo-camera-${unit.id}`)?.click()}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Kamera
+                      </Button>
+                    </div>
+                    
+                    <p className="text-xs text-center text-gray-500">
+                      {4 - (unit.photos?.length || 0)} slot foto tersisa
+                    </p>
                   </div>
                 )}
               </div>
