@@ -96,6 +96,17 @@ interface WorkLogData {
 export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blob> {
   const doc = new jsPDF();
   
+  // Color palette
+  const colors = {
+    primary: [41, 128, 185] as [number, number, number],      // Blue
+    success: [39, 174, 96] as [number, number, number],        // Green
+    warning: [243, 156, 18] as [number, number, number],       // Orange
+    danger: [231, 76, 60] as [number, number, number],         // Red
+    dark: [44, 62, 80] as [number, number, number],            // Dark blue-gray
+    light: [236, 240, 241] as [number, number, number],        // Light gray
+    white: [255, 255, 255] as [number, number, number],
+  };
+  
   // Normalize field names (support both snake_case and camelCase)
   const orderNumber = data.order_number || data.orderNumber || 'N/A';
   const serviceTitle = data.service_title || data.serviceTitle || 'N/A';
@@ -110,54 +121,83 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   const signatureDate = data.signature_date || data.signatureDate;
   const photoCaptions = data.photo_captions || data.photoCaptions;
   
-  // Header
-  doc.setFontSize(18);
+  // Helper function to draw colored box
+  const drawBox = (x: number, y: number, width: number, height: number, fillColor: number[], borderColor?: number[]) => {
+    doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+    if (borderColor) {
+      doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+      doc.setLineWidth(0.5);
+    }
+    doc.rect(x, y, width, height, borderColor ? 'FD' : 'F');
+  };
+  
+  // Header with colored background
+  drawBox(0, 0, 210, 40, colors.primary);
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
-  doc.text("LAPORAN PEKERJAAN TEKNIS", 105, 20, { align: "center" });
+  doc.text("BERITA ACARA SERAH TERIMA", 105, 18, { align: "center" });
+  
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "normal");
+  doc.text("Laporan Pekerjaan Teknis", 105, 26, { align: "center" });
   
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text("HVAC Djawara Service", 105, 27, { align: "center" });
+  doc.text("HVAC Djawara Service", 105, 33, { align: "center" });
   
-  // Line separator
-  doc.setLineWidth(0.5);
-  doc.line(20, 32, 190, 32);
+  // Reset text color
+  doc.setTextColor(0, 0, 0);
   
-  let yPos = 40;
+  let yPos = 50;
   
-  // Order Info
-  doc.setFontSize(11);
+  // Order Info Card
+  drawBox(15, yPos - 3, 180, 42, colors.light, colors.primary);
+  
+  doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
-  doc.text("Informasi Order", 20, yPos);
-  yPos += 7;
+  doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+  doc.text("📋 INFORMASI PEKERJAAN", 20, yPos + 3);
   
-  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text(`No. Order: ${orderNumber}`, 25, yPos);
-  yPos += 6;
-  doc.text(`Layanan: ${serviceTitle}`, 25, yPos);
-  yPos += 6;
-  doc.text(`Klien: ${clientName}`, 25, yPos);
-  yPos += 6;
-  doc.text(`Lokasi: ${location}`, 25, yPos);
-  yPos += 6;
-  doc.text(`Tanggal: ${new Date(scheduledDate).toLocaleDateString("id-ID")}`, 25, yPos);
-  yPos += 6;
-  doc.text(`Teknisi: ${technicianName}`, 25, yPos);
-  yPos += 10;
+  
+  // Left column
+  doc.setFont("helvetica", "bold");
+  doc.text("No. Order", 20, yPos + 11);
+  doc.text("Layanan", 20, yPos + 18);
+  doc.text("Klien", 20, yPos + 25);
+  
+  doc.setFont("helvetica", "normal");
+  doc.text(`: ${orderNumber}`, 50, yPos + 11);
+  doc.text(`: ${serviceTitle}`, 50, yPos + 18);
+  doc.text(`: ${clientName}`, 50, yPos + 25);
+  
+  // Right column
+  doc.setFont("helvetica", "bold");
+  doc.text("Lokasi", 110, yPos + 11);
+  doc.text("Tanggal", 110, yPos + 18);
+  doc.text("Teknisi", 110, yPos + 25);
+  
+  doc.setFont("helvetica", "normal");
+  const locationText = location.length > 30 ? location.substring(0, 30) + '...' : location;
+  doc.text(`: ${locationText}`, 130, yPos + 11);
+  doc.text(`: ${new Date(scheduledDate).toLocaleDateString("id-ID", { day: '2-digit', month: 'short', year: 'numeric' })}`, 130, yPos + 18);
+  doc.text(`: ${technicianName}`, 130, yPos + 25);
+  
+  yPos += 50;
   
   // Technical Details - Conditional based on work_type
   doc.setFont("helvetica", "bold");
-  doc.text("Detail Pekerjaan", 20, yPos);
-  yPos += 7;
-  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);
+  doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+  doc.text("🔧 DETAIL PEKERJAAN", 20, yPos);
+  yPos += 8;
+  doc.setTextColor(0, 0, 0);
   
-  // Handle PEMELIHARAAN work type
+  // Handle PEMELIHARAAN work type with visual cards
   if (data.work_type === 'pemeliharaan' && data.maintenance_units_data && data.maintenance_units_data.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Data Unit AC - Pemeliharaan", 25, yPos);
-    yPos += 7;
-    
     for (let i = 0; i < data.maintenance_units_data.length; i++) {
       const unit = data.maintenance_units_data[i];
       
@@ -166,89 +206,157 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         yPos = 20;
       }
       
+      // Unit card with colored header
+      const cardHeight = 45;
+      drawBox(15, yPos - 2, 180, cardHeight, [250, 250, 255], colors.primary);
+      
+      // Unit header
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.rect(15, yPos - 2, 180, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
-      doc.text(`Unit ${i + 1}: ${unit.nama_ruang || 'N/A'}`, 25, yPos);
-      yPos += 6;
+      doc.text(`🏢 Unit ${i + 1}: ${unit.nama_ruang || 'N/A'}`, 20, yPos + 3);
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(9);
+      yPos += 12;
+      
+      // Unit details in 2 columns
+      doc.setFont("helvetica", "bold");
+      doc.text("Merk AC", 20, yPos);
+      doc.text("Kapasitas", 20, yPos + 6);
+      doc.text("Kondisi AC", 20, yPos + 12);
       
       doc.setFont("helvetica", "normal");
-      doc.text(`Merk AC: ${unit.merk_ac || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Kapasitas: ${unit.kapasitas_ac || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Kondisi AC: ${unit.kondisi_ac || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Status AC: ${unit.status_ac || 'N/A'}`, 30, yPos);
-      yPos += 5;
+      doc.text(`: ${unit.merk_ac || 'N/A'}`, 45, yPos);
+      doc.text(`: ${unit.kapasitas_ac || 'N/A'}`, 45, yPos + 6);
       
+      // Status kondisi dengan warna
+      const kondisiText = unit.kondisi_ac || 'N/A';
+      doc.text(`: `, 45, yPos + 12);
+      if (kondisiText.includes('bersih')) {
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+      } else if (kondisiText.includes('kotor')) {
+        doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+      }
+      doc.text(kondisiText, 48, yPos + 12);
+      doc.setTextColor(0, 0, 0);
+      
+      // Right column
+      doc.setFont("helvetica", "bold");
+      doc.text("Status AC", 110, yPos + 12);
+      doc.setFont("helvetica", "normal");
+      doc.text(`: `, 135, yPos + 12);
+      
+      const statusText = unit.status_ac || 'N/A';
+      if (statusText.includes('normal') || statusText.includes('selesai')) {
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+        doc.text(`✓ ${statusText}`, 138, yPos + 12);
+      } else {
+        doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+        doc.text(`⚠ ${statusText}`, 138, yPos + 12);
+      }
+      doc.setTextColor(0, 0, 0);
+      
+      yPos += 18;
+      
+      // Catatan/Rekomendasi jika ada
       if (unit.catatan_rekomendasi) {
-        doc.text(`Catatan/Rekomendasi:`, 30, yPos);
-        yPos += 5;
-        const catatanLines = doc.splitTextToSize(unit.catatan_rekomendasi, 150);
-        doc.text(catatanLines, 35, yPos);
-        yPos += catatanLines.length * 5 + 5;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.text("📝 Catatan/Rekomendasi:", 20, yPos);
+        yPos += 4;
+        doc.setFont("helvetica", "normal");
+        const catatanLines = doc.splitTextToSize(unit.catatan_rekomendasi, 170);
+        doc.text(catatanLines, 20, yPos);
+        yPos += catatanLines.length * 4;
       }
       
-      yPos += 3;
+      yPos += 8;
     }
   }
   
-  // Handle PENGECEKAN PERFORMA work type
+  // Handle PENGECEKAN PERFORMA work type with table format
   else if (data.work_type === 'pengecekan' && data.check_type === 'performa' && data.ac_units_data && data.ac_units_data.length > 0) {
     doc.setFont("helvetica", "bold");
-    doc.text("Data Pengecekan Performa AC", 25, yPos);
+    doc.setFontSize(10);
+    doc.text("📊 Data Pengecekan Performa AC", 20, yPos);
     yPos += 7;
     
     for (let i = 0; i < data.ac_units_data.length; i++) {
       const unit = data.ac_units_data[i];
       
-      if (yPos > 230) {
+      if (yPos > 220) {
         doc.addPage();
         yPos = 20;
       }
       
-      doc.setFont("helvetica", "bold");
-      doc.text(`Unit ${i + 1}: ${unit.nama_ruang || 'N/A'}`, 25, yPos);
-      yPos += 6;
+      // Unit card
+      drawBox(15, yPos - 2, 180, 38, [255, 250, 240], [243, 156, 18]);
       
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Unit ${i + 1}: ${unit.nama_ruang || 'N/A'}`, 20, yPos + 3);
+      
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      doc.text(`Merk AC: ${unit.merk_ac || 'N/A'}, Kapasitas: ${unit.kapasitas_ac || 'N/A'}`, 30, yPos);
+      yPos += 8;
+      
+      // Info dasar
+      doc.text(`Merk: ${unit.merk_ac || 'N/A'} | Kapasitas: ${unit.kapasitas_ac || 'N/A'} | Daya: ${unit.daya_listrik || 'N/A'}`, 20, yPos);
       yPos += 5;
-      doc.text(`Daya Listrik: ${unit.daya_listrik || 'N/A'}`, 30, yPos);
+      
+      // Kondisi komponen
+      doc.text(`Compressor: ${unit.kondisi_compressor || 'N/A'} | Evaporator: ${unit.kondisi_evaporator || 'N/A'} | Condenser: ${unit.kondisi_condenser || 'N/A'}`, 20, yPos);
       yPos += 5;
-      doc.text(`Kondisi Compressor: ${unit.kondisi_compressor || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Kondisi Evaporator: ${unit.kondisi_evaporator || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Kondisi Condenser: ${unit.kondisi_condenser || 'N/A'}`, 30, yPos);
-      yPos += 5;
-      doc.text(`Suhu: Ruangan ${unit.suhu_ruangan || 'N/A'}°C, Supply ${unit.suhu_supply || 'N/A'}°C, Return ${unit.suhu_return || 'N/A'}°C`, 30, yPos);
+      
+      // Suhu dengan visual indicator
+      doc.setFont("helvetica", "bold");
+      doc.text("🌡️ Temperatur:", 20, yPos);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Ruangan: ${unit.suhu_ruangan || 'N/A'}°C | Supply: ${unit.suhu_supply || 'N/A'}°C | Return: ${unit.suhu_return || 'N/A'}°C`, 48, yPos);
       yPos += 5;
       
       if (unit.catatan) {
-        doc.text(`Catatan: ${unit.catatan}`, 30, yPos);
-        yPos += 5;
+        doc.setFontSize(7);
+        doc.text(`Catatan: ${unit.catatan}`, 20, yPos);
+        yPos += 4;
       }
       
-      yPos += 3;
+      yPos += 5;
     }
   }
   
   // Handle traditional fields (TROUBLESHOOTING, INSTALASI, LAIN-LAIN)
   else {
-    if (data.problem) {
-      doc.text("Problem:", 25, yPos);
-      yPos += 6;
-      const problemLines = doc.splitTextToSize(data.problem, 160);
-      doc.text(problemLines, 25, yPos);
-      yPos += problemLines.length * 6 + 4;
-    }
-    
-    if (data.tindakan) {
-      doc.text("Tindakan:", 25, yPos);
-      yPos += 6;
-      const tindakanLines = doc.splitTextToSize(data.tindakan, 160);
-      doc.text(tindakanLines, 25, yPos);
-      yPos += tindakanLines.length * 6 + 4;
+    if (data.problem || data.tindakan) {
+      const detailHeight = 50;
+      drawBox(15, yPos - 2, 180, detailHeight, [255, 250, 250], [231, 76, 60]);
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      
+      if (data.problem) {
+        doc.text("❗ Problem:", 20, yPos + 3);
+        yPos += 6;
+        doc.setFont("helvetica", "normal");
+        const problemLines = doc.splitTextToSize(data.problem, 170);
+        doc.text(problemLines, 20, yPos);
+        yPos += problemLines.length * 5 + 4;
+      }
+      
+      if (data.tindakan) {
+        doc.setFont("helvetica", "bold");
+        doc.text("✅ Tindakan:", 20, yPos);
+        yPos += 6;
+        doc.setFont("helvetica", "normal");
+        const tindakanLines = doc.splitTextToSize(data.tindakan, 170);
+        doc.text(tindakanLines, 20, yPos);
+        yPos += tindakanLines.length * 5 + 4;
+      }
+      
+      yPos += 10;
     }
   }
   
@@ -258,40 +366,71 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       doc.addPage();
       yPos = 20;
     }
-    doc.text("Rincian Pekerjaan:", 25, yPos);
-    yPos += 6;
-    const rincianLines = doc.splitTextToSize(data.rincian_pekerjaan, 160);
-    doc.text(rincianLines, 25, yPos);
-    yPos += rincianLines.length * 6 + 4;
+    
+    drawBox(15, yPos - 2, 180, 25, [250, 255, 250], [39, 174, 96]);
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("📋 Rincian Pekerjaan:", 20, yPos + 3);
+    yPos += 7;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const rincianLines = doc.splitTextToSize(data.rincian_pekerjaan, 170);
+    doc.text(rincianLines, 20, yPos);
+    yPos += rincianLines.length * 4 + 10;
   }
   
   if (data.rincian_kerusakan) {
-    doc.text("Rincian Kerusakan:", 25, yPos);
-    yPos += 6;
-    const kerusakanLines = doc.splitTextToSize(data.rincian_kerusakan, 160);
-    doc.text(kerusakanLines, 25, yPos);
-    yPos += kerusakanLines.length * 6 + 4;
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("⚠️ Rincian Kerusakan:", 20, yPos);
+    yPos += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const kerusakanLines = doc.splitTextToSize(data.rincian_kerusakan, 170);
+    doc.text(kerusakanLines, 20, yPos);
+    yPos += kerusakanLines.length * 4 + 8;
   }
   
   if (data.catatan_rekomendasi && data.work_type !== 'pemeliharaan') {
-    doc.text("Catatan/Rekomendasi:", 25, yPos);
-    yPos += 6;
-    const catatanLines = doc.splitTextToSize(data.catatan_rekomendasi, 160);
-    doc.text(catatanLines, 25, yPos);
-    yPos += catatanLines.length * 6 + 4;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("💡 Catatan/Rekomendasi:", 20, yPos);
+    yPos += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const catatanLines = doc.splitTextToSize(data.catatan_rekomendasi, 170);
+    doc.text(catatanLines, 20, yPos);
+    yPos += catatanLines.length * 4 + 8;
   }
   
-  if (data.lama_kerja) {
-    doc.text(`Lama Kerja: ${data.lama_kerja} jam`, 25, yPos);
-    yPos += 6;
+  // Time & Distance info box
+  if (data.lama_kerja || data.jarak_tempuh) {
+    if (yPos > 260) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    drawBox(15, yPos - 2, 85, 14, [240, 240, 255], colors.primary);
+    
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    if (data.lama_kerja) {
+      doc.text(`⏱️ Lama Kerja: ${data.lama_kerja} jam`, 20, yPos + 4);
+    }
+    if (data.jarak_tempuh) {
+      doc.text(`🚗 Jarak Tempuh: ${data.jarak_tempuh} km`, 20, yPos + 10);
+    }
+    
+    yPos += 20;
   }
   
-  if (data.jarak_tempuh) {
-    doc.text(`Jarak Tempuh: ${data.jarak_tempuh} km`, 25, yPos);
-    yPos += 10;
-  }
-  
-  // Spareparts Table
+  // Spareparts Table with improved styling
   if (data.spareparts && data.spareparts.length > 0) {
     if (yPos > 240) {
       doc.addPage();
@@ -299,7 +438,10 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     }
     
     doc.setFont("helvetica", "bold");
-    doc.text("Sparepart yang Digunakan", 20, yPos);
+    doc.setFontSize(11);
+    doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+    doc.text("🔧 SPAREPART YANG DIGUNAKAN", 20, yPos);
+    doc.setTextColor(0, 0, 0);
     yPos += 5;
     
     autoTable(doc, {
@@ -313,69 +455,98 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         sp.notes || "-",
       ]),
       theme: "grid",
-      headStyles: { fillColor: [66, 139, 202] },
-      margin: { left: 20, right: 20 },
+      headStyles: { 
+        fillColor: colors.primary,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 15 },
+        1: { cellWidth: 70 },
+        2: { halign: 'center', cellWidth: 20 },
+        3: { halign: 'center', cellWidth: 25 },
+        4: { cellWidth: 50 },
+      },
+      margin: { left: 15, right: 15 },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      }
     });
     
     yPos = (doc as any).lastAutoTable.finalY + 10;
   }
   
-  // Photo Documentation
+  // Photo Documentation with improved layout
   if (data.photos && data.photos.length > 0) {
     doc.addPage();
     yPos = 20;
     
+    // Section header
+    drawBox(0, 0, 210, 15, colors.primary);
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Dokumentasi Foto Pekerjaan", 20, yPos);
-    yPos += 10;
+    doc.setFontSize(12);
+    doc.text("📸 DOKUMENTASI FOTO PEKERJAAN", 105, 10, { align: "center" });
+    doc.setTextColor(0, 0, 0);
     
-    // Display photos in grid (2 columns)
+    yPos = 25;
+    
+    // Display photos in grid (2 columns) with border
     let col = 0;
     for (let i = 0; i < data.photos.length; i++) {
       const photo = data.photos[i];
       const caption = photoCaptions?.[i] || `Foto ${i + 1}`;
       
-      const xPos = col === 0 ? 20 : 110;
+      const xPos = col === 0 ? 15 : 108;
+      
+      // Photo frame
+      drawBox(xPos, yPos, 87, 70, [255, 255, 255], [200, 200, 200]);
       
       try {
         // Try to add image (may fail for some formats)
         await loadImage(photo).then((img) => {
-          doc.addImage(img, "JPEG", xPos, yPos, 80, 60);
+          doc.addImage(img, "JPEG", xPos + 2, yPos + 2, 83, 55);
         }).catch(() => {
           // If image load fails, show placeholder
-          doc.rect(xPos, yPos, 80, 60);
           doc.setFontSize(8);
-          doc.text("Foto tidak dapat dimuat", xPos + 40, yPos + 30, { align: "center" });
+          doc.setTextColor(150, 150, 150);
+          doc.text("Foto tidak dapat dimuat", xPos + 43.5, yPos + 30, { align: "center" });
+          doc.setTextColor(0, 0, 0);
         });
       } catch (e) {
         console.error("Failed to add photo:", e);
-        doc.rect(xPos, yPos, 80, 60);
       }
       
-      // Caption
-      doc.setFontSize(9);
+      // Caption with background
+      drawBox(xPos + 2, yPos + 58, 83, 10, [245, 245, 245]);
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      const captionLines = doc.splitTextToSize(caption, 75);
-      doc.text(captionLines, xPos + 2, yPos + 65);
+      const captionLines = doc.splitTextToSize(caption, 80);
+      const captionText = captionLines.length > 2 ? captionLines.slice(0, 2) : captionLines;
+      doc.text(captionText, xPos + 43.5, yPos + 62, { align: "center" });
       
       col++;
       if (col >= 2) {
         col = 0;
-        yPos += 75;
+        yPos += 78;
         
         // New page if needed
-        if (yPos > 220) {
+        if (yPos > 210) {
           doc.addPage();
           yPos = 20;
         }
       }
     }
     
-    if (col > 0) yPos += 75; // Add space if last row not complete
+    if (col > 0) yPos += 78; // Add space if last row not complete
   }
   
-  // Add photos from maintenance units (per-unit photos)
+  // Add photos from maintenance units (per-unit photos) with improved layout
   if (data.work_type === 'pemeliharaan' && data.maintenance_units_data) {
     let hasUnitPhotos = false;
     
@@ -385,100 +556,148 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         if (!hasUnitPhotos) {
           doc.addPage();
           yPos = 20;
+          
+          // Section header
+          drawBox(0, 0, 210, 15, colors.success);
+          doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
-          doc.setFontSize(11);
-          doc.text("Dokumentasi Foto Per Unit", 20, yPos);
-          yPos += 10;
+          doc.setFontSize(12);
+          doc.text("📷 DOKUMENTASI FOTO PER UNIT", 105, 10, { align: "center" });
+          doc.setTextColor(0, 0, 0);
+          
+          yPos = 25;
           hasUnitPhotos = true;
         }
         
-        // Unit header
+        // Unit header with colored badge
+        drawBox(15, yPos - 2, 180, 10, colors.light, colors.success);
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
-        doc.text(`Unit ${unitIdx + 1}: ${unit.nama_ruang || 'N/A'}`, 20, yPos);
-        yPos += 8;
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+        doc.text(`🏢 Unit ${unitIdx + 1}: ${unit.nama_ruang || 'N/A'}`, 20, yPos + 4);
+        doc.setTextColor(0, 0, 0);
+        yPos += 15;
         
-        // Display unit photos in 2x2 grid
+        // Display unit photos in 2x2 grid with frames
         let col = 0;
         for (let photoIdx = 0; photoIdx < unit.photos.length; photoIdx++) {
           const photo = unit.photos[photoIdx];
-          const xPos = col === 0 ? 20 : 110;
+          const xPos = col === 0 ? 15 : 108;
+          
+          // Photo frame
+          drawBox(xPos, yPos, 87, 70, [255, 255, 255], [180, 180, 180]);
           
           try {
             await loadImage(photo.preview).then((img) => {
-              doc.addImage(img, "JPEG", xPos, yPos, 80, 60);
+              doc.addImage(img, "JPEG", xPos + 2, yPos + 2, 83, 55);
             }).catch(() => {
-              doc.rect(xPos, yPos, 80, 60);
               doc.setFontSize(8);
-              doc.text("Foto tidak dapat dimuat", xPos + 40, yPos + 30, { align: "center" });
+              doc.setTextColor(150, 150, 150);
+              doc.text("Foto tidak dapat dimuat", xPos + 43.5, yPos + 30, { align: "center" });
+              doc.setTextColor(0, 0, 0);
             });
           } catch (e) {
             console.error("Failed to add unit photo:", e);
-            doc.rect(xPos, yPos, 80, 60);
           }
           
-          // Caption
+          // Caption with background
           if (photo.caption) {
-            doc.setFontSize(8);
+            drawBox(xPos + 2, yPos + 58, 83, 10, [250, 250, 250]);
+            doc.setFontSize(7);
             doc.setFont("helvetica", "normal");
-            const captionLines = doc.splitTextToSize(photo.caption, 75);
-            doc.text(captionLines, xPos + 2, yPos + 65);
+            const captionLines = doc.splitTextToSize(photo.caption, 80);
+            const captionText = captionLines.length > 2 ? captionLines.slice(0, 2) : captionLines;
+            doc.text(captionText, xPos + 43.5, yPos + 62, { align: "center" });
           }
           
           col++;
           if (col >= 2) {
             col = 0;
-            yPos += 75;
+            yPos += 78;
             
-            if (yPos > 220) {
+            if (yPos > 210) {
               doc.addPage();
               yPos = 20;
             }
           }
         }
         
-        if (col > 0) yPos += 75;
-        yPos += 10; // Space between units
+        if (col > 0) yPos += 78;
+        yPos += 5; // Space between units
       }
     }
   }
   
-  // Signatures
-  if (yPos > 220) {
+  // Signatures with improved layout
+  if (yPos > 200) {
     doc.addPage();
     yPos = 20;
   }
   
+  // Signature section header
+  drawBox(0, yPos - 5, 210, 12, colors.primary);
+  doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("Tanda Tangan", 20, yPos);
-  yPos += 10;
+  doc.text("✍️ TANDA TANGAN", 105, yPos + 2, { align: "center" });
+  doc.setTextColor(0, 0, 0);
   
+  yPos += 15;
+  
+  // Signature boxes
   // Technician signature
-  doc.setFont("helvetica", "normal");
+  drawBox(20, yPos, 70, 45, [255, 255, 255], colors.primary);
   if (signatureTechnician) {
     try {
-      doc.addImage(signatureTechnician, "PNG", 25, yPos, 50, 20);
+      doc.addImage(signatureTechnician, "PNG", 25, yPos + 5, 60, 25);
     } catch (e) {
       console.error("Failed to add technician signature:", e);
     }
   }
-  doc.text("Teknisi", 25, yPos + 25);
-  doc.text(signatureTechnicianName || technicianName || '', 25, yPos + 31);
+  
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+  doc.text("Teknisi", 55, yPos + 35, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(signatureTechnicianName || technicianName || '', 55, yPos + 40, { align: "center" });
   
   // Client signature
+  drawBox(120, yPos, 70, 45, [255, 255, 255], colors.success);
   if (signatureClient) {
     try {
-      doc.addImage(signatureClient, "PNG", 125, yPos, 50, 20);
+      doc.addImage(signatureClient, "PNG", 125, yPos + 5, 60, 25);
     } catch (e) {
       console.error("Failed to add client signature:", e);
     }
   }
-  doc.text("Klien / PIC", 125, yPos + 25);
-  doc.text(signatureClientName || "", 125, yPos + 31);
   
-  yPos += 35;
-  doc.text(`Tanggal: ${signatureDate ? new Date(signatureDate).toLocaleDateString("id-ID") : ""}`, 25, yPos);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+  doc.text("Klien / PIC", 155, yPos + 35, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(signatureClientName || "", 155, yPos + 40, { align: "center" });
+  
+  yPos += 50;
+  
+  // Date badge
+  drawBox(20, yPos, 60, 8, colors.light, colors.primary);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(`📅 Tanggal: ${signatureDate ? new Date(signatureDate).toLocaleDateString("id-ID", { day: '2-digit', month: 'long', year: 'numeric' }) : ""}`, 50, yPos + 5, { align: "center" });
+  
+  // Footer note
+  yPos += 15;
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(100, 100, 100);
+  doc.text("Dokumen ini dibuat secara elektronik dan sah tanpa tanda tangan basah", 105, yPos, { align: "center" });
+  doc.setTextColor(0, 0, 0);
   
   // Footer
   const pageCount = doc.getNumberOfPages();
