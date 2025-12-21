@@ -166,6 +166,31 @@ export function PeopleManagementClient({
     }
   }
 
+  const syncTechnicianJobs = async () => {
+    setIsLoadingTechnicians(true)
+    setTechnicianError(null)
+    try {
+      const response = await fetch('/api/people/sync-technician-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId })
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to sync job counts')
+      }
+
+      toast.success(`Sync selesai (${result.updated || 0} teknisi di-update)`)
+      await fetchTechnicianPerformance()
+    } catch (error: any) {
+      setTechnicianError(error.message || 'Failed to sync job counts')
+      toast.error(error.message || 'Failed to sync job counts')
+    } finally {
+      setIsLoadingTechnicians(false)
+    }
+  }
+
   // Fetch all partner records (both activated and not)
   const fetchPartnerRecords = async () => {
     try {
@@ -423,9 +448,14 @@ export function PeopleManagementClient({
                 <Users className="w-5 h-5" />
                 Kinerja Teknisi
               </CardTitle>
-              <Button variant="outline" onClick={fetchTechnicianPerformance} disabled={isLoadingTechnicians}>
-                Refresh
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={syncTechnicianJobs} disabled={isLoadingTechnicians}>
+                  Sync Jobs
+                </Button>
+                <Button variant="outline" onClick={fetchTechnicianPerformance} disabled={isLoadingTechnicians}>
+                  Refresh
+                </Button>
+              </div>
             </div>
             <p className="text-sm text-gray-500 mt-1">
               Ringkasan 30 hari terakhir (attendance & overtime) + total pekerjaan selesai

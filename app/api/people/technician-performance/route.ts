@@ -22,6 +22,11 @@ type TechnicianRow = {
   created_at: string;
 };
 
+type ServiceOrderRow = {
+  id: string;
+  assigned_to: string | null;
+};
+
 function safeNumber(value: any) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -92,6 +97,8 @@ export async function POST(request: Request) {
 
     const techRows = (technicians || []) as TechnicianRow[];
 
+    // --- A) New technician system (technicians.id based) ---
+
     const { data: assignmentsData } = await admin
       .from("work_order_assignments")
       .select("technician_id, service_order_id, status, role_in_order, service_orders!inner(tenant_id)")
@@ -104,49 +111,106 @@ export async function POST(request: Request) {
       role_in_order?: string | null;
     }>;
 
-    const orderToPrimaryTech = new Map<string, string>();
-    const orderToTechs = new Map<string, Set<string>>();
-    const completedByTech = new Map<string, number>();
+    const completedOrderIdsByTechId = new Map<string, Set<string>>();
 
     for (const a of assignments) {
-      if (!orderToTechs.has(a.service_order_id)) {
-        orderToTechs.set(a.service_order_id, new Set());
-      }
-      orderToTechs.get(a.service_order_id)!.add(a.technician_id);
-
-      if (a.role_in_order === "primary" && !orderToPrimaryTech.has(a.service_order_id)) {
-        orderToPrimaryTech.set(a.service_order_id, a.technician_id);
-      }
-
       if (a.status === "completed") {
-        completedByTech.set(a.technician_id, (completedByTech.get(a.technician_id) || 0) + 1);
+        if (!completedOrderIdsByTechId.has(a.technician_id)) {
+          completedOrderIdsByTechId.set(a.technician_id, new Set());
+        }
+        completedOrderIdsByTechId.get(a.technician_id)!.add(a.service_order_id);
       }
     }
 
-    const orderIds = Array.from(orderToTechs.keys());
+    // --- B) Existing workflow (profiles/auth uid based) ---
+    // Many existing orders are tracked via service_orders.assigned_to + job_assignments,
+    // so we must count completed jobs using those sources too.
+    const { data: completedServiceOrdersData, error: completedOrdersError } = await admin
+      .from("service_orders")
+      .select("id, assigned_to")
+      .eq("tenant_id", tenantId)
+      .eq("status", "completed");
 
-    const complaintsByTech = new Map<string, number>();
-    if (orderIds.length > 0) {
-      const { data: complaintsData } = await admin
-        .from("complaints")
-        .select("service_order_id")
-        .in("service_order_id", orderIds);
+    if (completedOrdersError) {
+      return NextResponse.json({ error: completedOrdersError.message }, { status: 500 });
+    }
 
-      const complaints = (complaintsData || []) as Array<{ service_order_id: string }>;
+    const completedServiceOrders = (completedServiceOrdersData || []) as ServiceOrderRow[];
+    const completedOrderIds = completedServiceOrders.map((o) => o.id);
+
+    const completedOrderIdsByUserId = new Map<string, Set<string>>();
+    const orderIdToAssignedUserId = new Map<string, string>();
+
+    for (const o of completedServiceOrders) {
+      if (!o.assigned_to) continue;
+      orderIdToAssignedUserId.set(o.id, o.assigned_to);
+      if (!completedOrderIdsByUserId.has(o.assigned_to)) {
+        completedOrderIdsByUserId.set(o.assigned_to, new Set());
+      }
+      completedOrderIdsByUserId.get(o.assigned_to)!.add(o.id);
+    }
+
+    if (completedOrderIds.length > 0) {
+      const { data: jobAssignmentsData } = await admin
+        .from("job_assignments")
+        .select("service_order_id, user_id")
+        .in("service_order_id", completedOrderIds);
+
+      const jobAssignments = (jobAssignmentsData || []) as Array<{ service_order_id: string; user_id: string }>;
+      for (const ja of jobAssignments) {
+        if (!completedOrderIdsByUserId.has(ja.user_id)) {
+          completedOrderIdsByUserId.set(ja.user_id, new Set());
+        }
+        completedOrderIdsByUserId.get(ja.user_id)!.add(ja.service_order_id);
+      }
+    }
+
+    // Complaints attribution (prefer service_orders.assigned_to, fallback to job_assignments)
+    const complaintsByUserId = new Map<string, number>();
+    const complaintsByTechId = new Map<string, number>();
+
+    const { data: complaintsTenantData, error: complaintsTenantError } = await admin
+      .from("complaints")
+      .select("service_order_id, service_orders!inner(tenant_id, assigned_to)")
+      .eq("service_orders.tenant_id", tenantId);
+
+    if (complaintsTenantError) {
+      // Non-fatal for performance page; keep zero counts
+      console.warn("complaints query error:", complaintsTenantError);
+    } else {
+      const complaints = (complaintsTenantData || []) as unknown as Array<{
+        service_order_id: string;
+        service_orders: Array<{ assigned_to: string | null }>;
+      }>;
+
+      // Preload job_assignments per order for fallback
+      const complaintOrderIds = Array.from(new Set(complaints.map((c) => c.service_order_id)));
+      const orderIdToUsers = new Map<string, Set<string>>();
+      if (complaintOrderIds.length > 0) {
+        const { data: jaAllData } = await admin
+          .from("job_assignments")
+          .select("service_order_id, user_id")
+          .in("service_order_id", complaintOrderIds);
+        const jaAll = (jaAllData || []) as Array<{ service_order_id: string; user_id: string }>;
+        for (const ja of jaAll) {
+          if (!orderIdToUsers.has(ja.service_order_id)) orderIdToUsers.set(ja.service_order_id, new Set());
+          orderIdToUsers.get(ja.service_order_id)!.add(ja.user_id);
+        }
+      }
 
       for (const c of complaints) {
         const orderId = c.service_order_id;
-        const primaryTechId = orderToPrimaryTech.get(orderId);
+        const assignedTo = c.service_orders?.[0]?.assigned_to ?? null;
 
-        if (primaryTechId) {
-          complaintsByTech.set(primaryTechId, (complaintsByTech.get(primaryTechId) || 0) + 1);
+        if (assignedTo) {
+          complaintsByUserId.set(assignedTo, (complaintsByUserId.get(assignedTo) || 0) + 1);
           continue;
         }
 
-        const techs = orderToTechs.get(orderId);
-        if (!techs) continue;
-        for (const techId of techs) {
-          complaintsByTech.set(techId, (complaintsByTech.get(techId) || 0) + 1);
+        const users = orderIdToUsers.get(orderId);
+        if (!users) continue;
+        for (const userId of users) {
+          complaintsByUserId.set(userId, (complaintsByUserId.get(userId) || 0) + 1);
         }
       }
     }
@@ -202,8 +266,23 @@ export async function POST(request: Request) {
     }
 
     const rows = techRows.map((t) => {
-      const completedJobs = completedByTech.get(t.id) || 0;
-      const complaints = complaintsByTech.get(t.id) || 0;
+      const orderIdsSet = new Set<string>();
+      const completedByTech = completedOrderIdsByTechId.get(t.id);
+      if (completedByTech) {
+        for (const oid of completedByTech) orderIdsSet.add(oid);
+      }
+
+      if (t.user_id) {
+        const completedByUser = completedOrderIdsByUserId.get(t.user_id);
+        if (completedByUser) {
+          for (const oid of completedByUser) orderIdsSet.add(oid);
+        }
+      }
+
+      const completedJobs = orderIdsSet.size;
+
+      const complaints =
+        (t.user_id ? complaintsByUserId.get(t.user_id) || 0 : 0) + (complaintsByTechId.get(t.id) || 0);
       const attendance = t.user_id ? attendanceByUser.get(t.user_id) : undefined;
       const overtimeHours = t.user_id ? overtimeByUser.get(t.user_id) || 0 : 0;
 
