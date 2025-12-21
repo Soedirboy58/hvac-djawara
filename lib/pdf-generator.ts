@@ -172,10 +172,10 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       cellPadding: 3,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 25, fillColor: colors.light },
-      1: { cellWidth: 60 },
-      2: { fontStyle: 'bold', cellWidth: 20, fillColor: colors.light },
-      3: { cellWidth: 75 },
+      0: { fontStyle: 'bold', cellWidth: 28, fillColor: colors.light },
+      1: { cellWidth: 52 },
+      2: { fontStyle: 'bold', cellWidth: 22, fillColor: colors.light },
+      3: { cellWidth: 78 },
     },
     margin: { left: 15, right: 15 },
   });
