@@ -51,6 +51,11 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [acUnits, setAcUnits] = useState<ACUnitData[]>([]);
   const [maintenanceUnits, setMaintenanceUnits] = useState<MaintenanceUnitData[]>([]);
   
+  // Debug acUnits changes
+  useEffect(() => {
+    console.log('🔄 acUnits state changed:', acUnits.length, 'units', acUnits);
+  }, [acUnits]);
+  
   // Basic form data
   const [formData, setFormData] = useState({
     // BAST Fields
@@ -702,6 +707,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         work_type: workLogData.work_type,
         check_type: workLogData.check_type,
         ac_units_count: workLogData.ac_units_data?.length || 0,
+        ac_units_data: workLogData.ac_units_data, // Log full data
         maintenance_units_count: workLogData.maintenance_units_data?.length || 0,
         has_signatures: !!(workLogData.signature_technician && workLogData.signature_client)
       });

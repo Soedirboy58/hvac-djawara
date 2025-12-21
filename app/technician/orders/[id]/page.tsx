@@ -69,21 +69,31 @@ export default function WorkOrderDetailPage() {
   const fetchWorkOrderData = async () => {
     try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (authError || !user) {
+        console.error("Auth error:", authError);
+        toast.error("Sesi login telah berakhir");
         router.push("/technician/login");
         return;
       }
 
+      console.log("✓ User authenticated:", user.id);
+
       // Get technician ID
-      const { data: techData } = await supabase
+      const { data: techData, error: techError } = await supabase
         .from("technicians")
         .select("id")
         .eq("user_id", user.id)
         .single();
 
-      if (!techData) throw new Error("Technician not found");
+      if (techError || !techData) {
+        console.error("Technician not found:", techError);
+        toast.error("Data teknisi tidak ditemukan");
+        return;
+      }
+      
+      console.log("✓ Technician ID:", techData.id);
       setTechnicianId(techData.id);
 
       // Fetch work order

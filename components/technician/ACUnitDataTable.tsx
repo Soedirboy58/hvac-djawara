@@ -262,6 +262,7 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
       unit.id === id ? { ...unit, [field]: value } : unit
     );
     onChange(updated);
+    console.log(`📝 Unit updated - ${field}:`, value, '| Unit ID:', id);
   };
 
   const deleteUnit = (id: string) => {
