@@ -985,7 +985,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
 
               {checkType === "performa" && (
                 <div className="space-y-4">
-                  <ACUnitDataTable data={acUnits} onChange={setAcUnits} />
+                  <ACUnitDataTable data={acUnits} onChange={setAcUnits} orderId={orderId} />
                 </div>
               )}
 
@@ -1047,7 +1047,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
               <div className="pt-4 border-t">
                 <h3 className="text-sm font-semibold mb-3">Data Kinerja Unit AC</h3>
                 <p className="text-xs text-muted-foreground mb-3">Opsional: Isi data kinerja unit untuk dokumentasi lebih lengkap</p>
-                <ACUnitDataTable data={acUnits} onChange={setAcUnits} />
+                <ACUnitDataTable data={acUnits} onChange={setAcUnits} orderId={orderId} />
               </div>
             </div>
           )}
@@ -1067,7 +1067,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
               <div className="pt-4 border-t">
                 <h3 className="text-sm font-semibold mb-3">Data Kinerja Unit AC</h3>
                 <p className="text-xs text-muted-foreground mb-3">Opsional: Isi data kinerja unit setelah instalasi untuk dokumentasi commissioning</p>
-                <ACUnitDataTable data={acUnits} onChange={setAcUnits} />
+                <ACUnitDataTable data={acUnits} onChange={setAcUnits} orderId={orderId} />
               </div>
             </div>
           )}
