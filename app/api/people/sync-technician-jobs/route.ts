@@ -156,34 +156,37 @@ export async function POST(request: Request) {
       }
     }
 
-    // Build upsert payload for technicians.total_jobs_completed
-    const updates = technicians
-      .filter((t) => t.user_id)
-      .map((t) => {
-        const userId = t.user_id as string;
-        const set = new Set<string>();
-        const byUser = completedOrderIdsByUserId.get(userId);
+    // Update technicians.total_jobs_completed.
+    // IMPORTANT: Do NOT use upsert here because the technicians table has NOT NULL columns
+    // (tenant_id, full_name, email). Upsert may attempt an INSERT path and fail with NOT NULL violations.
+    const nowIso = new Date().toISOString();
+    let updatedCount = 0;
+
+    for (const t of technicians) {
+      const set = new Set<string>();
+
+      // Legacy workflow (auth/profiles user id)
+      if (t.user_id) {
+        const byUser = completedOrderIdsByUserId.get(t.user_id);
         if (byUser) for (const oid of byUser) set.add(oid);
-        const byTech = completedOrderIdsByTechId.get(t.id);
-        if (byTech) for (const oid of byTech) set.add(oid);
-        return {
-          id: t.id,
-          total_jobs_completed: set.size,
-          updated_at: new Date().toISOString(),
-        };
-      });
-
-    if (updates.length > 0) {
-      const { error: upsertError } = await admin
-        .from("technicians")
-        .upsert(updates, { onConflict: "id" });
-
-      if (upsertError) {
-        return NextResponse.json({ error: upsertError.message }, { status: 500 });
       }
+
+      // New workflow (technicians.id)
+      const byTech = completedOrderIdsByTechId.get(t.id);
+      if (byTech) for (const oid of byTech) set.add(oid);
+
+      const { error: updateError } = await admin
+        .from("technicians")
+        .update({ total_jobs_completed: set.size, updated_at: nowIso })
+        .eq("id", t.id);
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
+      updatedCount += 1;
     }
 
-    return NextResponse.json({ success: true, updated: updates.length });
+    return NextResponse.json({ success: true, updated: updatedCount });
   } catch (error: any) {
     console.error("Error in sync-technician-jobs API:", error);
     return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
