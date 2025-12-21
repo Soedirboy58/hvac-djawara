@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 export default function TechnicianVerifyPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
   const [alreadyExists, setAlreadyExists] = useState(false);
@@ -23,6 +24,18 @@ export default function TechnicianVerifyPage() {
     password: "",
     confirmPassword: "",
   });
+
+  useEffect(() => {
+    const email = searchParams.get("email") || "";
+    const token = searchParams.get("token") || "";
+    if (email || token) {
+      setFormData((prev) => ({
+        ...prev,
+        email: email || prev.email,
+        token: token || prev.token,
+      }));
+    }
+  }, [searchParams]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -94,6 +96,23 @@ interface PartnerRecord {
   user_id: string | null // null = not activated yet
 }
 
+interface TechnicianPerformanceRow {
+  id: string
+  full_name: string
+  email: string
+  phone: string | null
+  level: string
+  status: string
+  availability_status: string
+  last_login_at: string | null
+  jobs_completed: number
+  complaints_count: number
+  average_rating: number
+  attendance_30d_present: number
+  attendance_30d_late: number
+  overtime_30d_hours: number
+}
+
 export function PeopleManagementClient({ 
   tenantId, 
   initialTeamMembers,
@@ -101,6 +120,11 @@ export function PeopleManagementClient({
 }: PeopleManagementClientProps) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(initialTeamMembers)
   const [partnerRecords, setPartnerRecords] = useState<PartnerRecord[]>([])
+  const [activeTab, setActiveTab] = useState<'people' | 'technicians'>('people')
+  const [technicianRows, setTechnicianRows] = useState<TechnicianPerformanceRow[]>([])
+  const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false)
+  const [technicianError, setTechnicianError] = useState<string | null>(null)
+  const [techPage, setTechPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isAddingMember, setIsAddingMember] = useState(false)
@@ -114,6 +138,33 @@ export function PeopleManagementClient({
     role: 'sales_partner'
   })
   const supabase = createClient()
+
+  const isTechnicianRole = (role: string) => ['technician', 'supervisor', 'team_lead'].includes(role)
+
+  const fetchTechnicianPerformance = async () => {
+    setIsLoadingTechnicians(true)
+    setTechnicianError(null)
+    try {
+      const response = await fetch('/api/people/technician-performance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId })
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load technician performance')
+      }
+
+      const rows = (result.rows || []) as TechnicianPerformanceRow[]
+      setTechnicianRows(rows)
+      setTechPage(1)
+    } catch (error: any) {
+      setTechnicianError(error.message || 'Failed to load technician performance')
+    } finally {
+      setIsLoadingTechnicians(false)
+    }
+  }
 
   // Fetch all partner records (both activated and not)
   const fetchPartnerRecords = async () => {
@@ -262,8 +313,10 @@ export function PeopleManagementClient({
     setIsSubmitting(true)
 
     try {
-      // Call API to create user and assign role
-      const response = await fetch('/api/people/add-member', {
+      const technicianFlow = isTechnicianRole(newMember.role)
+      const endpoint = technicianFlow ? '/api/people/add-technician' : '/api/people/add-member'
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -281,11 +334,25 @@ export function PeopleManagementClient({
         throw new Error(result.error || 'Failed to add member')
       }
 
-      // Show success message
-      toast.success('Partner record created! They can activate anytime via invitation link.')
+      if (technicianFlow) {
+        if (result.tokenSent) {
+          toast.success('Technician activation link sent to email (if configured).')
+        } else {
+          toast.success('Technician activation link generated.')
+        }
 
-      // Refresh partner records list
-      await fetchPartnerRecords()
+        if (result.verifyUrl && navigator.clipboard) {
+          await navigator.clipboard.writeText(result.verifyUrl)
+          toast.success('Activation link copied to clipboard!')
+        }
+
+        if (activeTab === 'technicians') {
+          await fetchTechnicianPerformance()
+        }
+      } else {
+        toast.success('Partner record created! They can activate anytime via invitation link.')
+        await fetchPartnerRecords()
+      }
 
       // Reset form
       setNewMember({
@@ -303,14 +370,13 @@ export function PeopleManagementClient({
     }
   }
 
-  // Sales/Marketing roles for the form
-  const salesRoles = roleHierarchy.filter(r => 
-    ['sales_partner', 'marketing', 'business_dev', 'owner'].includes(r.role_name)
+  const addableRoles = roleHierarchy.filter(r =>
+    ['sales_partner', 'marketing', 'business_dev', 'technician', 'supervisor', 'team_lead'].includes(r.role_name)
   )
 
   const copyInvitationLink = async (token: string) => {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hvac-djawara.vercel.app'
-    const invitationUrl = `${baseUrl}/invite?token=${token}`
+    const invitationUrl = `${baseUrl}/invite/${token}`
     
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(invitationUrl)
@@ -340,6 +406,124 @@ export function PeopleManagementClient({
 
   return (
     <div className="space-y-6">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'people' | 'technicians')}>
+        <TabsList>
+          <TabsTrigger value="people">People</TabsTrigger>
+          <TabsTrigger value="technicians" onClick={() => fetchTechnicianPerformance()}>
+            Kinerja Teknisi
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeTab === 'technicians' && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Kinerja Teknisi
+              </CardTitle>
+              <Button variant="outline" onClick={fetchTechnicianPerformance} disabled={isLoadingTechnicians}>
+                Refresh
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              Ringkasan 30 hari terakhir (attendance & overtime) + total pekerjaan selesai
+            </p>
+          </CardHeader>
+          <CardContent>
+            {technicianError && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 mb-4">
+                {technicianError}
+              </div>
+            )}
+
+            {isLoadingTechnicians ? (
+              <p className="text-sm text-gray-500">Loading...</p>
+            ) : (
+              (() => {
+                const pageSize = 10
+                const totalPages = Math.max(1, Math.ceil(technicianRows.length / pageSize))
+                const page = Math.min(Math.max(1, techPage), totalPages)
+                const start = (page - 1) * pageSize
+                const end = start + pageSize
+                const pagedRows = technicianRows.slice(start, end)
+
+                return (
+                  <div className="space-y-4">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nama</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Level</TableHead>
+                          <TableHead className="text-right">Jobs</TableHead>
+                          <TableHead className="text-right">Komplain</TableHead>
+                          <TableHead className="text-right">Rating</TableHead>
+                          <TableHead className="text-right">Hadir (30d)</TableHead>
+                          <TableHead className="text-right">Telat (30d)</TableHead>
+                          <TableHead className="text-right">Overtime (h)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedRows.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="font-medium">{row.full_name}</TableCell>
+                            <TableCell>{row.email}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{row.level}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">{row.jobs_completed}</TableCell>
+                            <TableCell className="text-right">{row.complaints_count}</TableCell>
+                            <TableCell className="text-right">
+                              {row.average_rating ? Number(row.average_rating).toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">{row.attendance_30d_present}</TableCell>
+                            <TableCell className="text-right">{row.attendance_30d_late}</TableCell>
+                            <TableCell className="text-right">{Number(row.overtime_30d_hours || 0).toFixed(1)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {pagedRows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={9} className="text-center text-sm text-gray-500 py-8">
+                              Belum ada data teknisi
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-500">
+                        Page {page} / {totalPages}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setTechPage((p) => Math.max(1, p - 1))}
+                          disabled={page <= 1}
+                        >
+                          Prev
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setTechPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={page >= totalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'people' && (
+        <>
       {/* Partnership Overview */}
       {partnerRecords.length > 0 && (
         <Card>
@@ -356,7 +540,7 @@ export function PeopleManagementClient({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {partnerRecords.map((partner) => {
                 const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hvac-djawara.vercel.app'
-                const invitationUrl = `${baseUrl}/invite?token=${partner.token}`
+                const invitationUrl = `${baseUrl}/invite/${partner.token}`
                 const expiryDate = new Date(partner.expires_at)
                 const isExpired = expiryDate < new Date()
                 const isActivated = partner.status === 'accepted'
@@ -720,9 +904,13 @@ export function PeopleManagementClient({
         <DialogContent className="sm:max-w-[500px]">
           <form onSubmit={handleAddMember}>
             <DialogHeader>
-              <DialogTitle>Add Sales Partner / Marketing</DialogTitle>
+              <DialogTitle>
+                {isTechnicianRole(newMember.role) ? 'Add Technician' : 'Add Sales Partner / Marketing'}
+              </DialogTitle>
               <DialogDescription>
-                Tambahkan mitra, sales, atau marketing untuk tracking client acquisition
+                {isTechnicianRole(newMember.role)
+                  ? 'Tambahkan teknisi, lalu sistem akan membuat link aktivasi (token) untuk login ke dashboard teknisi.'
+                  : 'Tambahkan mitra, sales, atau marketing untuk tracking client acquisition'}
               </DialogDescription>
             </DialogHeader>
 
@@ -749,7 +937,9 @@ export function PeopleManagementClient({
                   required
                 />
                 <p className="text-xs text-gray-500">
-                  Invitation email akan dikirim ke alamat ini
+                  {isTechnicianRole(newMember.role)
+                    ? 'Link aktivasi teknisi akan dikirim (jika email service dikonfigurasi)'
+                    : 'Invitation email akan dikirim ke alamat ini'}
                 </p>
               </div>
 
@@ -774,7 +964,7 @@ export function PeopleManagementClient({
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {salesRoles.map((role) => (
+                    {addableRoles.map((role) => (
                       <SelectItem key={role.role_name} value={role.role_name}>
                         {role.display_name}
                       </SelectItem>
@@ -782,13 +972,17 @@ export function PeopleManagementClient({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">
-                  Role ini akan muncul di dropdown referral saat input client baru
+                  {isTechnicianRole(newMember.role)
+                    ? 'Teknisi akan login melalui halaman /technician/login'
+                    : 'Role ini akan muncul di dropdown referral saat input client baru'}
                 </p>
               </div>
 
               <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-                <strong>Note:</strong> User akan menerima email invitation untuk setup password. 
-                Setelah aktivasi, mereka akan muncul di dropdown &quot;Referred By&quot; pada form client.
+                <strong>Note:</strong>{' '}
+                {isTechnicianRole(newMember.role)
+                  ? 'Sistem akan membuat token aktivasi. Teknisi membuka link aktivasi dan set password.'
+                  : 'User akan menerima email invitation untuk setup password. Setelah aktivasi, mereka akan muncul di dropdown "Referred By" pada form client.'}
               </div>
             </div>
 
@@ -1001,6 +1195,8 @@ export function PeopleManagementClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   )
 }

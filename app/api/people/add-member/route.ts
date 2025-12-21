@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
     // Generate invitation URL
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hvac-djawara.vercel.app'
-    const invitationUrl = `${baseUrl}/invite?token=${invitationToken}`
+    const invitationUrl = `${baseUrl}/invite/${invitationToken}`
 
     // TODO: Send email with invitation link
     // For now, return the invitation URL
