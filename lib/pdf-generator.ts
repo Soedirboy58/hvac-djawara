@@ -193,23 +193,15 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   // Prepare table data based on work type
   let tableData: any[][] = [];
   
-  // ALWAYS add work type info
-  const workTypeLabel = data.work_type === 'pemeliharaan' ? 'Pemeliharaan AC' :
-                       data.work_type === 'pengecekan' ? 'Pengecekan Performa AC' :
-                       data.work_type === 'troubleshooting' ? 'Troubleshooting' :
-                       data.work_type === 'instalasi' ? 'Instalasi AC' :
-                       data.rincian_pekerjaan || 'Lain-lain';
+  // Jenis Pekerjaan - use rincian_pekerjaan if available, else map work_type
+  const workTypeLabel = data.rincian_pekerjaan || 
+                       (data.work_type === 'pemeliharaan' ? 'Pemeliharaan AC' :
+                        data.work_type === 'pengecekan' ? 'Pengecekan Performa AC' :
+                        data.work_type === 'troubleshooting' ? 'Troubleshooting' :
+                        data.work_type === 'instalasi' ? 'Instalasi AC' : 'Lain-lain');
   tableData.push(["Jenis Pekerjaan", workTypeLabel]);
   
-  // Waktu & Tanggal pengerjaan
-  if (data.lama_kerja || data.jarak_tempuh) {
-    let waktuText = "";
-    if (data.lama_kerja) waktuText += `Lama Kerja: ${data.lama_kerja} jam`;
-    if (data.jarak_tempuh) waktuText += waktuText ? ` | Jarak: ${data.jarak_tempuh} km` : `Jarak Tempuh: ${data.jarak_tempuh} km`;
-    tableData.push(["Waktu & Tanggal Pengerjaan", waktuText]);
-  }
-  
-  // Rincian Pekerjaan for PEMELIHARAAN
+  // Rincian Pekerjaan for PEMELIHARAAN (unit details)
   if (data.work_type === 'pemeliharaan' && data.maintenance_units_data && data.maintenance_units_data.length > 0) {
     let unitsText = "";
     data.maintenance_units_data.forEach((unit, idx) => {
@@ -225,8 +217,8 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     tableData.push(["Rincian Pekerjaan", unitsText.trim()]);
   }
   
-  // Rincian Pekerjaan for PENGECEKAN PERFORMA
-  else if (data.work_type === 'pengecekan' && data.check_type === 'performa' && data.ac_units_data && data.ac_units_data.length > 0) {
+  // Rincian Pekerjaan for PENGECEKAN PERFORMA (unit details)
+  if (data.work_type === 'pengecekan' && data.check_type === 'performa' && data.ac_units_data && data.ac_units_data.length > 0) {
     let unitsText = "";
     data.ac_units_data.forEach((unit, idx) => {
       unitsText += `\nUnit ${idx + 1}: ${unit.nama_ruang || 'N/A'}`;
@@ -242,22 +234,24 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     tableData.push(["Rincian Pekerjaan", unitsText.trim()]);
   }
   
-  // Traditional problem/tindakan
-  else {
-    if (data.problem) {
-      tableData.push(["Problem", data.problem]);
-    }
-    if (data.tindakan) {
-      tableData.push(["Tindakan", data.tindakan]);
-    }
+  // Problem - ALWAYS show if exists
+  tableData.push(["Problem", data.problem || "-"]);
+  
+  // Tindakan - ALWAYS show if exists  
+  tableData.push(["Tindakan", data.tindakan || "-"]);
+  
+  // Rincian Kerusakan AC - ALWAYS show if exists
+  tableData.push(["Rincian Kerusakan AC", data.rincian_kerusakan || "-"]);
+  
+  // Waktu & Tanggal pengerjaan
+  if (data.lama_kerja || data.jarak_tempuh) {
+    let waktuText = "";
+    if (data.lama_kerja) waktuText += `Lama Kerja: ${data.lama_kerja} jam`;
+    if (data.jarak_tempuh) waktuText += waktuText ? ` | Jarak: ${data.jarak_tempuh} km` : `Jarak Tempuh: ${data.jarak_tempuh} km`;
+    tableData.push(["Waktu & Tanggal Pengerjaan", waktuText]);
   }
   
-  // Rincian Kerusakan
-  if (data.rincian_kerusakan) {
-    tableData.push(["Rincian Kerusakan AC", data.rincian_kerusakan]);
-  }
-  
-  // Catatan/Rekomendasi
+  // Catatan/Rekomendasi (general, not unit-specific)
   if (data.catatan_rekomendasi) {
     tableData.push(["Catatan / Rekomendasi", data.catatan_rekomendasi]);
   }
