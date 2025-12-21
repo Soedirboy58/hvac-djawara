@@ -17,7 +17,7 @@ import { Upload, X, Loader2, Plus, Trash2, PenTool, Save, MapPin, Navigation, Ch
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import SignatureCanvas from "react-signature-canvas";
-import { ACUnitDataTable, ACUnitData } from "./ACUnitDataTable";
+import { ACUnitDataTable, ACUnitData, saveUnitsToInventory } from "./ACUnitDataTable";
 import { MaintenanceUnitTable, MaintenanceUnitData } from "./MaintenanceUnitTable";
 
 interface Sparepart {
@@ -850,6 +850,44 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         }
       } catch (docErr) {
         console.error('Failed to create document entry (non-critical):', docErr);
+      }
+      
+      // Save units to inventory if requested
+      try {
+        // Collect all units from different work types
+        const allUnits: ACUnitData[] = [];
+        
+        // Add units from pengecekan performa
+        if (workType === "pengecekan" && checkType === "performa") {
+          allUnits.push(...acUnits);
+        }
+        
+        // Add units from troubleshooting
+        if (workType === "troubleshooting") {
+          allUnits.push(...acUnits);
+        }
+        
+        // Add units from instalasi
+        if (workType === "instalasi") {
+          allUnits.push(...acUnits);
+        }
+        
+        // Save units that have saveToInventory flag
+        if (allUnits.length > 0) {
+          const result = await saveUnitsToInventory(allUnits, orderId);
+          
+          if (result.savedCount > 0) {
+            toast.success(`✓ ${result.savedCount} unit berhasil ditambahkan ke inventory client`);
+          }
+          
+          if (result.errors.length > 0) {
+            console.error('Inventory save errors:', result.errors);
+            toast.warning(`Beberapa unit gagal disimpan ke inventory: ${result.errors.join(', ')}`);
+          }
+        }
+      } catch (invErr) {
+        console.error('Failed to save units to inventory (non-critical):', invErr);
+        // Don't show error to user, it's non-critical
       }
       
       toast.success("Data teknis berhasil disimpan!");

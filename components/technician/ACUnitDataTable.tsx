@@ -30,6 +30,7 @@ import {
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface ACUnitData {
   id: string;
@@ -43,12 +44,109 @@ export interface ACUnitData {
   temperatur_supply: string;
   temperatur_return: string;
   deskripsi_lain: string;
+  saveToInventory?: boolean; // Flag untuk simpan ke inventory client
+  inventorySaved?: boolean; // Flag apakah sudah tersimpan
 }
 
 interface ACUnitDataTableProps {
   data: ACUnitData[];
   onChange: (data: ACUnitData[]) => void;
   orderId?: string;
+}
+
+// Helper function to save units to inventory (export for external use)
+export async function saveUnitsToInventory(
+  units: ACUnitData[],
+  orderId: string
+): Promise<{ success: boolean; savedCount: number; errors: string[] }> {
+  const supabase = createClient();
+  const errors: string[] = [];
+  let savedCount = 0;
+
+  try {
+    // Get client_id and property info from order
+    const { data: orderData, error: orderError } = await supabase
+      .from('service_orders')
+      .select(`
+        client_id,
+        property_id,
+        properties (
+          name,
+          address
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !orderData) {
+      return { success: false, savedCount: 0, errors: ['Order tidak ditemukan'] };
+    }
+
+    // Filter units that should be saved to inventory
+    const unitsToSave = units.filter(unit => 
+      unit.saveToInventory && !unit.inventorySaved
+    );
+
+    if (unitsToSave.length === 0) {
+      return { success: true, savedCount: 0, errors: [] };
+    }
+
+    // Save each unit to ac_inventory
+    for (const unit of unitsToSave) {
+      try {
+        // Generate unique unit code
+        const unitCode = `AC-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+        
+        // Parse property name and location from nama_ruang
+        const roomParts = unit.nama_ruang.split(' - ');
+        const propertyInfo = orderData.properties && Array.isArray(orderData.properties) && orderData.properties.length > 0 
+          ? orderData.properties[0] 
+          : orderData.properties;
+        const propertyName = roomParts[0] || (propertyInfo && !Array.isArray(propertyInfo) ? propertyInfo.name : 'Property');
+        const locationDetail = roomParts[1] || unit.nama_ruang;
+
+        const { error: insertError } = await supabase
+          .from('ac_inventory')
+          .insert({
+            unit_code: unitCode,
+            client_id: orderData.client_id,
+            property_id: orderData.property_id,
+            property_name: propertyName,
+            location_detail: locationDetail,
+            brand: unit.merk_ac,
+            capacity: unit.kapasitas_ac,
+            ac_type: unit.jenis_unit,
+            installation_date: new Date().toISOString().split('T')[0],
+            status: 'active',
+            notes: unit.deskripsi_lain || `Unit ditambahkan oleh teknisi dari order ${orderId}`,
+            last_maintenance_date: new Date().toISOString().split('T')[0],
+          });
+
+        if (insertError) {
+          console.error('Error saving unit to inventory:', insertError);
+          errors.push(`Gagal simpan unit ${unit.nama_ruang}: ${insertError.message}`);
+        } else {
+          savedCount++;
+        }
+      } catch (err: any) {
+        console.error('Error processing unit:', err);
+        errors.push(`Error pada unit ${unit.nama_ruang}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      savedCount,
+      errors,
+    };
+  } catch (error: any) {
+    console.error('Error in saveUnitsToInventory:', error);
+    return {
+      success: false,
+      savedCount: 0,
+      errors: [error.message || 'Terjadi kesalahan'],
+    };
+  }
 }
 
 const JENIS_UNIT_OPTIONS = [
@@ -147,6 +245,8 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
       temperatur_supply: "",
       temperatur_return: "",
       deskripsi_lain: "",
+      saveToInventory: false,
+      inventorySaved: false,
     };
     onChange([...data, newUnit]);
     setEditingId(newUnit.id);
@@ -399,6 +499,40 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
                     rows={2}
                   />
                 </div>
+
+                {/* Checkbox untuk simpan ke inventory */}
+                {orderId && !unit.inventorySaved && (
+                  <div className="md:col-span-2">
+                    <div className="flex items-center space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <Checkbox
+                        id={`save-inventory-${unit.id}`}
+                        checked={unit.saveToInventory || false}
+                        onCheckedChange={(checked) =>
+                          updateUnit(unit.id, "saveToInventory", checked as any)
+                        }
+                      />
+                      <label
+                        htmlFor={`save-inventory-${unit.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        💾 Tambahkan unit ini ke Inventory Client (unit baru akan tersedia untuk kunjungan berikutnya)
+                      </label>
+                    </div>
+                    {unit.saveToInventory && (
+                      <p className="text-xs text-blue-600 mt-2">
+                        ✓ Unit ini akan disimpan ke inventory client saat work log disubmit
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {unit.inventorySaved && (
+                  <div className="md:col-span-2">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                      ✓ Unit ini sudah tersimpan di inventory client
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
