@@ -99,27 +99,39 @@ export async function POST(request: Request) {
 
     // --- A) New technician system (technicians.id based) ---
 
+    // NOTE: In production data, `work_order_assignments.status` is not always updated to "completed"
+    // when the related `service_orders.status` becomes "completed".
+    // To match the technician dashboard, count completed jobs based on `service_orders.status`.
     const { data: assignmentsData } = await admin
       .from("work_order_assignments")
-      .select("technician_id, service_order_id, status, role_in_order, service_orders!inner(tenant_id)")
-      .eq("service_orders.tenant_id", tenantId);
+      .select(
+        "technician_id, service_order_id, status, role_in_order, service_orders!inner(tenant_id, status)"
+      )
+      .eq("service_orders.tenant_id", tenantId)
+      .eq("service_orders.status", "completed");
 
     const assignments = (assignmentsData || []) as Array<{
       technician_id: string;
       service_order_id: string;
       status: string;
       role_in_order?: string | null;
+      service_orders?: { status?: string } | Array<{ status?: string }>;
     }>;
 
     const completedOrderIdsByTechId = new Map<string, Set<string>>();
 
     for (const a of assignments) {
-      if (a.status === "completed") {
-        if (!completedOrderIdsByTechId.has(a.technician_id)) {
-          completedOrderIdsByTechId.set(a.technician_id, new Set());
-        }
-        completedOrderIdsByTechId.get(a.technician_id)!.add(a.service_order_id);
+      // Already filtered by service_orders.status = completed, but keep a defensive check.
+      const joinedStatus = Array.isArray(a.service_orders)
+        ? a.service_orders?.[0]?.status
+        : a.service_orders?.status;
+
+      if (joinedStatus !== "completed") continue;
+
+      if (!completedOrderIdsByTechId.has(a.technician_id)) {
+        completedOrderIdsByTechId.set(a.technician_id, new Set());
       }
+      completedOrderIdsByTechId.get(a.technician_id)!.add(a.service_order_id);
     }
 
     // --- B) Existing workflow (profiles/auth uid based) ---

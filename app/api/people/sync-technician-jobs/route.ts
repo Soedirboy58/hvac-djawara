@@ -80,6 +80,42 @@ export async function POST(request: Request) {
     const technicians = (techData || []) as TechnicianRow[];
     const techUserIds = technicians.map((t) => t.user_id).filter(Boolean) as string[];
 
+    // Also support the new assignment system: completed jobs are determined by service_orders.status
+    // for orders linked via work_order_assignments. This is needed because assigned_to may be null
+    // and work_order_assignments.status is not always updated to "completed".
+    const completedOrderIdsByTechId = new Map<string, Set<string>>();
+    const techIds = technicians.map((t) => t.id);
+    if (techIds.length > 0) {
+      const { data: assignCompletedData, error: assignCompletedError } = await admin
+        .from("work_order_assignments")
+        .select("technician_id, service_order_id, service_orders!inner(tenant_id, status)")
+        .eq("service_orders.tenant_id", tenantId)
+        .eq("service_orders.status", "completed")
+        .in("technician_id", techIds);
+
+      if (assignCompletedError) {
+        return NextResponse.json({ error: assignCompletedError.message }, { status: 500 });
+      }
+
+      const rows = (assignCompletedData || []) as Array<{
+        technician_id: string;
+        service_order_id: string;
+        service_orders?: { status?: string } | Array<{ status?: string }>;
+      }>;
+
+      for (const r of rows) {
+        const joinedStatus = Array.isArray(r.service_orders)
+          ? r.service_orders?.[0]?.status
+          : r.service_orders?.status;
+
+        if (joinedStatus !== "completed") continue;
+        if (!completedOrderIdsByTechId.has(r.technician_id)) {
+          completedOrderIdsByTechId.set(r.technician_id, new Set());
+        }
+        completedOrderIdsByTechId.get(r.technician_id)!.add(r.service_order_id);
+      }
+    }
+
     // Load completed orders for tenant
     const { data: completedOrdersData, error: ordersError } = await admin
       .from("service_orders")
@@ -125,7 +161,11 @@ export async function POST(request: Request) {
       .filter((t) => t.user_id)
       .map((t) => {
         const userId = t.user_id as string;
-        const set = completedOrderIdsByUserId.get(userId) || new Set();
+        const set = new Set<string>();
+        const byUser = completedOrderIdsByUserId.get(userId);
+        if (byUser) for (const oid of byUser) set.add(oid);
+        const byTech = completedOrderIdsByTechId.get(t.id);
+        if (byTech) for (const oid of byTech) set.add(oid);
         return {
           id: t.id,
           total_jobs_completed: set.size,
