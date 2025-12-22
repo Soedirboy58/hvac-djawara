@@ -146,6 +146,61 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     doc.text(title, contentLeft + 6, y);
     doc.setTextColor(0, 0, 0);
   };
+
+  const drawSignaturePanel = (opts: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    title: string;
+    signatureDataUrl?: string;
+    name?: string;
+  }) => {
+    const { x, y, width, height, title, signatureDataUrl, name } = opts;
+
+    // outer border
+    drawBox(x, y, width, height, colors.white, colors.border);
+
+    // header strip
+    drawBox(x, y, width, 10, colors.light, colors.border);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(0, 0, 0);
+    doc.text(title, x + width / 2, y + 7, { align: "center" });
+
+    // signature area
+    const sigBoxX = x + 6;
+    const sigBoxY = y + 12;
+    const sigBoxW = width - 12;
+    const sigBoxH = height - 22;
+
+    // faint guide line when empty
+    if (!signatureDataUrl) {
+      doc.setDrawColor(colors.border[0], colors.border[1], colors.border[2]);
+      doc.setLineWidth(0.3);
+      doc.line(sigBoxX + 10, sigBoxY + sigBoxH / 2, sigBoxX + sigBoxW - 10, sigBoxY + sigBoxH / 2);
+    } else {
+      try {
+        // Fit signature into box while keeping a stable visual size
+        const imgW = Math.min(50, sigBoxW);
+        const imgH = 14;
+        const imgX = sigBoxX + (sigBoxW - imgW) / 2;
+        const imgY = sigBoxY + 6;
+        doc.addImage(signatureDataUrl, "PNG", imgX, imgY, imgW, imgH);
+      } catch (e) {
+        console.error("Failed to add signature image:", e);
+      }
+    }
+
+    // name
+    const displayName = (name || "").trim();
+    if (displayName) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      const nameLines = doc.splitTextToSize(displayName, width - 10);
+      doc.text(nameLines.slice(0, 2), x + width / 2, y + height - 4, { align: "center" });
+    }
+  };
   
   // Header (more compact & professional)
   drawBox(0, 0, pageWidth, 22, colors.dark);
@@ -503,73 +558,33 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   drawSectionTitle("TANDA TANGAN", yPos);
   yPos += 6;
   
-  // Create signature table
-  const sigStartY = yPos;
-  
-  // Narrower, centered signature table (more professional proportions)
-  const sigTableWidth = 140;
-  const sigLeft = (pageWidth - sigTableWidth) / 2;
-  const sigColWidth = sigTableWidth / 2;
+  // Two-column signature panels (manual layout for reliable spacing)
+  const panelGap = 8;
+  const panelWidth = (contentWidth - panelGap) / 2;
+  const panelHeight = 38;
+  const panelY = yPos;
 
-  autoTable(doc, {
-    startY: sigStartY,
-    head: [["Pemilik/Penanggung Jawab", "Teknisi"]],
-    body: [["", ""]],
-    theme: "grid",
-    headStyles: {
-      fillColor: colors.light,
-      textColor: [0, 0, 0],
-      fontStyle: 'bold',
-      halign: 'center',
-      lineColor: colors.border,
-      lineWidth: 0.3,
-      fontSize: 9,
-      cellPadding: 3,
-    },
-    styles: {
-      fontSize: 8,
-      cellPadding: 2,
-      minCellHeight: 26,
-      lineColor: colors.border,
-      lineWidth: 0.3,
-    },
-    columnStyles: {
-      0: { cellWidth: sigColWidth, halign: 'center' },
-      1: { cellWidth: sigColWidth, halign: 'center' },
-    },
-    margin: { left: sigLeft, right: sigLeft },
-    tableWidth: 'auto',
-    didDrawCell: function(data) {
-      // Draw signatures in the body cells
-      if (data.section === 'body' && data.row.index === 0) {
-        if (data.column.index === 0 && signatureClient) {
-          // Client signature (left)
-          try {
-            doc.addImage(signatureClient, "PNG", data.cell.x + (data.cell.width - 50) / 2, data.cell.y + 3, 50, 14);
-          } catch (e) {
-            console.error("Failed to add client signature:", e);
-          }
-          // Name below signature
-          doc.setFontSize(7);
-          doc.setFont("helvetica", "normal");
-          doc.text(signatureClientName || clientName || '', data.cell.x + data.cell.width / 2, data.cell.y + 21, { align: 'center' });
-        } else if (data.column.index === 1 && signatureTechnician) {
-          // Technician signature (right)
-          try {
-            doc.addImage(signatureTechnician, "PNG", data.cell.x + (data.cell.width - 50) / 2, data.cell.y + 3, 50, 14);
-          } catch (e) {
-            console.error("Failed to add technician signature:", e);
-          }
-          // Name below signature
-          doc.setFontSize(7);
-          doc.setFont("helvetica", "normal");
-          doc.text(signatureTechnicianName || technicianName || '', data.cell.x + data.cell.width / 2, data.cell.y + 21, { align: 'center' });
-        }
-      }
-    }
+  drawSignaturePanel({
+    x: contentLeft,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    title: "Pemilik/Penanggung Jawab",
+    signatureDataUrl: signatureClient,
+    name: signatureClientName || clientName || "",
   });
-  
-  yPos = (doc as any).lastAutoTable.finalY + 5;
+
+  drawSignaturePanel({
+    x: contentLeft + panelWidth + panelGap,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    title: "Teknisi",
+    signatureDataUrl: signatureTechnician,
+    name: signatureTechnicianName || technicianName || "",
+  });
+
+  yPos = panelY + panelHeight + 6;
   
   // Date badge
   drawBox(15, yPos, 80, 8, colors.light, colors.border);
