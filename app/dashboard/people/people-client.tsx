@@ -45,6 +45,7 @@ import {
   Star,
   Award,
   TrendingUp,
+  RefreshCw,
   Upload,
   QrCode,
   Link as LinkIcon,
@@ -152,6 +153,7 @@ export function PeopleManagementClient({
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [resendingTechId, setResendingTechId] = useState<string | null>(null)
   const [newMember, setNewMember] = useState({
     fullName: '',
     email: '',
@@ -161,6 +163,45 @@ export function PeopleManagementClient({
   const supabase = createClient()
 
   const isTechnicianRole = (role: string) => ['technician', 'supervisor', 'team_lead'].includes(role)
+
+  const resendTechnicianActivation = async (technicianId: string) => {
+    setResendingTechId(technicianId)
+    try {
+      const response = await fetch('/api/people/resend-technician-activation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId, technicianId })
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Gagal mengirim ulang link aktivasi')
+      }
+
+      if (result.tokenSent) {
+        toast.success('Link aktivasi berhasil dikirim ke email teknisi')
+        return
+      }
+
+      // Email service belum siap / gagal kirim: copy link agar bisa dikirim manual via WA
+      const verifyUrl = String(result.verifyUrl || '')
+      if (verifyUrl) {
+        try {
+          await navigator.clipboard.writeText(verifyUrl)
+          toast.warning('Email gagal dikirim. Link aktivasi sudah dicopy (kirim via WhatsApp).')
+        } catch {
+          toast.warning(`Email gagal dikirim. Link aktivasi: ${verifyUrl}`)
+        }
+      } else {
+        toast.warning(result.warning || 'Email gagal dikirim. Coba lagi.')
+      }
+    } catch (error: any) {
+      console.error('Resend activation error:', error)
+      toast.error(error?.message || 'Gagal mengirim ulang link aktivasi')
+    } finally {
+      setResendingTechId(null)
+    }
+  }
 
   const fetchTechnicianPerformance = async () => {
     setIsLoadingTechnicians(true)
@@ -923,6 +964,22 @@ export function PeopleManagementClient({
                           Dibuat {new Date(t.created_at).toLocaleDateString()}
                         </div>
                       </div>
+
+                      {!isActive && (
+                        <div className="mt-4">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => resendTechnicianActivation(t.id)}
+                            disabled={resendingTechId === t.id}
+                          >
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            {resendingTechId === t.id ? 'Mengirim...' : 'Kirim ulang link aktivasi'}
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )
