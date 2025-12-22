@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { 
   DndContext, 
   DragEndEvent, 
@@ -15,7 +15,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, AlertCircle, Clock, User, MapPin, Plus } from 'lucide-react'
+import { Loader2, AlertCircle, Plus, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useOrders, useUpdateOrder, OrderStatus } from '@/hooks/use-orders'
 import { useRouter } from 'next/navigation'
@@ -71,6 +71,9 @@ export default function ScheduleKanbanView() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const [modalOpen, setModalOpen] = useState(false)
+
+  const [selectedMonth, setSelectedMonth] = useState(() => moment().startOf('month'))
+
   // Local state for optimistic updates
   const [optimisticOrders, setOptimisticOrders] = useState<any[]>([])
   
@@ -78,11 +81,39 @@ export default function ScheduleKanbanView() {
   const orders = optimisticOrders.length > 0 ? optimisticOrders : serverOrders
   
   // Sync optimistic with server when server updates
-  useState(() => {
+  useEffect(() => {
     if (serverOrders.length > 0 && optimisticOrders.length === 0) {
       setOptimisticOrders(serverOrders)
     }
-  })
+  }, [serverOrders, optimisticOrders.length])
+
+  const selectedMonthKey = useMemo(() => selectedMonth.format('YYYY-MM'), [selectedMonth])
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const scheduledDate = order?.scheduled_date
+      if (!scheduledDate) return true
+
+      const m = moment(scheduledDate)
+      if (!m.isValid()) return true
+
+      return m.isSame(selectedMonth, 'month')
+    })
+  }, [orders, selectedMonthKey])
+
+  const DEFAULT_COLUMN_PAGE_SIZE = 20
+  const initialVisibleCounts = useMemo(() => {
+    return columns.reduce((acc, col) => {
+      acc[col.id] = DEFAULT_COLUMN_PAGE_SIZE
+      return acc
+    }, {} as Record<OrderStatus, number>)
+  }, [])
+
+  const [visibleCounts, setVisibleCounts] = useState<Record<OrderStatus, number>>(initialVisibleCounts)
+
+  useEffect(() => {
+    setVisibleCounts(initialVisibleCounts)
+  }, [selectedMonthKey, initialVisibleCounts])
 
   // Setup sensors with delay for long press (250ms hold to drag)
   const sensors = useSensors(
@@ -174,16 +205,52 @@ export default function ScheduleKanbanView() {
     )
   }
 
-  // Group orders by status
+  // Group (filtered) orders by status
   const ordersByStatus = columns.reduce((acc, col) => {
-    acc[col.id] = orders.filter(o => o.status === col.id)
+    acc[col.id] = filteredOrders.filter(o => o.status === col.id)
     return acc
-  }, {} as Record<OrderStatus, typeof orders>)
+  }, {} as Record<OrderStatus, typeof filteredOrders>)
 
   const activeOrder = activeId ? orders.find(o => o.id === activeId) : null
 
   return (
     <div className="space-y-6">
+      {/* Month Switcher */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Calendar className="h-4 w-4" />
+          <span className="font-medium">Bulan:</span>
+          <span className="text-gray-900">{selectedMonth.format('MMMM YYYY')}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedMonth((m) => moment(m).subtract(1, 'month').startOf('month'))}
+            className="gap-1"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedMonth(() => moment().startOf('month'))}
+          >
+            This month
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedMonth((m) => moment(m).add(1, 'month').startOf('month'))}
+            className="gap-1"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       {/* Helper Text */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
         <span className="font-medium">💡 Tip:</span> Click card untuk view detail • Hold card 0.3 detik untuk drag & drop ke kolom lain
@@ -220,25 +287,54 @@ export default function ScheduleKanbanView() {
               color={column.color}
               description={column.description}
             >
+              {(() => {
+                const allOrders = ordersByStatus[column.id]
+                const visible = allOrders.slice(0, visibleCounts[column.id])
+                const remaining = Math.max(0, allOrders.length - visible.length)
+
+                return (
+                  <>
               <SortableContext
-                items={ordersByStatus[column.id].map(o => o.id)}
+                items={visible.map(o => o.id)}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="space-y-2">
-                  {ordersByStatus[column.id].map(order => (
+                  {visible.map(order => (
                     <KanbanCard
                       key={order.id}
                       order={order}
                       onClick={() => handleCardClick(order)}
                     />
                   ))}
-                  {ordersByStatus[column.id].length === 0 && (
+                  {allOrders.length === 0 && (
                     <div className="text-center py-8 text-gray-400 text-sm">
                       No orders
                     </div>
                   )}
+
+                  {remaining > 0 && (
+                    <div className="pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                          setVisibleCounts((prev) => ({
+                            ...prev,
+                            [column.id]: prev[column.id] + DEFAULT_COLUMN_PAGE_SIZE,
+                          }))
+                        }
+                      >
+                        Load more ({remaining})
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </SortableContext>
+                  </>
+                )
+              })()}
             </KanbanColumn>
           ))}
         </div>
