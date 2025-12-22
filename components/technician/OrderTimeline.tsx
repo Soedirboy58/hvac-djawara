@@ -32,7 +32,7 @@ export default function OrderTimeline({ steps }: OrderTimelineProps) {
                 <Circle className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
               </div>
             )}
-            <span className="text-xs mt-1 text-center max-w-[44px] sm:max-w-[60px] font-medium leading-tight break-words">
+            <span className="mt-1 text-center font-medium leading-tight whitespace-nowrap text-[11px] sm:text-xs">
               {step.label}
             </span>
           </div>
