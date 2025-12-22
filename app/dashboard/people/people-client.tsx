@@ -57,6 +57,9 @@ import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
 import Cropper from 'react-easy-crop'
 
+const COMPANY_LOGO_URL =
+  'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Assets/Logo%201.png'
+
 interface Profile {
   id: string
   full_name: string
@@ -1214,19 +1217,15 @@ export function PeopleManagementClient({
                           {/* Avatar and Status */}
                           <div className="flex items-start justify-between mb-4">
                             <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-blue-400 to-blue-600">
-                              {avatarUrl ? (
-                                <Image
-                                  src={avatarUrl}
-                                  alt={fullName}
-                                  fill
-                                  className="object-cover"
-                                  sizes="80px"
-                                />
-                              ) : (
-                                <div className="h-full w-full flex items-center justify-center text-white font-bold text-2xl">
-                                  {initials}
-                                </div>
-                              )}
+                              <Image
+                                src={COMPANY_LOGO_URL}
+                                alt="Company logo"
+                                fill
+                                className="object-contain p-2"
+                                sizes="80px"
+                              />
+                              <div className="pointer-events-none absolute inset-0 bg-white/10" />
+                              <div className="sr-only">{initials}</div>
                               <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
                             </div>
                             {member.is_active ? (
