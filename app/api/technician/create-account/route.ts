@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Get technician by email (token already verified in step 1)
     const { data: technician, error: techError } = await supabaseAdmin
       .from("technicians")
-      .select("id, user_id, verification_token, token_expires_at")
+      .select("id, tenant_id, user_id, role, full_name, phone, verification_token, token_expires_at")
       .eq("email", email)
       .single();
 
@@ -118,6 +118,63 @@ export async function POST(request: NextRequest) {
         { error: "Gagal mengupdate data teknisi" },
         { status: 500 }
       );
+    }
+
+    // Ensure profile exists for People Management / team hierarchy
+    const fullName = (technician.full_name || email.split("@")[0] || "Technician").slice(0, 100);
+    const phone = technician.phone || null;
+
+    const { error: profileUpsertError } = await supabaseAdmin
+      .from("profiles")
+      .upsert(
+        {
+          id: authData.user.id,
+          full_name: fullName,
+          phone,
+          active_tenant_id: technician.tenant_id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (profileUpsertError) {
+      console.error("Profile upsert error:", profileUpsertError);
+      // Non-fatal: account already created and technician verified
+    }
+
+    // Ensure user has a tenant role entry (so they appear in get_team_members)
+    // Map technician system roles to user_role enum values.
+    const roleMap: Record<string, string> = {
+      technician: "technician",
+      supervisor: "supervisor",
+      team_lead: "tech_head",
+    };
+    const tenantRole = roleMap[String(technician.role || "technician")] || "technician";
+
+    const { data: existingRole, error: existingRoleError } = await supabaseAdmin
+      .from("user_tenant_roles")
+      .select("id")
+      .eq("tenant_id", technician.tenant_id)
+      .eq("user_id", authData.user.id)
+      .maybeSingle();
+
+    if (existingRoleError) {
+      console.error("Check existing role error:", existingRoleError);
+    } else if (!existingRole) {
+      const { error: insertRoleError } = await supabaseAdmin
+        .from("user_tenant_roles")
+        .insert({
+          tenant_id: technician.tenant_id,
+          user_id: authData.user.id,
+          role: tenantRole as any,
+          is_active: true,
+          assigned_at: new Date().toISOString(),
+        });
+
+      if (insertRoleError) {
+        console.error("Insert user_tenant_roles error:", insertRoleError);
+        // Non-fatal
+      }
     }
 
     return NextResponse.json({

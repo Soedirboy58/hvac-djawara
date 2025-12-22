@@ -5,7 +5,7 @@
 
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -113,6 +113,20 @@ interface TechnicianPerformanceRow {
   overtime_30d_hours: number
 }
 
+interface TechnicianRosterRow {
+  id: string
+  user_id: string | null
+  full_name: string
+  email: string
+  phone: string | null
+  role: string
+  status: string
+  availability_status: string
+  is_verified: boolean
+  last_login_at: string | null
+  created_at: string
+}
+
 export function PeopleManagementClient({ 
   tenantId, 
   initialTeamMembers,
@@ -122,6 +136,7 @@ export function PeopleManagementClient({
   const [partnerRecords, setPartnerRecords] = useState<PartnerRecord[]>([])
   const [activeTab, setActiveTab] = useState<'people' | 'technicians'>('people')
   const [technicianRows, setTechnicianRows] = useState<TechnicianPerformanceRow[]>([])
+  const [technicianRoster, setTechnicianRoster] = useState<TechnicianRosterRow[]>([])
   const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false)
   const [technicianError, setTechnicianError] = useState<string | null>(null)
   const [techPage, setTechPage] = useState(1)
@@ -131,6 +146,10 @@ export function PeopleManagementClient({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
   const [isViewingMember, setIsViewingMember] = useState(false)
+  const [tenantSlug, setTenantSlug] = useState<string>('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [newMember, setNewMember] = useState({
     fullName: '',
     email: '',
@@ -163,6 +182,25 @@ export function PeopleManagementClient({
       setTechnicianError(error.message || 'Failed to load technician performance')
     } finally {
       setIsLoadingTechnicians(false)
+    }
+  }
+
+  const fetchTechnicianRoster = async () => {
+    try {
+      const response = await fetch('/api/people/technicians-roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId })
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load technicians roster')
+      }
+
+      setTechnicianRoster((result.rows || []) as TechnicianRosterRow[])
+    } catch (error: any) {
+      console.error('Failed to fetch technicians roster:', error)
     }
   }
 
@@ -220,11 +258,129 @@ export function PeopleManagementClient({
     }
   }
 
-  // Load partner records on mount
-  React.useEffect(() => {
+  const fetchTenantInfo = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('slug')
+        .eq('id', tenantId)
+        .maybeSingle()
+
+      if (!error && data?.slug) {
+        setTenantSlug(String(data.slug))
+      }
+    } catch (error) {
+      console.error('Failed to fetch tenant info:', error)
+    }
+  }
+
+  // Load partner records + tenant info on mount
+  useEffect(() => {
     fetchPartnerRecords()
+    fetchTechnicianRoster()
+    fetchTenantInfo()
     console.log('Fetching partner records...')
   }, [])
+
+  useEffect(() => {
+    if (!selectedMember) {
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      return
+    }
+
+    const profile = typeof selectedMember.profiles === 'object' ? selectedMember.profiles : {}
+    setAvatarFile(null)
+    setAvatarPreview(profile.avatar_url || null)
+  }, [selectedMember])
+
+  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const maxSize = 2 * 1024 * 1024 // 2MB
+
+    if (!validTypes.includes(file.type)) {
+      toast.error('Only JPG, PNG, and WebP images are allowed')
+      return
+    }
+
+    if (file.size > maxSize) {
+      toast.error('File size must be less than 2MB')
+      return
+    }
+
+    setAvatarFile(file)
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const uploadAndSaveAvatar = async () => {
+    if (!selectedMember) return
+    if (!avatarFile) {
+      toast.error('Pilih file foto dulu')
+      return
+    }
+
+    if (!isTechnicianRole(selectedMember.role)) {
+      toast.error('Upload foto profil saat ini khusus untuk teknisi')
+      return
+    }
+
+    setUploadingAvatar(true)
+    try {
+      const userId = selectedMember.user_id
+      if (!userId) {
+        toast.error('Akun belum terhubung. Selesaikan verifikasi dulu.')
+        return
+      }
+
+      const fileExt = avatarFile.name.split('.').pop() || 'jpg'
+      const filePath = `${userId}/avatar.${fileExt}`
+
+      const { data, error } = await supabase.storage
+        .from('technician-avatars')
+        .upload(filePath, avatarFile, { cacheControl: '3600', upsert: true })
+
+      if (error) throw error
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('technician-avatars')
+        .getPublicUrl(data.path)
+
+      const { error: updateProfileError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+
+      if (updateProfileError) throw updateProfileError
+
+      setTeamMembers(members =>
+        members.map(m => {
+          if (m.user_id !== userId) return m
+          const p = typeof m.profiles === 'object' ? m.profiles : {}
+          return {
+            ...m,
+            profiles: {
+              ...p,
+              avatar_url: publicUrl,
+            }
+          }
+        })
+      )
+
+      toast.success('Foto profil berhasil diupdate')
+    } catch (error: any) {
+      console.error('Avatar upload error:', error)
+      toast.error(error?.message || 'Gagal upload foto')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   // Debug: Log partner records when they change
   React.useEffect(() => {
@@ -428,6 +584,9 @@ export function PeopleManagementClient({
   // Separate active and passive partners
   const activePartners = partnerRecords.filter(p => p.status === 'accepted')
   const passivePartners = partnerRecords.filter(p => p.status === 'pending')
+
+  const teamMemberUserIds = new Set(teamMembers.map(m => m.user_id))
+  const technicianCards = technicianRoster.filter(t => !t.user_id || !teamMemberUserIds.has(t.user_id))
 
   return (
     <div className="space-y-6">
@@ -690,6 +849,77 @@ export function PeopleManagementClient({
                             </div>
                           </>
                         )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Technician Cards (include not-yet-verified technicians) */}
+      {technicianCards.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Teknisi ({technicianCards.length})
+            </CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              Teknisi baru akan muncul di sini setelah dibuat. Status “Belum verifikasi” berarti teknisi belum aktivasi akun.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {technicianCards.map((t) => {
+                const isActive = !!t.is_verified && !!t.user_id
+
+                return (
+                  <Card key={t.id} className="cursor-default">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                          {(t.full_name || 'T').charAt(0).toUpperCase()}
+                        </div>
+                        {isActive ? (
+                          <Badge className="bg-green-500 text-white">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Aktif
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-orange-500 text-white">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Belum verifikasi
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mb-4">
+                        <h3 className="font-bold text-lg text-gray-900 mb-1">{t.full_name}</h3>
+                        <Badge variant="outline" className="text-xs">
+                          {getRoleDisplayName(t.role)}
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-600">
+                        {t.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span className="truncate">{t.email}</span>
+                          </div>
+                        )}
+                        {t.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            <span>{t.phone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                          <Calendar className="w-4 h-4" />
+                          Dibuat {new Date(t.created_at).toLocaleDateString()}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1056,8 +1286,18 @@ export function PeopleManagementClient({
                 {/* Left: Avatar & Info */}
                 <div className="col-span-2 space-y-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
-                      {(typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'U').charAt(0).toUpperCase()}
+                    <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-gray-200 bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
+                      {avatarPreview ? (
+                        <Image
+                          src={avatarPreview}
+                          alt="Profile photo"
+                          width={80}
+                          height={80}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        (typeof selectedMember.profiles === 'object' ? selectedMember.profiles.full_name : 'U').charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div className="flex-1">
                       <h3 className="text-2xl font-bold text-gray-900 mb-2">
@@ -1098,7 +1338,43 @@ export function PeopleManagementClient({
                           <Calendar className="w-4 h-4 text-gray-400" />
                           <span>Joined {new Date(selectedMember.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                         </div>
+                        {tenantSlug && (
+                          <div className="flex items-center gap-2 text-gray-500">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            <span>Kode Perusahaan: <strong>{tenantSlug}</strong></span>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Avatar Upload (Technicians) */}
+                      {isTechnicianRole(selectedMember.role) && (
+                        <div className="mt-4 flex items-center gap-2">
+                          <input
+                            id="member-avatar-upload"
+                            type="file"
+                            accept="image/jpeg,image/jpg,image/png,image/webp"
+                            onChange={handleAvatarSelect}
+                            className="hidden"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => document.getElementById('member-avatar-upload')?.click()}
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            {avatarPreview ? 'Ganti Foto' : 'Upload Foto'}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={uploadAndSaveAvatar}
+                            disabled={uploadingAvatar || !avatarFile}
+                          >
+                            {uploadingAvatar ? 'Uploading...' : 'Simpan Foto'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
