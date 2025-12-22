@@ -35,6 +35,7 @@ type ReimburseRequest = {
   decision_note: string | null
   reimburse_categories?: { name: string } | null
   profiles?: { full_name: string | null; phone: string | null } | null
+  display_name?: string
 }
 
 export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
@@ -86,7 +87,35 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
         .order('submitted_at', { ascending: false })
 
       if (error) throw error
-      setRequests((data || []) as ReimburseRequest[])
+
+      const raw = (data || []) as ReimburseRequest[]
+
+      // Prefer technician name (technicians.full_name) over any profile/email.
+      const userIds = Array.from(new Set(raw.map((r) => r.submitted_by).filter(Boolean)))
+      const techNameByUserId = new Map<string, string>()
+
+      if (userIds.length) {
+        const { data: techRows, error: techError } = await supabase
+          .from('technicians')
+          .select('user_id, full_name')
+          .eq('tenant_id', tenantId)
+          .in('user_id', userIds)
+
+        if (techError) {
+          console.warn('fetch technician names error:', techError)
+        } else {
+          for (const t of techRows || []) {
+            if (t?.user_id && t?.full_name) techNameByUserId.set(t.user_id, t.full_name)
+          }
+        }
+      }
+
+      setRequests(
+        raw.map((r) => ({
+          ...r,
+          display_name: techNameByUserId.get(r.submitted_by) || r.profiles?.full_name || null || undefined,
+        }))
+      )
     } catch (error: any) {
       console.error('fetchRequests error:', error)
       toast.error(error?.message || 'Gagal memuat pengajuan')
@@ -339,7 +368,7 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
                                 day: '2-digit',
                               })}
                             </TableCell>
-                            <TableCell>{r.profiles?.full_name || '-'}</TableCell>
+                            <TableCell>{r.display_name || '-'}</TableCell>
                             <TableCell>{r.reimburse_categories?.name || '-'}</TableCell>
                             <TableCell>{formatRupiah(Number(r.amount))}</TableCell>
                             <TableCell>{statusBadge(r.status)}</TableCell>
