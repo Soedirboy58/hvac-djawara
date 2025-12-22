@@ -57,10 +57,19 @@ interface WorkOrder {
   assigned_at: string;
 }
 
+type TechnicianReimburseRequest = {
+  id: string;
+  submitted_at: string;
+  status: "submitted" | "approved" | "rejected" | "paid" | string;
+  amount: number;
+  reimburse_categories?: { name: string } | null;
+};
+
 export default function TechnicianDashboard() {
   const router = useRouter();
   const [technician, setTechnician] = useState<Technician | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [reimburseRequests, setReimburseRequests] = useState<TechnicianReimburseRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -110,6 +119,24 @@ export default function TechnicianDashboard() {
           .from('profiles')
           .update({ active_tenant_id: techData.tenant_id })
           .eq('id', user.id);
+      }
+
+      // Fetch reimburse status summary (use internal API to avoid direct Supabase REST calls)
+      try {
+        const res = await fetch("/api/technician/reimburse/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const json = await res.json();
+        if (res.ok) {
+          setReimburseRequests((json?.requests || []) as TechnicianReimburseRequest[]);
+        } else {
+          console.warn("fetch reimburse list failed:", json);
+          setReimburseRequests([]);
+        }
+      } catch (reimErr) {
+        console.warn("fetch reimburse list error:", reimErr);
+        setReimburseRequests([]);
       }
 
       // Fetch assigned work orders
@@ -256,6 +283,17 @@ export default function TechnicianDashboard() {
     return <Badge className={variants[priority] || "bg-gray-500"}>{priority}</Badge>;
   };
 
+  const getReimburseStatusBadge = (status: string) => {
+    const map: Record<string, { cls: string; label: string }> = {
+      submitted: { cls: "bg-blue-500", label: "Diproses" },
+      approved: { cls: "bg-green-600", label: "Disetujui" },
+      rejected: { cls: "bg-red-600", label: "Ditolak" },
+      paid: { cls: "bg-emerald-600", label: "Dibayarkan" },
+    };
+    const v = map[status] || { cls: "bg-gray-500", label: status };
+    return <Badge className={v.cls}>{v.label}</Badge>;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -279,6 +317,20 @@ export default function TechnicianDashboard() {
   
   // Order Completed yang perlu diisi form teknis (tampilkan di Tugas Baru dengan label khusus)
   const completedOrders = workOrders.filter((o) => o.status === "completed");
+
+  const reimburseCounts = reimburseRequests.reduce(
+    (acc, r) => {
+      acc.total += 1;
+      if (r.status === "submitted") acc.submitted += 1;
+      else if (r.status === "approved") acc.approved += 1;
+      else if (r.status === "paid") acc.paid += 1;
+      else if (r.status === "rejected") acc.rejected += 1;
+      return acc;
+    },
+    { total: 0, submitted: 0, approved: 0, paid: 0, rejected: 0 }
+  );
+
+  const latestReimburse = reimburseRequests[0] || null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -454,6 +506,47 @@ export default function TechnicianDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Reimburse Indicator */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Reimburse</CardTitle>
+            <Button type="button" variant="outline" onClick={() => router.push("/technician/reimburse")}
+            >
+              Lihat
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {reimburseCounts.total === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada pengajuan reimburse.</p>
+            ) : (
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Status terakhir</p>
+                  {latestReimburse ? (
+                    <div className="flex items-center gap-2">
+                      {getReimburseStatusBadge(latestReimburse.status)}
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(latestReimburse.submitted_at).toLocaleDateString("id-ID", {
+                          year: "numeric",
+                          month: "short",
+                          day: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">Diproses: {reimburseCounts.submitted}</Badge>
+                  <Badge className="bg-green-600">Disetujui: {reimburseCounts.approved}</Badge>
+                  <Badge className="bg-emerald-600">Dibayarkan: {reimburseCounts.paid}</Badge>
+                  <Badge className="bg-red-600">Ditolak: {reimburseCounts.rejected}</Badge>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Work Orders List */}
         <Card>
