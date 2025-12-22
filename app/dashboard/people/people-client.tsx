@@ -55,6 +55,7 @@ import {
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
+import Cropper from 'react-easy-crop'
 
 interface Profile {
   id: string
@@ -153,6 +154,9 @@ export function PeopleManagementClient({
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 })
+  const [avatarZoom, setAvatarZoom] = useState(1)
+  const [avatarCroppedAreaPixels, setAvatarCroppedAreaPixels] = useState<any>(null)
   const [resendingTechId, setResendingTechId] = useState<string | null>(null)
   const [newMember, setNewMember] = useState({
     fullName: '',
@@ -346,13 +350,54 @@ export function PeopleManagementClient({
     if (!selectedMember) {
       setAvatarFile(null)
       setAvatarPreview(null)
+      setAvatarCrop({ x: 0, y: 0 })
+      setAvatarZoom(1)
+      setAvatarCroppedAreaPixels(null)
       return
     }
 
     const profile = typeof selectedMember.profiles === 'object' ? selectedMember.profiles : {}
     setAvatarFile(null)
     setAvatarPreview(profile.avatar_url || null)
+    setAvatarCrop({ x: 0, y: 0 })
+    setAvatarZoom(1)
+    setAvatarCroppedAreaPixels(null)
   }, [selectedMember])
+
+  const getCroppedImageBlob = async (imageSrc: string, pixelCrop: any) => {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.crossOrigin = 'anonymous'
+      img.src = imageSrc
+    })
+
+    const canvas = document.createElement('canvas')
+    canvas.width = pixelCrop.width
+    canvas.height = pixelCrop.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas not supported')
+
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      pixelCrop.width,
+      pixelCrop.height
+    )
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
+    })
+
+    if (!blob) throw new Error('Gagal memproses crop gambar')
+    return blob
+  }
 
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -372,6 +417,9 @@ export function PeopleManagementClient({
     }
 
     setAvatarFile(file)
+    setAvatarCrop({ x: 0, y: 0 })
+    setAvatarZoom(1)
+    setAvatarCroppedAreaPixels(null)
     const reader = new FileReader()
     reader.onloadend = () => {
       setAvatarPreview(reader.result as string)
@@ -399,12 +447,23 @@ export function PeopleManagementClient({
         return
       }
 
-      const fileExt = avatarFile.name.split('.').pop() || 'jpg'
-      const filePath = `${userId}/avatar.${fileExt}`
+      // Always crop first to match the profile frame
+      if (!avatarPreview || !String(avatarPreview).startsWith('data:')) {
+        toast.error('Preview foto belum siap. Pilih foto lagi.')
+        return
+      }
+      if (!avatarCroppedAreaPixels) {
+        toast.error('Atur crop foto dulu sebelum simpan')
+        return
+      }
+
+      const croppedBlob = await getCroppedImageBlob(String(avatarPreview), avatarCroppedAreaPixels)
+
+      const filePath = `${userId}/avatar.jpg`
 
       const { data, error } = await supabase.storage
         .from('technician-avatars')
-        .upload(filePath, avatarFile, { cacheControl: '3600', upsert: true })
+        .upload(filePath, croppedBlob, { cacheControl: '3600', upsert: true, contentType: 'image/jpeg' })
 
       if (error) throw error
 
@@ -1149,94 +1208,119 @@ export function PeopleManagementClient({
                     }}
                   >
                     <CardContent className="p-6">
-                      {/* Avatar and Status */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-blue-400 to-blue-600">
-                          {avatarUrl ? (
-                            <Image
-                              src={avatarUrl}
-                              alt={fullName}
-                              fill
-                              className="object-cover"
-                              sizes="80px"
-                            />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center text-white font-bold text-2xl">
-                              {initials}
+                      <div className="flex flex-col sm:flex-row gap-5">
+                        {/* Left: Info */}
+                        <div className="flex-1 min-w-0">
+                          {/* Avatar and Status */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-blue-400 to-blue-600">
+                              {avatarUrl ? (
+                                <Image
+                                  src={avatarUrl}
+                                  alt={fullName}
+                                  fill
+                                  className="object-cover"
+                                  sizes="80px"
+                                />
+                              ) : (
+                                <div className="h-full w-full flex items-center justify-center text-white font-bold text-2xl">
+                                  {initials}
+                                </div>
+                              )}
+                              <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
                             </div>
-                          )}
-                          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
-                        </div>
-                        {member.is_active ? (
-                          <Badge className="bg-green-500 text-white">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-red-100 text-red-800">
-                            <XCircle className="w-3 h-3 mr-1" />
-                            Inactive
-                          </Badge>
-                        )}
-                      </div>
+                            {member.is_active ? (
+                              <Badge className="bg-green-500 text-white">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Active
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="bg-red-100 text-red-800">
+                                <XCircle className="w-3 h-3 mr-1" />
+                                Inactive
+                              </Badge>
+                            )}
+                          </div>
 
-                      {/* Name and Role */}
-                      <div className="mb-4">
-                        <h3 className="font-bold text-lg text-gray-900 mb-1">
-                          {fullName}
-                        </h3>
-                        <Badge variant="outline" className="text-xs">
-                          {getRoleDisplayName(member.role)}
-                        </Badge>
-                      </div>
+                          {/* Name and Role */}
+                          <div className="mb-4">
+                            <h3 className="font-bold text-lg text-gray-900 mb-1">
+                              {fullName}
+                            </h3>
+                            <Badge variant="outline" className="text-xs">
+                              {getRoleDisplayName(member.role)}
+                            </Badge>
+                          </div>
 
-                      {/* Contact Info */}
-                      <div className="space-y-2 text-sm text-gray-600 mb-4">
-                        {email && (
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            <span className="truncate">{email}</span>
+                          {/* Contact Info */}
+                          <div className="space-y-2 text-sm text-gray-600 mb-4">
+                            {email && (
+                              <div className="flex items-center gap-2">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="truncate">{email}</span>
+                              </div>
+                            )}
+                            {phone && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="w-4 h-4 text-gray-400" />
+                                <span>{phone}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                              <Calendar className="w-4 h-4" />
+                              Joined {new Date(member.created_at).toLocaleDateString()}
+                            </div>
                           </div>
-                        )}
-                        {phone && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-4 h-4 text-gray-400" />
-                            <span>{phone}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          <Calendar className="w-4 h-4" />
-                          Joined {new Date(member.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
 
-                      {/* Quick Stats - Placeholder for future */}
-                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <div className="flex items-center gap-4 text-xs">
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-500" />
-                            <span className="font-semibold">-</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Award className="w-4 h-4 text-blue-500" />
-                            <span className="font-semibold">-</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <TrendingUp className="w-4 h-4 text-green-500" />
-                            <span className="font-semibold">-</span>
+                          {/* Quick Stats - Placeholder for future */}
+                          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                            <div className="flex items-center gap-4 text-xs">
+                              <div className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-yellow-500" />
+                                <span className="font-semibold">-</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Award className="w-4 h-4 text-blue-500" />
+                                <span className="font-semibold">-</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <TrendingUp className="w-4 h-4 text-green-500" />
+                                <span className="font-semibold">-</span>
+                              </div>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleMemberStatus(member.id, member.is_active)
+                              }}
+                              className="h-8"
+                            >
+                              {member.is_active ? 'Deactivate' : 'Activate'}
+                            </Button>
                           </div>
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleMemberStatus(member.id, member.is_active)
-                          }}
-                          className="h-8"
-                        >
-                          {member.is_active ? 'Deactivate' : 'Activate'}
-                        </Button>
+
+                        {/* Right: Big Photo Frame (area besar) */}
+                        <div className="sm:w-48">
+                          <div className="relative h-48 w-full rounded-xl overflow-hidden border border-border bg-muted">
+                            {avatarUrl ? (
+                              <Image
+                                src={avatarUrl}
+                                alt={fullName}
+                                fill
+                                className="object-cover"
+                                sizes="192px"
+                              />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-blue-600 text-white font-bold text-4xl">
+                                {initials}
+                              </div>
+                            )}
+                            <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
+                          </div>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1457,7 +1541,36 @@ export function PeopleManagementClient({
 
                       {/* Avatar Upload (Technicians) */}
                       {isTechnicianRole(selectedMember.role) && (
-                        <div className="mt-4 flex items-center gap-2">
+                        <div className="mt-4 space-y-3">
+                          {avatarFile && avatarPreview && String(avatarPreview).startsWith('data:') && (
+                            <div className="space-y-2">
+                              <div className="relative h-64 w-64 rounded-xl overflow-hidden border border-border bg-muted">
+                                <Cropper
+                                  image={String(avatarPreview)}
+                                  crop={avatarCrop}
+                                  zoom={avatarZoom}
+                                  aspect={1}
+                                  onCropChange={setAvatarCrop}
+                                  onZoomChange={setAvatarZoom}
+                                  onCropComplete={(_, croppedAreaPixels) => setAvatarCroppedAreaPixels(croppedAreaPixels)}
+                                />
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-500">Zoom</span>
+                                <Input
+                                  type="range"
+                                  min={1}
+                                  max={3}
+                                  step={0.1}
+                                  value={avatarZoom}
+                                  onChange={(e) => setAvatarZoom(Number(e.target.value))}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500">Geser & zoom untuk menyesuaikan bingkai profil.</p>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
                           <input
                             id="member-avatar-upload"
                             type="file"
@@ -1482,6 +1595,7 @@ export function PeopleManagementClient({
                           >
                             {uploadingAvatar ? 'Uploading...' : 'Simpan Foto'}
                           </Button>
+                        </div>
                         </div>
                       )}
                     </div>
