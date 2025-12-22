@@ -20,6 +20,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import OrderTimeline from "@/components/technician/OrderTimeline";
+import Image from "next/image";
 
 interface Technician {
   id: string;
@@ -32,7 +33,15 @@ interface Technician {
   average_rating: number;
   status: string;
   availability_status: string;
+  avatar_url?: string | null;
 }
+
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+};
 
 interface WorkOrder {
   id: string;
@@ -80,7 +89,20 @@ export default function TechnicianDashboard() {
         throw new Error("Teknisi tidak ditemukan. Hubungi admin.");
       }
       
-      setTechnician(techData);
+      // Fetch profile data (synced from People Management)
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const p = profileData as ProfileRow | null;
+      setTechnician({
+        ...techData,
+        full_name: p?.full_name || techData.full_name,
+        phone: p?.phone ?? (techData.phone ?? null),
+        avatar_url: p?.avatar_url ?? null,
+      });
 
       // Set active tenant for this technician to enable RLS access
       if (techData.tenant_id) {
@@ -290,52 +312,86 @@ export default function TechnicianDashboard() {
               <CardTitle>Profil Teknisi</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Nama</p>
-                  <p className="font-medium">{technician.full_name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Email</p>
-                  <p className="font-medium break-all">{technician.email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">ID Karyawan</p>
-                  <p className="font-medium">{technician.employee_id || '-'}</p>
-                </div>
+              <div className="flex flex-col md:flex-row gap-6">
+                <div className="flex-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Nama</p>
+                      <p className="font-medium">{technician.full_name}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Email</p>
+                      <p className="font-medium break-all">{technician.email}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">ID Karyawan</p>
+                      <p className="font-medium">{technician.employee_id || "-"}</p>
+                    </div>
 
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Role</p>
-                  <p className="font-medium">{technician.role}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Status Akun</p>
-                  <div>
-                    <Badge className={technician.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
-                      {technician.status}
-                    </Badge>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Role</p>
+                      <p className="font-medium">{technician.role}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Status Akun</p>
+                      <div>
+                        <Badge
+                          className={
+                            technician.status === "active" ? "bg-green-500" : "bg-gray-500"
+                          }
+                        >
+                          {technician.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Ketersediaan</p>
+                      <div>
+                        <Badge
+                          className={
+                            technician.availability_status === "available"
+                              ? "bg-blue-500"
+                              : "bg-gray-500"
+                          }
+                        >
+                          {technician.availability_status}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Total Job Selesai</p>
+                      <p className="font-medium">{technician.total_jobs_completed ?? 0}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Rating Rata-rata</p>
+                      <p className="font-medium">⭐ {technician.average_rating?.toFixed(1) || "0.0"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Kontak</p>
+                      <p className="font-medium">{technician.phone || "-"}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Ketersediaan</p>
-                  <div>
-                    <Badge className={technician.availability_status === 'available' ? 'bg-blue-500' : 'bg-gray-500'}>
-                      {technician.availability_status}
-                    </Badge>
-                  </div>
-                </div>
 
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Total Job Selesai</p>
-                  <p className="font-medium">{technician.total_jobs_completed ?? 0}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Rating Rata-rata</p>
-                  <p className="font-medium">⭐ {technician.average_rating?.toFixed(1) || '0.0'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Kontak</p>
-                  <p className="font-medium">{technician.phone || '-'}</p>
+                {/* Foto profil (sinkron dari People Management) */}
+                <div className="md:w-48">
+                  <div className="relative h-48 w-full rounded-xl overflow-hidden border border-border bg-muted">
+                    {technician.avatar_url ? (
+                      <Image
+                        src={technician.avatar_url}
+                        alt={technician.full_name}
+                        fill
+                        className="object-cover"
+                        sizes="192px"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
+                        Belum ada foto
+                      </div>
+                    )}
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
+                  </div>
                 </div>
               </div>
             </CardContent>

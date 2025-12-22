@@ -26,7 +26,7 @@ type ReimburseCategory = {
 
 type ReimburseRequest = {
   id: string;
-  created_at: string;
+  submitted_at: string;
   status: string;
   amount: number;
   description: string | null;
@@ -91,7 +91,7 @@ export default function TechnicianReimbursePage() {
         .update({ active_tenant_id: techData.tenant_id })
         .eq("id", user.id);
 
-      await Promise.all([fetchCategories(techData.tenant_id), fetchRequests(techData.tenant_id, user.id)]);
+      await Promise.all([fetchCategories(), fetchRequests()]);
     } catch (e: any) {
       console.error("init reimburse error:", e);
       toast.error(e?.message || "Gagal memuat halaman reimburse");
@@ -100,40 +100,36 @@ export default function TechnicianReimbursePage() {
     }
   };
 
-  const fetchCategories = async (tenantId: string) => {
-    const { data, error } = await supabase
-      .from("reimburse_categories")
-      .select("id, name")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("name", { ascending: true });
+  const fetchCategories = async () => {
+    const response = await fetch("/api/technician/reimburse/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-    if (error) {
-      console.error("fetchCategories error:", error);
-      // If table/policy not ready, show friendly message but keep page usable
-      toast.error("Kategori reimburse belum siap. Pastikan SQL module reimburse sudah dijalankan di Supabase.");
+    const result = await response.json();
+    if (!response.ok) {
+      console.error("fetchCategories error:", result);
+      toast.error(result?.error || "Gagal memuat kategori reimburse");
       setCategories([]);
       return;
     }
 
-    setCategories((data || []) as ReimburseCategory[]);
+    setCategories((result.categories || []) as ReimburseCategory[]);
   };
 
-  const fetchRequests = async (tenantId: string, userId: string) => {
-    const { data, error } = await supabase
-      .from("reimburse_requests")
-      .select("id, created_at, status, amount, description, receipt_path, reimburse_categories(name)")
-      .eq("tenant_id", tenantId)
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+  const fetchRequests = async () => {
+    const response = await fetch("/api/technician/reimburse/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-    if (error) {
-      console.error("fetchRequests error:", error);
-      setRequests([]);
+    const result = await response.json();
+    if (!response.ok) {
+      console.error("fetchRequests error:", result);
       return;
     }
 
-    setRequests((data || []) as ReimburseRequest[]);
+    setRequests((result.requests || []) as ReimburseRequest[]);
   };
 
   const getStatusBadge = (status: string) => {
@@ -160,7 +156,6 @@ export default function TechnicianReimbursePage() {
       }
 
       if (!categoryId) {
-        toast.error("Pilih kategori terlebih dahulu");
         return;
       }
 
@@ -192,17 +187,21 @@ export default function TechnicianReimbursePage() {
 
       if (uploadError) throw uploadError;
 
-      const { error: insertError } = await supabase.from("reimburse_requests").insert({
-        tenant_id: technician.tenant_id,
-        user_id: user.id,
-        category_id: categoryId,
-        amount: amountNumber,
-        description: description || null,
-        receipt_path: receiptPath,
-        status: "submitted",
+      const persistResponse = await fetch("/api/technician/reimburse/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId,
+          amount: amountNumber,
+          description: description || null,
+          receiptPath,
+        }),
       });
 
-      if (insertError) throw insertError;
+      const persistResult = await persistResponse.json();
+      if (!persistResponse.ok) {
+        throw new Error(persistResult?.error || "Gagal menyimpan pengajuan");
+      }
 
       toast.success("Pengajuan reimburse berhasil dikirim");
       setCategoryId("");
@@ -210,7 +209,7 @@ export default function TechnicianReimbursePage() {
       setDescription("");
       setReceiptFile(null);
 
-      await fetchRequests(technician.tenant_id, user.id);
+      await fetchRequests();
     } catch (e: any) {
       console.error("submit reimburse error:", e);
       toast.error(e?.message || "Gagal mengirim pengajuan reimburse");
@@ -336,7 +335,7 @@ export default function TechnicianReimbursePage() {
                             {getStatusBadge(r.status)}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {r.reimburse_categories?.name || "(Kategori)"} • {new Date(r.created_at).toLocaleDateString("id-ID")}
+                            {r.reimburse_categories?.name || "(Kategori)"} • {new Date(r.submitted_at).toLocaleDateString("id-ID")}
                           </p>
                           {r.description && (
                             <p className="text-sm mt-2">{r.description}</p>
