@@ -949,13 +949,17 @@ export function PeopleManagementClient({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {technicianCards.map((t) => {
                 const isActive = !!t.is_verified && !!t.user_id
+                const initials = (t.full_name || 'T').charAt(0).toUpperCase()
 
                 return (
                   <Card key={t.id} className="cursor-default">
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
-                          {(t.full_name || 'T').charAt(0).toUpperCase()}
+                        <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-blue-400 to-blue-600">
+                          <div className="h-full w-full flex items-center justify-center text-white font-bold text-2xl">
+                            {initials}
+                          </div>
+                          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
                         </div>
                         {isActive ? (
                           <Badge className="bg-green-500 text-white">
@@ -1130,6 +1134,8 @@ export function PeopleManagementClient({
                 const fullName = profile.full_name || 'Unknown'
                 const email = profile.email || ''
                 const phone = profile.phone || ''
+                const avatarUrl = (profile.avatar_url as string | null | undefined) || null
+                const initials = fullName.charAt(0).toUpperCase()
                 
                 return (
                   <Card
@@ -1145,8 +1151,21 @@ export function PeopleManagementClient({
                     <CardContent className="p-6">
                       {/* Avatar and Status */}
                       <div className="flex items-start justify-between mb-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
-                          {fullName.charAt(0).toUpperCase()}
+                        <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-blue-400 to-blue-600">
+                          {avatarUrl ? (
+                            <Image
+                              src={avatarUrl}
+                              alt={fullName}
+                              fill
+                              className="object-cover"
+                              sizes="80px"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center text-white font-bold text-2xl">
+                              {initials}
+                            </div>
+                          )}
+                          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
                         </div>
                         {member.is_active ? (
                           <Badge className="bg-green-500 text-white">
