@@ -164,6 +164,23 @@ export function PeopleManagementClient({
 
   const isTechnicianRole = (role: string) => ['technician', 'supervisor', 'team_lead'].includes(role)
 
+  const refreshTeamMembers = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_team_members', { p_tenant_id: tenantId })
+      if (error) throw error
+
+      const nextMembers = (data || []) as TeamMember[]
+      setTeamMembers(nextMembers)
+
+      if (selectedMember) {
+        const updated = nextMembers.find(m => m.id === selectedMember.id) || null
+        setSelectedMember(updated)
+      }
+    } catch (error: any) {
+      console.error('refreshTeamMembers error:', error)
+    }
+  }
+
   const resendTechnicianActivation = async (technicianId: string) => {
     setResendingTechId(technicianId)
     try {
@@ -395,12 +412,17 @@ export function PeopleManagementClient({
         .from('technician-avatars')
         .getPublicUrl(data.path)
 
-      const { error: updateProfileError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
-        .eq('id', userId)
+      // Persist avatar_url via server API (avoid profiles RLS blocking admin edits)
+      const persistResponse = await fetch('/api/people/update-profile-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId, userId, avatarUrl: publicUrl }),
+      })
 
-      if (updateProfileError) throw updateProfileError
+      const persistResult = await persistResponse.json()
+      if (!persistResponse.ok) {
+        throw new Error(persistResult.error || 'Gagal menyimpan foto ke profil')
+      }
 
       setTeamMembers(members =>
         members.map(m => {
@@ -415,6 +437,9 @@ export function PeopleManagementClient({
           }
         })
       )
+
+      // Ensure fresh data for future page reload
+      await refreshTeamMembers()
 
       toast.success('Foto profil berhasil diupdate')
     } catch (error: any) {
@@ -573,10 +598,16 @@ export function PeopleManagementClient({
         if (activeTab === 'technicians') {
           await fetchTechnicianPerformance()
         }
+
+        // Refresh roster cards so new technician appears without manual reload
+        await fetchTechnicianRoster()
       } else {
         toast.success('Partner record created! They can activate anytime via invitation link.')
         await fetchPartnerRecords()
       }
+
+      // Refresh team list so new members/roles reflect without manual reload
+      await refreshTeamMembers()
 
       // Reset form
       setNewMember({
