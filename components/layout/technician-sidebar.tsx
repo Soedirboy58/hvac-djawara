@@ -85,13 +85,28 @@ const sidebarItems: SidebarItem[] = [
   },
 ];
 
-export function TechnicianSidebar() {
+export function TechnicianSidebar({
+  variant = "desktop",
+  onNavigate,
+}: {
+  variant?: "desktop" | "mobile";
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
+  const isMobile = variant === "mobile";
+
   return (
-    <aside className="w-64 border-r bg-white h-screen fixed left-0 top-0 flex flex-col">
+    <aside
+      className={cn(
+        "bg-white flex flex-col",
+        isMobile
+          ? "w-full max-h-[80vh] h-[80vh]"
+          : "w-64 border-r h-screen fixed left-0 top-0"
+      )}
+    >
       {/* Header */}
-      <div className="p-6 border-b">
+      <div className={cn("border-b", isMobile ? "p-5" : "p-6")}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
             <User className="w-6 h-6 text-white" />
@@ -122,7 +137,13 @@ export function TechnicianSidebar() {
                     ? "text-gray-400 cursor-not-allowed hover:bg-gray-50"
                     : "text-gray-700 hover:bg-gray-100"
                 )}
-                onClick={(e) => item.disabled && e.preventDefault()}
+                onClick={(e) => {
+                  if (item.disabled) {
+                    e.preventDefault();
+                    return;
+                  }
+                  onNavigate?.();
+                }}
               >
                 <Icon
                   className={cn(

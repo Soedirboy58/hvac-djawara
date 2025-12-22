@@ -55,6 +55,7 @@ interface WorkOrder {
   estimated_duration: number;
   assignment_status: string;
   assigned_at: string;
+  has_technical_report?: boolean;
 }
 
 type TechnicianReimburseRequest = {
@@ -172,14 +173,21 @@ export default function TechnicianDashboard() {
       }
 
       // Merge assignment data with order data
-      const formattedOrders = assignmentsData.map((assignment: any) => {
-        const order = ordersData?.find(o => o.id === assignment.service_order_id);
-        return {
-          ...order,
-          assignment_status: assignment.status,
-          assigned_at: assignment.assigned_at,
-        };
-      }).filter(order => order && order.id); // Filter out any orders not found
+      const formattedOrders: WorkOrder[] = (assignmentsData || [])
+        .map((assignment: { status: string; assigned_at: string; service_order_id: string }) => {
+          const order = (ordersData || []).find((o) => o.id === assignment.service_order_id);
+          if (!order) return null;
+
+          const merged: WorkOrder = {
+            ...order,
+            assignment_status: assignment.status,
+            assigned_at: assignment.assigned_at,
+            has_technical_report: false,
+          };
+
+          return merged;
+        })
+        .filter((o): o is WorkOrder => !!o);
 
       setWorkOrders(formattedOrders);
 
@@ -199,7 +207,7 @@ export default function TechnicianDashboard() {
         // Mark orders that have technical reports (check if signature exists)
         if (workLogsData && workLogsData.length > 0) {
           workLogsData.forEach((log: any) => {
-            const existingOrder = formattedOrders.find(o => o.id === log.service_order_id);
+            const existingOrder = formattedOrders.find((o) => o.id === log.service_order_id);
             // Has technical report if has client signature (regardless of work type)
             if (existingOrder && log.signature_client) {
               existingOrder.has_technical_report = true;
@@ -337,7 +345,7 @@ export default function TechnicianDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-10">
+      <header className="bg-white border-b md:sticky md:top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -366,9 +374,9 @@ export default function TechnicianDashboard() {
               <CardTitle>Profil Teknisi</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex flex-col lg:flex-row gap-6">
                 <div className="flex-1">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Nama</p>
                       <p className="font-medium">{technician.full_name}</p>
@@ -429,15 +437,15 @@ export default function TechnicianDashboard() {
                 </div>
 
                 {/* Foto profil (sinkron dari People Management) */}
-                <div className="md:w-48">
-                  <div className="relative h-48 w-full rounded-xl overflow-hidden border border-border bg-muted">
+                <div className="lg:w-56">
+                  <div className="relative h-48 lg:h-56 w-full rounded-xl overflow-hidden border border-border bg-muted">
                     {technician.avatar_url ? (
                       <Image
                         src={technician.avatar_url}
                         alt={technician.full_name}
                         fill
                         className="object-cover"
-                        sizes="192px"
+                        sizes="(max-width: 1024px) 100vw, 224px"
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
@@ -453,7 +461,7 @@ export default function TechnicianDashboard() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -608,7 +616,7 @@ export default function TechnicianDashboard() {
 
                       {/* Action Buttons - Only show for completed orders */}
                       {order.status === "completed" && (
-                        <div className="flex gap-2 mb-3">
+                        <div className="flex flex-col sm:flex-row gap-2 mb-3">
                           <Button
                             size="sm"
                             variant="outline"
