@@ -138,15 +138,12 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   const contentWidth = pageWidth - contentLeft - contentRight;
 
   const drawSectionTitle = (title: string, y: number) => {
-    // subtle accent line + title (no big color blocks)
-    doc.setDrawColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-    doc.setLineWidth(1);
-    doc.line(contentLeft, y - 2, contentLeft + 18, y - 2);
-
+    // Consistent, clean heading: small left accent bar + text (no lines crossing the title)
+    drawBox(contentLeft, y - 5, 3, 6, colors.primary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
-    doc.text(title, contentLeft, y);
+    doc.text(title, contentLeft + 6, y);
     doc.setTextColor(0, 0, 0);
   };
   
@@ -510,7 +507,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   const sigStartY = yPos;
   
   // Narrower, centered signature table (more professional proportions)
-  const sigTableWidth = 160;
+  const sigTableWidth = 140;
   const sigLeft = (pageWidth - sigTableWidth) / 2;
   const sigColWidth = sigTableWidth / 2;
 
@@ -530,9 +527,9 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       cellPadding: 3,
     },
     styles: {
-      fontSize: 9,
-      cellPadding: 3,
-      minCellHeight: 34,
+      fontSize: 8,
+      cellPadding: 2,
+      minCellHeight: 26,
       lineColor: colors.border,
       lineWidth: 0.3,
     },
@@ -548,25 +545,25 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         if (data.column.index === 0 && signatureClient) {
           // Client signature (left)
           try {
-            doc.addImage(signatureClient, "PNG", data.cell.x + (data.cell.width - 60) / 2, data.cell.y + 4, 60, 18);
+            doc.addImage(signatureClient, "PNG", data.cell.x + (data.cell.width - 50) / 2, data.cell.y + 3, 50, 14);
           } catch (e) {
             console.error("Failed to add client signature:", e);
           }
           // Name below signature
-          doc.setFontSize(8);
+          doc.setFontSize(7);
           doc.setFont("helvetica", "normal");
-          doc.text(signatureClientName || clientName || '', data.cell.x + data.cell.width / 2, data.cell.y + 26, { align: 'center' });
+          doc.text(signatureClientName || clientName || '', data.cell.x + data.cell.width / 2, data.cell.y + 21, { align: 'center' });
         } else if (data.column.index === 1 && signatureTechnician) {
           // Technician signature (right)
           try {
-            doc.addImage(signatureTechnician, "PNG", data.cell.x + (data.cell.width - 60) / 2, data.cell.y + 4, 60, 18);
+            doc.addImage(signatureTechnician, "PNG", data.cell.x + (data.cell.width - 50) / 2, data.cell.y + 3, 50, 14);
           } catch (e) {
             console.error("Failed to add technician signature:", e);
           }
           // Name below signature
-          doc.setFontSize(8);
+          doc.setFontSize(7);
           doc.setFont("helvetica", "normal");
-          doc.text(signatureTechnicianName || technicianName || '', data.cell.x + data.cell.width / 2, data.cell.y + 26, { align: 'center' });
+          doc.text(signatureTechnicianName || technicianName || '', data.cell.x + data.cell.width / 2, data.cell.y + 21, { align: 'center' });
         }
       }
     }
