@@ -10,6 +10,7 @@ import {
   Star,
   GraduationCap,
   DollarSign,
+  Receipt,
   Settings,
   ClipboardList,
   Clock,
@@ -68,6 +69,12 @@ const sidebarItems: SidebarItem[] = [
     icon: DollarSign,
     disabled: true,
     description: "Slip gaji & riwayat pembayaran",
+  },
+  {
+    title: "Reimburse",
+    href: "/technician/reimburse",
+    icon: Receipt,
+    description: "Ajukan reimburse biaya operasional",
   },
   {
     title: "Pengaturan",

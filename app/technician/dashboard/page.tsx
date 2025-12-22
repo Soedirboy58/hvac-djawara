@@ -25,6 +25,7 @@ interface Technician {
   id: string;
   full_name: string;
   email: string;
+  phone?: string | null;
   employee_id: string | null;
   role: string;
   total_jobs_completed: number;
@@ -282,6 +283,65 @@ export default function TechnicianDashboard() {
       </header>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* Technician Profile */}
+        {technician && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Profil Teknisi</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Nama</p>
+                  <p className="font-medium">{technician.full_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="font-medium break-all">{technician.email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">ID Karyawan</p>
+                  <p className="font-medium">{technician.employee_id || '-'}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Role</p>
+                  <p className="font-medium">{technician.role}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Status Akun</p>
+                  <div>
+                    <Badge className={technician.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
+                      {technician.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Ketersediaan</p>
+                  <div>
+                    <Badge className={technician.availability_status === 'available' ? 'bg-blue-500' : 'bg-gray-500'}>
+                      {technician.availability_status}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Total Job Selesai</p>
+                  <p className="font-medium">{technician.total_jobs_completed ?? 0}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Rating Rata-rata</p>
+                  <p className="font-medium">⭐ {technician.average_rating?.toFixed(1) || '0.0'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Kontak</p>
+                  <p className="font-medium">{technician.phone || '-'}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
