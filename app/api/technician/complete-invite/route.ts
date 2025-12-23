@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { createClient as createSupabaseServerClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'
 
-export async function POST() {
+type Body = {
+  password?: string
+}
+
+export async function POST(request: Request) {
   try {
     const supabase = await createSupabaseServerClient()
 
@@ -32,6 +36,33 @@ export async function POST() {
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
+
+    // Optionally set password server-side for reliability.
+    // This avoids edge cases where client-side updateUser doesn't persist as expected.
+    let body: Body | null = null
+    try {
+      const contentType = request.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        body = (await request.json()) as Body
+      }
+    } catch {
+      body = null
+    }
+
+    const nextPassword = String(body?.password || '').trim()
+    if (nextPassword) {
+      if (nextPassword.length < 6) {
+        return NextResponse.json({ error: 'Password minimal 6 karakter' }, { status: 400 })
+      }
+
+      const { error: pwError } = await admin.auth.admin.updateUserById(user.id, {
+        password: nextPassword,
+      })
+
+      if (pwError) {
+        return NextResponse.json({ error: pwError.message || 'Gagal set password' }, { status: 500 })
+      }
+    }
 
     const { data: technician, error: techError } = await admin
       .from('technicians')

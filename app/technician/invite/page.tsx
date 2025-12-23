@@ -192,16 +192,10 @@ export default function TechnicianInvitePage() {
     setSubmitting(true)
 
     try {
-      const supabase = createClient()
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: formData.password,
-      })
-      if (updateError) throw updateError
-
       const res = await fetch('/api/technician/complete-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: formData.password }),
       })
 
       const result = await res.json()
