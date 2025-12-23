@@ -185,10 +185,22 @@ export async function POST(request: Request) {
           options: { redirectTo },
         });
         if (!linkError) {
-          verifyUrl = (linkData as any)?.properties?.action_link as string | undefined;
-          if (verifyUrl) {
+          const props = (linkData as any)?.properties as any;
+          const hashedToken = (props?.hashed_token as string | undefined) || undefined;
+          const actionLink = (props?.action_link as string | undefined) || undefined;
+
+          // Prefer app-domain link (token_hash) to avoid /auth/v1/verify redirects and hash-stripping.
+          if (hashedToken) {
+            verifyUrl = `${baseUrl}/technician/invite?token_hash=${encodeURIComponent(
+              hashedToken
+            )}&type=invite`;
+          } else {
+            verifyUrl = actionLink;
+          }
+
+          if (actionLink) {
             try {
-              debugRedirectTo = new URL(verifyUrl).searchParams.get("redirect_to") || undefined;
+              debugRedirectTo = new URL(actionLink).searchParams.get("redirect_to") || undefined;
             } catch {
               // ignore
             }
