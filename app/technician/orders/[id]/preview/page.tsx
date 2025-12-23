@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,12 +23,21 @@ export default function PreviewPDFPage() {
   }, [orderId]);
 
   useEffect(() => {
+    // When coming back from edit screen, refresh so preview shows the latest saved data.
+    const onFocus = () => {
+      if (!loading) loadPDFData();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loading, orderId]);
+
+  useEffect(() => {
     return () => {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     };
   }, [pdfUrl]);
 
-  const loadPDFData = async () => {
+  const loadPDFData = useCallback(async () => {
     try {
       setLoading(true);
       const supabase = createClient();
@@ -164,10 +173,12 @@ export default function PreviewPDFPage() {
           temp_ruang_5: workLog.temp_ruang_5,
           lain_lain: workLog.lain_lain,
         });
-        
-        if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+
         const url = URL.createObjectURL(pdfBlob);
-        setPdfUrl(url);
+        setPdfUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
       }
     } catch (error) {
       console.error('Error loading PDF:', error);
@@ -175,7 +186,7 @@ export default function PreviewPDFPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderId, router]);
 
   const handleDownload = () => {
     if (pdfUrl && orderData) {

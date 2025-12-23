@@ -43,6 +43,17 @@ interface WorkLogData {
     nama_ruang?: string;
     merk_ac?: string;
     kapasitas_ac?: string;
+    jenis_unit?: string;
+
+    // New ACUnitDataTable fields
+    voltage_supply?: string;
+    arus_supply?: string;
+    tekanan_refrigerant?: string;
+    temperatur_supply?: string;
+    temperatur_return?: string;
+    deskripsi_lain?: string;
+
+    // Legacy / older keys (kept for backward compatibility)
     daya_listrik?: string;
     kondisi_compressor?: string;
     kondisi_evaporator?: string;
@@ -310,7 +321,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   // Jenis Pekerjaan - use rincian_pekerjaan if available, else map work_type
   const workTypeLabel = data.rincian_pekerjaan || 
                        (data.work_type === 'pemeliharaan' ? 'Pemeliharaan AC' :
-                        data.work_type === 'pengecekan' ? 'Pengecekan Performa AC' :
+                        data.work_type === 'pengecekan' ? (data.check_type === 'survey' ? 'Pengecekan / Survey' : 'Pengecekan Performa AC') :
                         data.work_type === 'troubleshooting' ? 'Troubleshooting' :
                         data.work_type === 'instalasi' ? 'Instalasi AC' : 'Lain-lain');
   tableData.push(["Jenis Pekerjaan", workTypeLabel]);
@@ -331,20 +342,71 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     tableData.push(["Rincian Pekerjaan", unitsText.trim()]);
   }
   
-  // Rincian Pekerjaan for PENGECEKAN PERFORMA (unit details)
-  if (data.work_type === 'pengecekan' && data.check_type === 'performa' && data.ac_units_data && data.ac_units_data.length > 0) {
+  // Rincian Pekerjaan - AC unit details
+  // NOTE: Form saves ac_units_data for: pengecekan(performa), troubleshooting, instalasi.
+  if (
+    data.ac_units_data &&
+    data.ac_units_data.length > 0 &&
+    (
+      (data.work_type === 'pengecekan' && data.check_type === 'performa') ||
+      data.work_type === 'troubleshooting' ||
+      data.work_type === 'instalasi'
+    )
+  ) {
     let unitsText = "";
+
+    const isPresent = (v: any) => v !== undefined && v !== null && String(v).trim() !== "";
+
     data.ac_units_data.forEach((unit, idx) => {
       unitsText += `\nUnit ${idx + 1}: ${unit.nama_ruang || 'N/A'}`;
-      unitsText += `\n  • Merk: ${unit.merk_ac || 'N/A'}, Kapasitas: ${unit.kapasitas_ac || 'N/A'}`;
-      unitsText += `\n  • Daya: ${unit.daya_listrik || 'N/A'}`;
-      unitsText += `\n  • Kondisi - Compressor: ${unit.kondisi_compressor || 'N/A'}, Evaporator: ${unit.kondisi_evaporator || 'N/A'}, Condenser: ${unit.kondisi_condenser || 'N/A'}`;
-      unitsText += `\n  • Suhu - Ruangan: ${unit.suhu_ruangan || 'N/A'}°C, Supply: ${unit.suhu_supply || 'N/A'}°C, Return: ${unit.suhu_return || 'N/A'}°C`;
-      if (unit.catatan) {
-        unitsText += `\n  • Catatan: ${unit.catatan}`;
+
+      const metaParts: string[] = [];
+      metaParts.push(`Merk: ${unit.merk_ac || 'N/A'}`);
+      metaParts.push(`Kapasitas: ${unit.kapasitas_ac || 'N/A'}`);
+      if (isPresent(unit.jenis_unit)) metaParts.push(`Jenis: ${unit.jenis_unit}`);
+      unitsText += `\n  • ${metaParts.join(', ')}`;
+
+      // Prefer the new ACUnitDataTable fields when present
+      const hasNewPerformanceFields = [
+        unit.voltage_supply,
+        unit.arus_supply,
+        unit.tekanan_refrigerant,
+        unit.temperatur_supply,
+        unit.temperatur_return,
+      ].some(isPresent);
+
+      if (hasNewPerformanceFields) {
+        if (isPresent(unit.voltage_supply) || isPresent(unit.arus_supply)) {
+          unitsText += `\n  • Tegangan/Arus: ${isPresent(unit.voltage_supply) ? unit.voltage_supply + ' V' : 'N/A'} / ${isPresent(unit.arus_supply) ? unit.arus_supply + ' A' : 'N/A'}`;
+        }
+        if (isPresent(unit.tekanan_refrigerant)) {
+          unitsText += `\n  • Tekanan Refrigerant: ${unit.tekanan_refrigerant} PSI`;
+        }
+        if (isPresent(unit.temperatur_supply) || isPresent(unit.temperatur_return)) {
+          unitsText += `\n  • Temperatur: Supply ${isPresent(unit.temperatur_supply) ? unit.temperatur_supply + '°C' : 'N/A'} / Return ${isPresent(unit.temperatur_return) ? unit.temperatur_return + '°C' : 'N/A'}`;
+        }
+        if (isPresent(unit.deskripsi_lain)) {
+          unitsText += `\n  • Catatan: ${unit.deskripsi_lain}`;
+        }
+      } else {
+        // Fallback to legacy keys (older pengecekan performa structure)
+        if (isPresent(unit.daya_listrik)) {
+          unitsText += `\n  • Daya: ${unit.daya_listrik}`;
+        }
+        if (isPresent(unit.kondisi_compressor) || isPresent(unit.kondisi_evaporator) || isPresent(unit.kondisi_condenser)) {
+          unitsText += `\n  • Kondisi - Compressor: ${unit.kondisi_compressor || 'N/A'}, Evaporator: ${unit.kondisi_evaporator || 'N/A'}, Condenser: ${unit.kondisi_condenser || 'N/A'}`;
+        }
+        if (isPresent(unit.suhu_ruangan) || isPresent(unit.suhu_supply) || isPresent(unit.suhu_return)) {
+          unitsText += `\n  • Suhu - Ruangan: ${unit.suhu_ruangan || 'N/A'}°C, Supply: ${unit.suhu_supply || 'N/A'}°C, Return: ${unit.suhu_return || 'N/A'}°C`;
+        }
+        if (isPresent(unit.catatan)) {
+          unitsText += `\n  • Catatan: ${unit.catatan}`;
+        }
       }
+
       if (idx < data.ac_units_data!.length - 1) unitsText += "\n";
     });
+
     tableData.push(["Rincian Pekerjaan", unitsText.trim()]);
   }
   

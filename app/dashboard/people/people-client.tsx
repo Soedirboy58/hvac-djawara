@@ -209,15 +209,27 @@ export function PeopleManagementClient({
 
       // Email service belum siap / gagal kirim: copy link agar bisa dikirim manual via WA
       const verifyUrl = String(result.verifyUrl || '')
+      const reasonRaw = String(result.warning || '').trim()
+      const reason = reasonRaw
+        ? (reasonRaw.length > 140 ? `${reasonRaw.slice(0, 140)}...` : reasonRaw)
+        : ''
       if (verifyUrl) {
         try {
           await navigator.clipboard.writeText(verifyUrl)
-          toast.warning('Email gagal dikirim. Link aktivasi sudah dicopy (kirim via WhatsApp).')
+          toast.warning(
+            reason
+              ? `Email gagal dikirim (${reason}). Link aktivasi sudah dicopy (kirim via WhatsApp).`
+              : 'Email gagal dikirim. Link aktivasi sudah dicopy (kirim via WhatsApp).'
+          )
         } catch {
-          toast.warning(`Email gagal dikirim. Link aktivasi: ${verifyUrl}`)
+          toast.warning(
+            reason
+              ? `Email gagal dikirim (${reason}). Link aktivasi: ${verifyUrl}`
+              : `Email gagal dikirim. Link aktivasi: ${verifyUrl}`
+          )
         }
       } else {
-        toast.warning(result.warning || 'Email gagal dikirim. Coba lagi.')
+        toast.warning(reason || 'Email gagal dikirim. Coba lagi.')
       }
     } catch (error: any) {
       console.error('Resend activation error:', error)
