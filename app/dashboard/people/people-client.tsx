@@ -217,7 +217,12 @@ export function PeopleManagementClient({
             await navigator.clipboard.writeText(verifyUrl)
             toast.success('Link aktivasi dicopy ke clipboard')
           } catch {
-            // ignore
+            // Clipboard might be blocked; provide manual copy fallback.
+            try {
+              window.prompt('Copy link aktivasi ini:', verifyUrl)
+            } catch {
+              // ignore
+            }
           }
         }
         return
@@ -237,10 +242,17 @@ export function PeopleManagementClient({
               : 'Email gagal dikirim. Link aktivasi sudah dicopy (kirim via WhatsApp).'
           )
         } catch {
+          // Clipboard might be blocked; provide manual copy fallback.
+          try {
+            window.prompt('Copy link aktivasi ini:', verifyUrl)
+          } catch {
+            // ignore
+          }
+
           toast.warning(
             reason
-              ? `Email gagal dikirim (${reason}). Link aktivasi: ${verifyUrl}`
-              : `Email gagal dikirim. Link aktivasi: ${verifyUrl}`
+              ? `Email gagal dikirim (${reason}). Link aktivasi ditampilkan untuk dicopy manual.`
+              : 'Email gagal dikirim. Link aktivasi ditampilkan untuk dicopy manual.'
           )
         }
       } else {
