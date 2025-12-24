@@ -19,6 +19,13 @@ export default function TechnicianLoginPage() {
     password: "",
   });
 
+  // Prefill email if provided (e.g. redirected from activation page)
+  useEffect(() => {
+    const emailFromQuery = (searchParams.get('email') || '').trim();
+    if (!emailFromQuery) return;
+    setFormData((prev) => ({ ...prev, email: emailFromQuery }));
+  }, [searchParams]);
+
   const code = useMemo(() => searchParams.get('code') || '', [searchParams]);
   const type = useMemo(() => searchParams.get('type') || '', [searchParams]);
 

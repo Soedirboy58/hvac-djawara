@@ -192,6 +192,8 @@ export default function TechnicianInvitePage() {
     setSubmitting(true)
 
     try {
+      const supabase = createClient()
+
       const res = await fetch('/api/technician/complete-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,6 +208,32 @@ export default function TechnicianInvitePage() {
           return
         }
         throw new Error(result.error || 'Gagal menyelesaikan aktivasi')
+      }
+
+      // Safety: make sure the new password actually works.
+      // If activation succeeded but password didn't persist, user gets "Invalid login credentials" later.
+      const activationEmail = String(email || '').trim()
+      if (!activationEmail) {
+        toast.success('Akun berhasil diaktifkan. Selamat bekerja!')
+        router.push('/technician/dashboard')
+        return
+      }
+
+      await supabase.auth.signOut()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: activationEmail,
+        password: formData.password,
+      })
+
+      if (signInError) {
+        console.error('Post-activation sign-in failed:', signInError)
+        toast.error(
+          `Aktivasi selesai, tapi login gagal. Pastikan email benar (${activationEmail}) atau minta admin kirim ulang link aktivasi.`
+        )
+        const qs = new URLSearchParams()
+        qs.set('email', activationEmail)
+        router.push(`/technician/login?${qs.toString()}`)
+        return
       }
 
       toast.success('Akun berhasil diaktifkan. Selamat bekerja!')
