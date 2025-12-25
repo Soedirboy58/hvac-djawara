@@ -932,7 +932,7 @@ export function PeopleManagementClient({
                 const initials = String(partner.full_name || partner.email || 'U').charAt(0).toUpperCase()
                 
                 if (isSupportRole) {
-                  // Helper/Magang: use technician-like cardbox style (simple, compact)
+                  // Helper/Magang: match technician roster cardbox layout
                   return (
                     <Card key={partner.id} className="cursor-default">
                       <CardContent className="p-6">
@@ -946,12 +946,12 @@ export function PeopleManagementClient({
                           {isActivated ? (
                             <Badge className="bg-green-500 text-white">
                               <CheckCircle className="w-3 h-3 mr-1" />
-                              Activated
+                              Aktif
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="bg-orange-500 text-white">
                               <AlertCircle className="w-3 h-3 mr-1" />
-                              Pending Activation
+                              Belum verifikasi
                             </Badge>
                           )}
                         </div>
@@ -989,22 +989,15 @@ export function PeopleManagementClient({
 
                         {!isActivated && (
                           <div className="mt-4">
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => copyInvitationLink(partner.token)}
-                              >
-                                Copy Link
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => cancelPartner(partner.id)}>
-                                <XCircle className="w-4 h-4" />
-                              </Button>
-                            </div>
-                            <div className="mt-2 text-xs text-gray-400 break-all bg-white rounded p-2 border">
-                              {invitationUrl}
-                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => copyInvitationLink(partner.token)}
+                            >
+                              Copy link aktivasi
+                            </Button>
                           </div>
                         )}
                       </CardContent>
