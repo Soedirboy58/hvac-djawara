@@ -102,6 +102,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email undangan tidak valid' }, { status: 400 })
     }
 
+    const role = String(invitation.role || '')
+
     let userId: string | null = null
 
     // Create auth user (or update existing)
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
       password,
       email_confirm: true,
       user_metadata: {
-        role: invitation.role,
+        role,
         tenant_id: invitation.tenant_id,
         invited_via: 'team_invitations',
       },
@@ -213,8 +215,8 @@ export async function POST(request: NextRequest) {
     // Keep technicians.role within table constraint; real role remains in user_tenant_roles.
     if (shouldProvisionTechnicianPortal(role)) {
       try {
-        const fullName = String(invitation.full_name || email.split('@')[0] || 'Technician').slice(0, 100)
-        const phone = invitation.phone || null
+        const techFullName = String(invitation.full_name || email.split('@')[0] || 'Technician').slice(0, 100)
+        const techPhone = invitation.phone || null
 
         const { data: existingTech, error: existingTechError } = await adminClient
           .from('technicians')
@@ -233,8 +235,8 @@ export async function POST(request: NextRequest) {
           if (!existingTech.user_id) patch.user_id = userId
 
           // Keep identity reasonably fresh
-          patch.full_name = fullName
-          patch.phone = phone
+          patch.full_name = techFullName
+          patch.phone = techPhone
 
           const { error: updateTechError } = await adminClient
             .from('technicians')
@@ -248,9 +250,9 @@ export async function POST(request: NextRequest) {
           const { error: insertTechError } = await adminClient.from('technicians').insert({
             tenant_id: invitation.tenant_id,
             user_id: userId,
-            full_name: fullName,
+            full_name: techFullName,
             email,
-            phone,
+            phone: techPhone,
             role: mapToTechniciansRole(role),
             status: 'active',
             availability_status: 'available',
@@ -268,7 +270,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Decide redirect target
-    const role = String(invitation.role || '')
     const redirectTo = ['technician', 'helper', 'magang', 'supervisor', 'team_lead'].includes(role)
       ? '/technician/login?email=' + encodeURIComponent(email)
       : '/login?email=' + encodeURIComponent(email)
