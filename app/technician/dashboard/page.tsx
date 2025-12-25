@@ -438,15 +438,17 @@ export default function TechnicianDashboard() {
 
                 {/* Foto profil (sinkron dari People Management) */}
                 <div className="lg:w-56">
-                  <div className="relative h-48 lg:h-56 w-full rounded-xl overflow-hidden border border-border bg-muted">
+                  <div className="relative h-80 lg:h-56 w-full max-w-xs mx-auto lg:mx-0 rounded-xl overflow-hidden border border-border bg-muted p-2">
                     {technician.avatar_url ? (
-                      <Image
-                        src={technician.avatar_url}
-                        alt={technician.full_name}
-                        fill
-                        className="object-contain"
-                        sizes="(max-width: 1024px) 100vw, 224px"
-                      />
+                      <div className="relative h-full w-full">
+                        <Image
+                          src={technician.avatar_url}
+                          alt={technician.full_name}
+                          fill
+                          className="object-contain"
+                          sizes="(max-width: 1024px) 100vw, 224px"
+                        />
+                      </div>
                     ) : (
                       <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
                         Belum ada foto
