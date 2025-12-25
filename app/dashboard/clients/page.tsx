@@ -36,6 +36,16 @@ export default async function ClientsPage() {
     )
   }
 
+  const { data: roleRow } = await supabase
+    .from('user_tenant_roles')
+    .select('role')
+    .eq('tenant_id', profile.active_tenant_id)
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  const role = (roleRow as any)?.role ?? null
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -51,7 +61,7 @@ export default async function ClientsPage() {
         </Link>
       </div>
 
-      <ClientsList tenantId={profile.active_tenant_id} />
+      <ClientsList tenantId={profile.active_tenant_id} viewerRole={role} viewerUserId={user.id} />
     </div>
   )
 }

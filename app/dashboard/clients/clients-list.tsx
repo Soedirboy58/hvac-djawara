@@ -54,9 +54,11 @@ interface Client {
 
 interface ClientsListProps {
   tenantId: string
+  viewerRole?: string | null
+  viewerUserId?: string | null
 }
 
-export function ClientsList({ tenantId }: ClientsListProps) {
+export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListProps) {
   const [search, setSearch] = useState('')
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,11 +75,18 @@ export function ClientsList({ tenantId }: ClientsListProps) {
 
   const fetchClients = async () => {
     const supabase = createClient()
-    const { data, error } = await supabase
+
+    let query = supabase
       .from('clients')
       .select('id, name, client_type, email, phone, address, portal_enabled, created_at')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
+
+    // Sales partners should only see clients that were referred by them
+    if (viewerRole === 'sales_partner' && viewerUserId) {
+      query = query.eq('referred_by_id', viewerUserId)
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (!error && data) {
       setClients(data)
@@ -87,7 +96,7 @@ export function ClientsList({ tenantId }: ClientsListProps) {
 
   useEffect(() => {
     fetchClients()
-  }, [tenantId])
+  }, [tenantId, viewerRole, viewerUserId])
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(search.toLowerCase()) ||

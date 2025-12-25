@@ -31,6 +31,7 @@ interface ClientDetailPageProps {
 export default function ClientDetailPage({ params }: ClientDetailPageProps) {
   const [client, setClient] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [referredBy, setReferredBy] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'info' | 'properties' | 'inventory' | 'audit' | 'documents' | 'schedule'>('info')
   const [editMode, setEditMode] = useState(false)
   const router = useRouter()
@@ -58,6 +59,20 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
 
       if (error) throw error
       setClient(data)
+
+      // Referral display (supports active user referral via referred_by_id OR passive referral via referred_by_name)
+      if (data?.referred_by_name) {
+        setReferredBy(data.referred_by_name)
+      } else if (data?.referred_by_id) {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', data.referred_by_id)
+          .maybeSingle()
+        setReferredBy(profileRow?.full_name ?? null)
+      } else {
+        setReferredBy(null)
+      }
     } catch (err) {
       console.error('Error fetching client:', err)
     } finally {
@@ -234,6 +249,14 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                             Client Type
                           </label>
                           <p className="text-gray-900 capitalize">{client.client_type || 'residential'}</p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                            <User className="w-4 h-4" />
+                            Referred By
+                          </label>
+                          <p className="text-gray-900">{referredBy || '-'}</p>
                         </div>
                       </div>
                       

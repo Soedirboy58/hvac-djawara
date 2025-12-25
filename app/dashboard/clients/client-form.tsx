@@ -77,6 +77,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
           .from('partnership_network')
           .select('id, full_name, role, partnership_status, user_id')
           .eq('tenant_id', tenantId)
+          .eq('role', 'sales_partner')
           .order('full_name')
 
         if (error) throw error
