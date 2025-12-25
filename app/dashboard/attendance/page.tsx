@@ -1,4 +1,5 @@
 import { AttendanceConfigCard } from './attendance-config-card'
+import { AttendanceRosterCard } from './attendance-roster-card'
 
 export default function AttendancePage() {
   return (
@@ -9,6 +10,8 @@ export default function AttendancePage() {
       </div>
 
       <AttendanceConfigCard />
+
+      <AttendanceRosterCard />
     </div>
   );
 }

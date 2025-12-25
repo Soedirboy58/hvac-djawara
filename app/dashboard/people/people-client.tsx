@@ -550,11 +550,6 @@ export function PeopleManagementClient({
       return
     }
 
-    if (!isTechnicianRole(selectedMember.role)) {
-      toast.error('Upload foto profil saat ini khusus untuk teknisi')
-      return
-    }
-
     setUploadingAvatar(true)
     try {
       const userId = selectedMember.user_id
