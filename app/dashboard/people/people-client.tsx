@@ -338,7 +338,8 @@ export function PeopleManagementClient({
         .from('team_invitations')
         .select('*')
         .eq('tenant_id', tenantId)
-        .in('role', ['sales_partner', 'marketing', 'business_dev'])
+        // Team invitations cover non-technician roles (including helper/magang).
+        .in('role', ['sales_partner', 'marketing', 'business_dev', 'helper', 'magang'])
         .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
       
@@ -913,10 +914,10 @@ export function PeopleManagementClient({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Partnership Network ({partnerRecords.length})
+              Team Invitations ({partnerRecords.length})
             </CardTitle>
             <p className="text-sm text-gray-500 mt-1">
-              {activePartners.length} Active • {passivePartners.length} Passive (Not Activated)
+              {activePartners.length} Activated • {passivePartners.length} Pending (Not Activated)
             </p>
           </CardHeader>
           <CardContent>
@@ -972,11 +973,11 @@ export function PeopleManagementClient({
                         <div className="flex items-center justify-between">
                           {isActivated ? (
                             <Badge className="text-xs bg-green-500 text-white">
-                              ✓ Active Partner
+                                ✓ Activated
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="text-xs bg-orange-500 text-white">
-                              ⏳ Passive Partner
+                                ⏳ Pending Activation
                             </Badge>
                           )}
                         </div>
@@ -1313,7 +1314,7 @@ export function PeopleManagementClient({
                     }}
                   >
                     <CardContent className="p-6">
-                      <div className="flex flex-col sm:flex-row gap-5">
+                      <div className="flex flex-col lg:flex-row gap-5">
                         {/* Left: Info */}
                         <div className="flex-1 min-w-0">
                           {/* Avatar and Status */}
@@ -1404,7 +1405,7 @@ export function PeopleManagementClient({
                         </div>
 
                         {/* Right: Big Photo Frame (area besar) */}
-                        <div className="sm:w-48">
+                        <div className="lg:w-48">
                           <div className="relative h-48 w-full rounded-xl overflow-hidden border border-border bg-muted">
                             {avatarUrl ? (
                               <Image
