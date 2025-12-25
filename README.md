@@ -1,8 +1,8 @@
 # Djawara HVAC Platform
 
 > **Last Updated:** December 25, 2025  
-> **Status:** ✅ Production Ready - People Management + Reimburse Live  
-> **Latest Updates:** Team invite activation (/team/invite), Helper/Magang roles enabled in People Management
+> **Status:** ✅ Production Ready - People Management + Reimburse + Workforce (Attendance) Live  
+> **Latest Updates:** Admin attendance control + monitoring roster, team invite activation (/team/invite), helper/magang enabled + avatar upload parity
 
 ---
 
@@ -10,11 +10,13 @@
 
 ### 📖 **CRITICAL: Read These Documents in Order**
 
-1. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** ← **START HERE** - Latest session (Dec 25)
-2. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
-2. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
-3. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
-4. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
+1. **[docs/ai-agent/CURRENT_STATE.md](docs/ai-agent/CURRENT_STATE.md)** ← **START HERE** - system map + runbook (rolling)
+2. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
+3. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
+4. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
+5. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
+6. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
+7. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
 
 ### ✅ **Current System Status (December 25, 2025)**
 
@@ -39,6 +41,11 @@
 **Newly Live (Dec 25):**
 - ✅ Team invitation activation flow for staff roles (`/team/invite/[token]`)
 - ✅ Helper & Magang roles enabled as addable roles in People Management
+- ✅ Admin attendance control UI + API (`/dashboard/attendance`, `/api/admin/working-hours-config`)
+- ✅ Admin monitoring roster absensi hari ini (`/api/admin/attendance-today`)
+- ✅ Attendance timezone correctness (Asia/Jakarta) for late/early flags + total hours (technician attendance APIs)
+- ✅ People Management: hapus undangan, remove member dari tenant, dan delete teknisi (secured APIs)
+- ✅ Avatar upload parity: helper/support bisa upload foto profil (via service-role avatar update)
 - ✅ Fix: team invites no longer incorrectly use the client portal `/invite/[token]` route
 
 **Recent Enhancements (Dec 21):**
@@ -72,6 +79,20 @@
 - `app/technician/dashboard/page.tsx` - Dashboard with quick actions (399 lines)
 - `app/technician/orders/[id]/page.tsx` - Order detail page (499 lines)
 - `app/technician/orders/[id]/preview/page.tsx` - PDF preview page (NEW - 197 lines)
+
+**Workforce / Attendance (Admin + Technician):**
+- `app/dashboard/attendance/page.tsx` - Admin attendance page (config + roster)
+- `app/dashboard/attendance/attendance-config-card.tsx` - Admin jam kerja + overtime base config
+- `app/dashboard/attendance/attendance-roster-card.tsx` - Admin monitoring roster hari ini
+- `app/api/admin/working-hours-config/route.ts` - Admin API read/write working hours config
+- `app/api/admin/attendance-today/route.ts` - Admin API roster absensi hari ini
+- `app/api/technician/attendance/clock-in/route.ts` - Technician clock-in (Jakarta-time)
+- `app/api/technician/attendance/clock-out/route.ts` - Technician clock-out (Jakarta-time)
+- `app/api/technician/attendance/today/route.ts` - Technician today+recent (normalize + auto-heal)
+
+**People Management (Membership + Invites + Deletion):**
+- `app/api/people/remove-member/route.ts` - Remove member from tenant (plus best-effort technician cleanup)
+- `app/api/technician/delete/route.ts` - Delete technician record (secured)
 
 **Database:**
 - `ac_units` table - Client AC inventory (read/write for save feature)
