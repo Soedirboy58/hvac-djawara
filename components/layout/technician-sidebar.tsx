@@ -38,8 +38,19 @@ const sidebarItems: SidebarItem[] = [
     title: "Kehadiran",
     href: "/technician/attendance",
     icon: Calendar,
-    disabled: true,
     description: "Absensi & riwayat kehadiran",
+  },
+  {
+    title: "Lembur",
+    href: "/technician/overtime",
+    icon: Clock,
+    description: "Pengajuan & riwayat lembur",
+  },
+  {
+    title: "Cuti",
+    href: "/technician/leave",
+    icon: ClipboardList,
+    description: "Pengajuan cuti/izin & status",
   },
   {
     title: "Komunikasi",
