@@ -1946,9 +1946,8 @@ export function PeopleManagementClient({
                         )}
                       </div>
 
-                      {/* Avatar Upload (Technicians) */}
-                      {isTechnicianRole(selectedMember.role) && (
-                        <div className="mt-4 space-y-3">
+                      {/* Avatar Upload */}
+                      <div className="mt-4 space-y-3">
                           {avatarFile && avatarPreview && String(avatarPreview).startsWith('data:') && (
                             <div className="space-y-2">
                               <div className="relative h-64 w-64 rounded-xl overflow-hidden border border-border bg-muted">
@@ -2004,7 +2003,6 @@ export function PeopleManagementClient({
                           </Button>
                         </div>
                         </div>
-                      )}
                     </div>
                   </div>
                 </div>
