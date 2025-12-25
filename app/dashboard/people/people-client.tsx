@@ -161,6 +161,7 @@ export function PeopleManagementClient({
   const [avatarZoom, setAvatarZoom] = useState(1)
   const [avatarCroppedAreaPixels, setAvatarCroppedAreaPixels] = useState<any>(null)
   const [resendingTechId, setResendingTechId] = useState<string | null>(null)
+  const [deletingTechnicianId, setDeletingTechnicianId] = useState<string | null>(null)
   const [technicianActivationMeta, setTechnicianActivationMeta] = useState<
     Record<string, { url: string; message: string }>
   >({})
@@ -375,6 +376,34 @@ export function PeopleManagementClient({
       toast.error(error.message || 'Failed to sync job counts')
     } finally {
       setIsLoadingTechnicians(false)
+    }
+  }
+
+  const deleteTechnician = async (technicianId: string, label: string) => {
+    if (deletingTechnicianId) return
+    const ok = window.confirm(`Hapus teknisi ${label}? Aksi ini akan menghapus data teknisi dan (jika ada) akun login terkait.`)
+    if (!ok) return
+
+    setDeletingTechnicianId(technicianId)
+    try {
+      const response = await fetch('/api/technician/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicianId }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Gagal menghapus teknisi')
+      }
+
+      toast.success(result.message || 'Teknisi berhasil dihapus')
+      await fetchTechnicianRoster()
+    } catch (error: any) {
+      console.error('Delete technician error:', error)
+      toast.error(error?.message || 'Gagal menghapus teknisi')
+    } finally {
+      setDeletingTechnicianId(null)
     }
   }
 
@@ -1339,17 +1368,29 @@ export function PeopleManagementClient({
                           </div>
                           <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border" />
                         </div>
-                        {isActive ? (
-                          <Badge className="bg-green-500 text-white">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Aktif
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-orange-500 text-white">
-                            <AlertCircle className="w-3 h-3 mr-1" />
-                            Belum verifikasi
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {isActive ? (
+                            <Badge className="bg-green-500 text-white">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Aktif
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-orange-500 text-white">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Belum verifikasi
+                            </Badge>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Hapus teknisi"
+                            onClick={() => deleteTechnician(t.id, String(t.full_name || t.email || ''))}
+                            disabled={deletingTechnicianId === t.id}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="mb-4">
