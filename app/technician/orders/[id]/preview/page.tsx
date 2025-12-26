@@ -67,6 +67,8 @@ export default function PreviewPDFPage() {
         .select('*')
         .eq('service_order_id', orderId)
         .eq('technician_id', techData.id)
+        .order('completed_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (error || !workLog) {

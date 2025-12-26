@@ -173,6 +173,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         .select('*')
         .eq('service_order_id', orderId)
         .eq('technician_id', technicianId)
+        .order('completed_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (existingWorkLog) {
@@ -718,6 +720,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         .select("id")
         .eq("service_order_id", orderId)
         .eq("technician_id", technicianId)
+        .order('completed_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       let workLogId;

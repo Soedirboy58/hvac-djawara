@@ -273,6 +273,8 @@ export default function TechnicianDashboard() {
         .select('*')
         .eq('service_order_id', orderId)
         .eq('technician_id', technician?.id)
+        .order('completed_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (error || !workLog) {
