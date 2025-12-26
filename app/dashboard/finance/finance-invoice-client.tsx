@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { RefreshCw, FilePlus2 } from 'lucide-react'
+import { InvoiceFromOrderDialog } from './invoice-from-order-dialog'
 
 type InvoiceRow = {
   id: string
@@ -79,6 +80,8 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
   const [queueRows, setQueueRows] = useState<OrderQueueRow[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
 
   // Manual invoice form
   const [manualSource, setManualSource] = useState<'quotation' | 'custom'>('quotation')
@@ -495,6 +498,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                   <TableHead>Service</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -515,6 +519,15 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                     <TableCell>
                       {row.updated_at ? new Date(row.updated_at).toLocaleDateString('id-ID') : '—'}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setActiveOrderId(row.id)}
+                      >
+                        Buat Invoice
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -526,6 +539,21 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {activeOrderId ? (
+        <InvoiceFromOrderDialog
+          tenantId={tenantId}
+          orderId={activeOrderId}
+          open={Boolean(activeOrderId)}
+          onOpenChange={(v) => {
+            if (!v) setActiveOrderId(null)
+          }}
+          onDone={async () => {
+            await fetchKpis()
+            await fetchQueue()
+          }}
+        />
+      ) : null}
 
       {/* Manual Invoice */}
       <Card>
