@@ -67,6 +67,7 @@ export default function NewOrderPage() {
   const [salesTeam, setSalesTeam] = useState<SalesPerson[]>([])
   const [error, setError] = useState<string | null>(null)
   const [supportsUnitFields, setSupportsUnitFields] = useState(false)
+  const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
   const [selectedTechnicianIds, setSelectedTechnicianIds] = useState<string[]>([])
@@ -141,6 +142,21 @@ export default function NewOrderPage() {
         throw new Error('No active tenant')
       }
 
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (roleError) {
+        console.error('Role error:', roleError)
+      }
+
+      const role = (roleRow as any)?.role ?? null
+      setViewerRole(role)
+
       // Detect whether unit fields exist on service_orders (avoid breaking if DB migration not applied)
       const { error: unitFieldProbeError } = await supabase
         .from('service_orders')
@@ -155,13 +171,18 @@ export default function NewOrderPage() {
         setSupportsUnitFields(true)
       }
 
-      // Load clients
-      const { data: clientsData, error: clientsError } = await supabase
+      // Load clients (sales_partner sees only referred clients)
+      let clientsQuery = supabase
         .from('clients')
         .select('id, name, phone, email, address')
         .eq('tenant_id', profile.active_tenant_id)
         .eq('is_active', true)
-        .order('name')
+
+      if (role === 'sales_partner') {
+        clientsQuery = clientsQuery.eq('referred_by_id', user.id)
+      }
+
+      const { data: clientsData, error: clientsError } = await clientsQuery.order('name')
 
       if (clientsError) {
         console.error('Clients error:', clientsError)
@@ -284,6 +305,12 @@ export default function NewOrderPage() {
           email: newClientData.email || null,
           address: newClientData.address || null,
           is_active: true,
+          ...(viewerRole === 'sales_partner'
+            ? {
+                referred_by_id: user.id,
+                referred_by_name: null,
+              }
+            : {}),
         })
         .select()
         .single()

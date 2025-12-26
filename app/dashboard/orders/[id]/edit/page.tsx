@@ -57,6 +57,33 @@ export default function EditOrderPage() {
   const fetchOrder = async () => {
     try {
       setLoading(true)
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) throw new Error('Not authenticated')
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError) throw profileError
+      if (!profile?.active_tenant_id) throw new Error('No active tenant')
+
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (roleError) {
+        console.error('Role error:', roleError)
+      }
+
+      const viewerRole = (roleRow as any)?.role ?? null
       
       const { data, error } = await supabase
         .from('service_orders')
@@ -65,6 +92,22 @@ export default function EditOrderPage() {
         .single()
 
       if (error) throw error
+
+      if (viewerRole === 'sales_partner') {
+        const { data: allowedClient } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('tenant_id', profile.active_tenant_id)
+          .eq('id', data.client_id)
+          .eq('referred_by_id', user.id)
+          .maybeSingle()
+
+        if (!allowedClient) {
+          toast.error('Anda tidak punya akses untuk mengedit order ini')
+          router.replace('/dashboard/orders')
+          return
+        }
+      }
 
       const { error: unitFieldProbeError } = await supabase
         .from('service_orders')
@@ -101,13 +144,56 @@ export default function EditOrderPage() {
     try {
       setDataLoading(true)
 
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) throw new Error('Not authenticated')
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError) throw profileError
+      if (!profile?.active_tenant_id) throw new Error('No active tenant')
+
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (roleError) {
+        console.error('Role error:', roleError)
+      }
+
+      const viewerRole = (roleRow as any)?.role ?? null
+
       const { data: orderData, error: orderError } = await supabase
         .from('service_orders')
-        .select('tenant_id')
+        .select('tenant_id, client_id')
         .eq('id', orderId)
         .single()
 
       if (orderError) throw orderError
+
+      if (viewerRole === 'sales_partner') {
+        const { data: allowedClient } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('tenant_id', profile.active_tenant_id)
+          .eq('id', (orderData as any).client_id)
+          .eq('referred_by_id', user.id)
+          .maybeSingle()
+
+        if (!allowedClient) {
+          toast.error('Anda tidak punya akses untuk mengedit order ini')
+          router.replace('/dashboard/orders')
+          return
+        }
+      }
 
       const { data: techData, error: techError } = await supabase
         .from('technicians')

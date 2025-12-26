@@ -117,6 +117,20 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       console.log('Active tenant ID:', profile.active_tenant_id)
 
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (roleError) {
+        console.error('Error fetching role:', roleError)
+      }
+
+      const viewerRole = (roleRow as any)?.role ?? null
+
       // Fetch service orders with basic joins
       let query = supabase
         .from('service_orders')
@@ -127,6 +141,28 @@ export function useOrders(options: UseOrdersOptions = {}) {
         `)
         .eq('tenant_id', profile.active_tenant_id)
         .order('created_at', { ascending: false })
+
+      // Sales partners should only see orders for clients referred by them
+      if (viewerRole === 'sales_partner') {
+        const { data: referredClients, error: referredError } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('tenant_id', profile.active_tenant_id)
+          .eq('referred_by_id', user.id)
+
+        if (referredError) {
+          console.error('Error fetching referred clients:', referredError)
+          throw new Error('Failed to fetch referred clients')
+        }
+
+        const clientIds = (referredClients || []).map((c: any) => c.id).filter(Boolean)
+        if (clientIds.length === 0) {
+          setOrders([])
+          return
+        }
+
+        query = query.in('client_id', clientIds)
+      }
 
       // Apply status filter
       if (options.status) {
@@ -261,8 +297,55 @@ export function useOrder(orderId: string | null) {
       setLoading(true)
       setError(null)
 
+      // Get current user and tenant context
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) throw new Error('Not authenticated')
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('active_tenant_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError) throw profileError
+      if (!profile?.active_tenant_id) throw new Error('No active tenant')
+
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (roleError) {
+        console.error('Error fetching role:', roleError)
+      }
+
+      const viewerRole = (roleRow as any)?.role ?? null
+
+      let allowedClientIds: string[] | null = null
+      if (viewerRole === 'sales_partner') {
+        const { data: referredClients, error: referredError } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('tenant_id', profile.active_tenant_id)
+          .eq('referred_by_id', user.id)
+
+        if (referredError) {
+          console.error('Error fetching referred clients:', referredError)
+          throw new Error('Failed to fetch referred clients')
+        }
+
+        allowedClientIds = (referredClients || []).map((c: any) => c.id).filter(Boolean)
+        if (allowedClientIds.length === 0) {
+          throw new Error('Order not found')
+        }
+      }
+
       // Fetch order with client and creator info
-      const { data: orderData, error: fetchError } = await supabase
+      let orderQuery = supabase
         .from('service_orders')
         .select(`
           *,
@@ -270,7 +353,13 @@ export function useOrder(orderId: string | null) {
           creator:profiles!created_by(id, full_name)
         `)
         .eq('id', orderId)
-        .single()
+        .eq('tenant_id', profile.active_tenant_id)
+
+      if (viewerRole === 'sales_partner' && allowedClientIds) {
+        orderQuery = orderQuery.in('client_id', allowedClientIds)
+      }
+
+      const { data: orderData, error: fetchError } = await orderQuery.single()
 
       if (fetchError) throw fetchError
 
