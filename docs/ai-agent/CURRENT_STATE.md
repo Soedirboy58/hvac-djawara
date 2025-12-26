@@ -1,6 +1,6 @@
 # Current State — Djawara HVAC Platform (Rolling)
 
-**Last updated:** 2025-12-25
+**Last updated:** 2025-12-26
 
 Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, fitur yang sudah live, flow penting, pola otorisasi (tenant + role), serta runbook deploy/debug. Untuk detail sesi per tanggal, lihat dokumen handoff di folder yang sama.
 
@@ -12,6 +12,11 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 - **Admin/Staff dashboard**: `/dashboard/*`
 - **Technician portal**: `/technician/*`
 - **Client portal**: `/client/*`
+
+### Sales Partner (role `sales_partner`)
+- Sidebar & landing `/dashboard` sudah role-aware.
+- Akses via URL ke halaman non-sales-partner (attendance/people/inventory/analytics) sudah_toggle.
+- CRM clients bisa memakai referral: `clients.referred_by_id` / `clients.referred_by_name`.
 
 ### Workforce (Attendance, Overtime, Leave)
 - **Technician attendance** (clock-in/out + status harian): `/technician/attendance`
@@ -62,6 +67,11 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 
 ### Roles (ringkas)
 - Authorization admin actions umumnya dibatasi: `owner`, `admin_finance`, `admin_logistic`, `tech_head`.
+
+### Catatan khusus `sales_partner`
+- Sidebar dashboard membatasi menu (Dashboard, Clients, Orders, Contracts, Schedule, Finance, Settings).
+- Halaman Attendance/People/Inventory/Analytics melakukan server-side guard dan akan redirect ke `/dashboard`.
+- List clients untuk sales partner (UI/query) di-filter dengan `referred_by_id = auth.uid()`.
 
 ### Data “helper/magang” di technician portal
 - Agar helper/magang bisa login ke portal teknisi (untuk attendance dll), saat aktivasi team invite sistem membuat row di `technicians` (role dimapping ke role yang valid di tabel `technicians`).
@@ -155,6 +165,10 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 - Attendance (admin): `app/dashboard/attendance/*`
 - Sidebar nav: `components/layout/sidebar.tsx`
 
+### Sales Partner dashboard
+- Dashboard landing: `app/dashboard/page.tsx`
+- Clients list + referral: `app/dashboard/clients/*`
+
 ### Technician portal
 - Attendance page: `app/technician/attendance/page.tsx`
 
@@ -177,6 +191,20 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 
 ### PWA note (penting untuk menghindari noise)
 - Build akan mengubah `public/sw.js` (next-pwa). File ini sering tidak stabil untuk di-commit.
+
+---
+
+## 10) Recent Changes (2025-12-26)
+
+### Sales Partner UI + guards
+- Role-aware sidebar + `/dashboard` landing untuk `sales_partner`.
+- Server-side guard untuk: `/dashboard/attendance`, `/dashboard/people`, `/dashboard/inventory`, `/dashboard/analytics`.
+- Finance page mengizinkan `sales_partner` agar menu tidak dead-end.
+
+### CRM Client Referral
+- Dropdown referral saat create/edit client hanya menampilkan role `sales_partner`.
+- List clients untuk sales partner hanya menampilkan client dengan `referred_by_id = user.id`.
+- Detail client menampilkan field **Referred By** (mendukung `referred_by_name` & lookup `referred_by_id`).
 
 ---
 

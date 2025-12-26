@@ -1,8 +1,8 @@
 # Djawara HVAC Platform
 
-> **Last Updated:** December 25, 2025  
+> **Last Updated:** December 26, 2025  
 > **Status:** ✅ Production Ready - People Management + Reimburse + Workforce (Attendance) Live  
-> **Latest Updates:** Admin attendance control + monitoring roster, team invite activation (/team/invite), helper/magang enabled + avatar upload parity
+> **Latest Updates:** Sales Partner role-based dashboard/sidebar + guards, client referral dropdown fixed + sales-partner-only client list + referral shown on client detail
 
 ---
 
@@ -11,14 +11,15 @@
 ### 📖 **CRITICAL: Read These Documents in Order**
 
 1. **[docs/ai-agent/CURRENT_STATE.md](docs/ai-agent/CURRENT_STATE.md)** ← **START HERE** - system map + runbook (rolling)
-2. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
-3. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
-4. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
-5. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
-6. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
-7. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
+2. **[docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md](docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md)** - Sales Partner dashboard + client referral fixes (Dec 26)
+3. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
+4. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
+5. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
+6. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
+7. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
+8. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
 
-### ✅ **Current System Status (December 25, 2025)**
+### ✅ **Current System Status (December 26, 2025)**
 
 **Core Features:**
 - PDF Generation: ✅ Working (optimized, no emojis, single signature)
@@ -59,6 +60,14 @@
 **Known Issues:**
 - 🔍 Data persistence investigation ongoing (debug logs added)
 - 🔍 Some auth redirects (improved error handling)
+
+**Newly Live (Dec 26):**
+- ✅ Sales Partner role-based sidebar + `/dashboard` landing scaffold
+- ✅ Server-side guards: sales partner cannot access Attendance/People/Inventory/Analytics via URL
+- ✅ Finance page accessible for sales partner (menu no longer dead-end)
+- ✅ Client referral dropdown only lists sales partners
+- ✅ Sales partner clients list only shows referred clients (`referred_by_id = auth.uid()`)
+- ✅ Client detail now displays referral info (supports `referred_by_id` + `referred_by_name`)
 
 **Common Setup Issue:**
 - If browser console shows CORS blocked calls to `supabase.co/rest/v1/...`, add your app origin in Supabase → Project Settings → API → CORS Allowed Origins.
