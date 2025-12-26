@@ -91,7 +91,7 @@ export function HeroCarousel() {
   const slide = slides[currentSlide];
 
   return (
-    <section className="relative h-[600px] overflow-hidden">
+    <section className="relative h-[560px] sm:h-[600px] overflow-hidden">
       {/* Background with gradient */}
       <div
         className={`absolute inset-0 bg-gradient-to-r ${slide.bgGradient} transition-all duration-700`}
@@ -118,11 +118,11 @@ export function HeroCarousel() {
               Slide {currentSlide + 1} dari {slides.length}
             </div>
             
-            <h1 className="text-5xl md:text-6xl font-bold mb-4 leading-tight">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 leading-tight">
               {slide.title}
             </h1>
             
-            <p className="text-2xl md:text-3xl font-semibold mb-4 text-blue-100">
+            <p className="text-xl sm:text-2xl md:text-3xl font-semibold mb-4 text-blue-100">
               {slide.subtitle}
             </p>
             
@@ -132,7 +132,7 @@ export function HeroCarousel() {
 
             {/* Stats for slide 1 */}
             {slide.stats && (
-              <div className="grid grid-cols-3 gap-4 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 {slide.stats.map((stat, index) => (
                   <div key={index} className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
                     <stat.icon className="h-8 w-8 mb-2" />
@@ -157,7 +157,7 @@ export function HeroCarousel() {
 
             {/* Benefits for slide 3 */}
             {slide.benefits && (
-              <div className="grid grid-cols-2 gap-4 mb-8 text-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-lg">
                 {slide.benefits.map((benefit, index) => (
                   <div key={index} className="flex items-start gap-2">
                     <span>{benefit}</span>
@@ -168,7 +168,7 @@ export function HeroCarousel() {
 
             {/* Highlights for slide 4 */}
             {slide.highlights && (
-              <div className="grid grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
                 {slide.highlights.map((highlight, index) => (
                   <div key={index} className="text-center">
                     <div className="text-2xl font-bold mb-1">{highlight.value}</div>
@@ -178,10 +178,12 @@ export function HeroCarousel() {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-4">
-              <RequestServiceModal />
-              <a href="#services">
-                <Button size="lg" variant="outline" className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-4">
+              <div className="w-full sm:w-auto">
+                <RequestServiceModal triggerClassName="w-full sm:w-auto" />
+              </div>
+              <a href="#services" className="w-full sm:w-auto">
+                <Button size="lg" variant="outline" className="w-full sm:w-auto bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20">
                   Lihat Layanan
                 </Button>
               </a>
@@ -193,14 +195,14 @@ export function HeroCarousel() {
       {/* Navigation arrows */}
       <button
         onClick={prevSlide}
-        className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition"
+        className="hidden sm:block absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition"
         aria-label="Previous slide"
       >
         <ChevronLeft className="h-6 w-6 text-white" />
       </button>
       <button
         onClick={nextSlide}
-        className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition"
+        className="hidden sm:block absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition"
         aria-label="Next slide"
       >
         <ChevronRight className="h-6 w-6 text-white" />

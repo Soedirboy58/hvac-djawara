@@ -65,7 +65,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Image
               src="https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Assets/Logo%201.png"
@@ -80,7 +80,7 @@ export default function HomePage() {
               <p className="text-xs text-gray-500">Professional HVAC Solutions</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <RequestServiceModal triggerSize="sm" />
             <Link href="/login">
               <Button variant="default" size="sm">Login</Button>
@@ -220,7 +220,7 @@ export default function HomePage() {
                 {trustedCompanies.map((company) => (
                   <div
                     key={company.name}
-                    className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm px-4"
+                    className="flex items-center justify-center h-16 w-32 sm:h-20 sm:w-40 bg-white rounded-lg shadow-sm px-4"
                     title={company.name}
                   >
                     <Image
@@ -228,7 +228,7 @@ export default function HomePage() {
                       alt={`${company.name} logo`}
                       width={160}
                       height={80}
-                      className="h-12 w-full object-contain"
+                      className="h-10 sm:h-12 w-full object-contain"
                       sizes="160px"
                     />
                   </div>
@@ -239,7 +239,7 @@ export default function HomePage() {
                 {trustedCompanies.map((company) => (
                   <div
                     key={`${company.name}-dup`}
-                    className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm px-4"
+                    className="flex items-center justify-center h-16 w-32 sm:h-20 sm:w-40 bg-white rounded-lg shadow-sm px-4"
                     title={company.name}
                   >
                     <Image
@@ -247,7 +247,7 @@ export default function HomePage() {
                       alt={`${company.name} logo`}
                       width={160}
                       height={80}
-                      className="h-12 w-full object-contain"
+                      className="h-10 sm:h-12 w-full object-contain"
                       sizes="160px"
                     />
                   </div>

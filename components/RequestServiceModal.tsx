@@ -8,9 +8,10 @@ import { RequestServiceForm } from './RequestServiceForm';
 interface RequestServiceModalProps {
   triggerVariant?: 'default' | 'large';
   triggerSize?: 'default' | 'sm' | 'lg';
+  triggerClassName?: string;
 }
 
-export function RequestServiceModal({ triggerVariant = 'default', triggerSize = 'lg' }: RequestServiceModalProps) {
+export function RequestServiceModal({ triggerVariant = 'default', triggerSize = 'lg', triggerClassName }: RequestServiceModalProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -21,7 +22,7 @@ export function RequestServiceModal({ triggerVariant = 'default', triggerSize = 
             Request Service Sekarang
           </Button>
         ) : (
-          <Button size={triggerSize}>
+          <Button size={triggerSize} className={triggerClassName}>
             Request Service
           </Button>
         )}
