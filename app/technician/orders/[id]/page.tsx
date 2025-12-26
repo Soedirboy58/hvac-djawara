@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Camera,
   CheckCircle2,
+  AlertCircle,
   XCircle,
   Loader2,
   Upload,

@@ -16,6 +16,7 @@ import {
   Briefcase,
   Eye,
   Edit3,
+  AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -72,6 +73,7 @@ export default function TechnicianDashboard() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [reimburseRequests, setReimburseRequests] = useState<TechnicianReimburseRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isHelper, setIsHelper] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -122,6 +124,24 @@ export default function TechnicianDashboard() {
           .from('profiles')
           .update({ active_tenant_id: techData.tenant_id })
           .eq('id', user.id);
+      }
+
+      // Determine whether this user is helper/magang for this tenant
+      if (techData.tenant_id) {
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_tenant_roles')
+          .select('role')
+          .eq('tenant_id', techData.tenant_id)
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (roleError) {
+          console.error('Error fetching user role:', roleError);
+        }
+
+        const role = (roleData as any)?.role as string | undefined;
+        setIsHelper((role || '').toLowerCase() === 'helper' || (role || '').toLowerCase() === 'magang');
       }
 
       // Fetch reimburse status summary (use internal API to avoid direct Supabase REST calls)
@@ -367,6 +387,21 @@ export default function TechnicianDashboard() {
       </header>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
+        {isHelper && (
+          <Card className="bg-amber-50 border-amber-200">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-6 w-6 text-amber-700" />
+                <div>
+                  <h3 className="font-semibold text-amber-900">Mode Helper (Read-only)</h3>
+                  <p className="text-sm text-amber-800">
+                    Tugas ditampilkan untuk monitoring. Hanya teknisi yang bisa membuka dan menindaklanjuti order.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {/* Technician Profile */}
         {technician && (
           <Card>
@@ -576,8 +611,11 @@ export default function TechnicianDashboard() {
                 {workOrders.map((order) => (
                   <Card
                     key={order.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => router.push(`/technician/orders/${order.id}`)}
+                    className={isHelper ? "transition-shadow" : "cursor-pointer hover:shadow-md transition-shadow"}
+                    onClick={() => {
+                      if (isHelper) return;
+                      router.push(`/technician/orders/${order.id}`);
+                    }}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-2">
@@ -617,7 +655,7 @@ export default function TechnicianDashboard() {
                       </div>
 
                       {/* Action Buttons - Only show for completed orders */}
-                      {order.status === "completed" && (
+                      {!isHelper && order.status === "completed" && (
                         <div className="flex flex-col sm:flex-row gap-2 mb-3">
                           <Button
                             size="sm"
