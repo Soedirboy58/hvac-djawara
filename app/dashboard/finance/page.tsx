@@ -5,7 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { FinanceReimburseClient } from './finance-reimburse-client'
+import { FinanceClient } from './finance-client'
 
 export default async function FinancePage() {
   const supabase = await createClient()
@@ -55,10 +55,10 @@ export default async function FinancePage() {
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
-        <p className="text-gray-500 mt-1">Reimburse Management</p>
+        <p className="text-gray-500 mt-1">Reimburse & Invoicing</p>
       </div>
 
-      <FinanceReimburseClient tenantId={profile.active_tenant_id} />
+      <FinanceClient tenantId={profile.active_tenant_id} role={roleData?.role || null} />
     </div>
   )
 }
