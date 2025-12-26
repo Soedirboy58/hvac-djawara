@@ -206,6 +206,26 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 - List clients untuk sales partner hanya menampilkan client dengan `referred_by_id = user.id`.
 - Detail client menampilkan field **Referred By** (mendukung `referred_by_name` & lookup `referred_by_id`).
 
+### Orders UX + Assignment Roles
+- `/dashboard/orders/new`: input waktu diganti ke time slot select (lebih cepat & minim typo).
+- Tambah detail layanan: `jumlah_unit (unit_count)` dan `kategori_unit (unit_category)`.
+- Assignment dipisah jelas: **Technicians** (minimal 1) vs **Helpers** (opsional).
+- Persistence assignment memakai `work_order_assignments.role_in_order`:
+  - technician → `primary`
+  - helper → `assistant`
+- `/dashboard/orders/[id]` assignment dibuat read-only (ubah lewat Edit).
+- `/dashboard/orders/[id]/edit` mendukung edit time slot, unit fields, dan assignment (technician/helper).
+
+### Helper/Magang Restrictions (Technician Portal)
+- Helper/magang bisa melihat orders namun **read-only**:
+  - tidak bisa check-in/out
+  - tidak bisa isi/submit technical data form
+- Dashboard `/technician` untuk helper: card order tidak bisa diklik (no navigation).
+
+### Database note
+- Ada script tambahan: `supabase/ADD_UNIT_COUNT_TO_SERVICE_ORDERS.sql` untuk menambah kolom `service_orders.unit_count`.
+- UI memiliki fallback bila kolom unit belum ada (menyimpan ke Notes agar create/update order tidak gagal).
+
 ---
 
 ## 9) Known Gaps / Next High-Value Work

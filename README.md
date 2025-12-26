@@ -2,7 +2,7 @@
 
 > **Last Updated:** December 26, 2025  
 > **Status:** ✅ Production Ready - People Management + Reimburse + Workforce (Attendance) Live  
-> **Latest Updates:** Sales Partner role-based dashboard/sidebar + guards, client referral dropdown fixed + sales-partner-only client list + referral shown on client detail
+> **Latest Updates:** Orders UX overhaul (time slots + unit fields + technician/helper assignments) + helper dashboard read-only, plus Sales Partner role-based dashboard/sidebar + guards, plus CRM client referral fixes
 
 ---
 
@@ -11,13 +11,14 @@
 ### 📖 **CRITICAL: Read These Documents in Order**
 
 1. **[docs/ai-agent/CURRENT_STATE.md](docs/ai-agent/CURRENT_STATE.md)** ← **START HERE** - system map + runbook (rolling)
-2. **[docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md](docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md)** - Sales Partner dashboard + client referral fixes (Dec 26)
-3. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
-4. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
-5. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
-6. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
-7. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
-8. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
+2. **[docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md](docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md)** - Orders UX + assignments (technician vs helper) + helper read-only (Dec 26)
+3. **[docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md](docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md)** - Sales Partner dashboard + client referral fixes (Dec 26)
+4. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
+5. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
+6. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
+7. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
+8. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
+9. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
 
 ### ✅ **Current System Status (December 26, 2025)**
 
@@ -62,6 +63,9 @@
 - 🔍 Some auth redirects (improved error handling)
 
 **Newly Live (Dec 26):**
+- ✅ Orders: time slot inputs (create/edit), unit fields (unit_count + unit_category), and technician/helper assignment separation using `work_order_assignments.role_in_order`
+- ✅ Helper/magang: technician portal read-only (no check-in/out, no technical form) + helper dashboard cards are non-clickable
+- ✅ DB: added `supabase/ADD_UNIT_COUNT_TO_SERVICE_ORDERS.sql` to add `service_orders.unit_count`
 - ✅ Sales Partner role-based sidebar + `/dashboard` landing scaffold
 - ✅ Server-side guards: sales partner cannot access Attendance/People/Inventory/Analytics via URL
 - ✅ Finance page accessible for sales partner (menu no longer dead-end)
