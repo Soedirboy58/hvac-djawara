@@ -3,12 +3,64 @@
 // ============================================
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { Phone, Mail, Clock, CheckCircle, Wrench, Snowflake, Shield, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeroCarousel } from '@/components/HeroCarousel'
 import { RequestServiceModal } from '@/components/RequestServiceModal'
 
 export default function HomePage() {
+  const trustedCompanies = [
+    {
+      name: 'Aron Hotel',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Aron.jpg',
+    },
+    {
+      name: 'Buntos Chicken',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/buntos%20chiken.png',
+    },
+    {
+      name: 'Universitas Peradaban',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Logo-Universitas-Peradaban.png',
+    },
+    {
+      name: 'Mixue',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Mixue.png',
+    },
+    {
+      name: 'Momoyo',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/momoyo.jpeg',
+    },
+    {
+      name: 'Pumas',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/pumas%20basata.png',
+    },
+    {
+      name: 'Rammona',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/rammona-bakery.jpeg',
+    },
+    {
+      name: 'RS JIH',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/RS%20JIH%20Purwokerto.png',
+    },
+    {
+      name: 'SBS Frozen',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/sbs%20frozen%20food.jpg',
+    },
+    {
+      name: 'Triliun',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Triliun%20logo.jpg',
+    },
+    {
+      name: 'UMP',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/UMP.png',
+    },
+    {
+      name: 'Unsoed',
+      logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Unsoed.png',
+    },
+  ]
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -158,45 +210,41 @@ export default function HomePage() {
             <div className="flex animate-scroll-left">
               {/* First set of logos */}
               <div className="flex items-center gap-12 px-6">
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">PT. ABC</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Hotel XYZ</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Mall DEF</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">RS. GHI</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Gedung JKL</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Plaza MNO</span>
-                </div>
+                {trustedCompanies.map((company) => (
+                  <div
+                    key={company.name}
+                    className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm px-4"
+                    title={company.name}
+                  >
+                    <Image
+                      src={company.logo}
+                      alt={`${company.name} logo`}
+                      width={160}
+                      height={80}
+                      className="h-12 w-full object-contain"
+                      sizes="160px"
+                    />
+                  </div>
+                ))}
               </div>
               {/* Duplicate for seamless loop */}
               <div className="flex items-center gap-12 px-6">
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">PT. ABC</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Hotel XYZ</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Mall DEF</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">RS. GHI</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Gedung JKL</span>
-                </div>
-                <div className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm">
-                  <span className="text-2xl font-bold text-gray-400">Plaza MNO</span>
-                </div>
+                {trustedCompanies.map((company) => (
+                  <div
+                    key={`${company.name}-dup`}
+                    className="flex items-center justify-center h-20 w-40 bg-white rounded-lg shadow-sm px-4"
+                    title={company.name}
+                  >
+                    <Image
+                      src={company.logo}
+                      alt={`${company.name} logo`}
+                      width={160}
+                      height={80}
+                      className="h-12 w-full object-contain"
+                      sizes="160px"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </div>

@@ -160,12 +160,54 @@ export const timeSlots = [
 
 // Trusted Companies (Partner Logos)
 export const trustedCompanies = [
-  { name: 'PT. ABC', logo: null }, // Ganti null dengan path image: '/logos/abc.png'
-  { name: 'Hotel XYZ', logo: null },
-  { name: 'Mall DEF', logo: null },
-  { name: 'RS. GHI', logo: null },
-  { name: 'Gedung JKL', logo: null },
-  { name: 'Plaza MNO', logo: null },
+  {
+    name: 'Aron Hotel',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Aron.jpg',
+  },
+  {
+    name: 'Buntos Chicken',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/buntos%20chiken.png',
+  },
+  {
+    name: 'Universitas Peradaban',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Logo-Universitas-Peradaban.png',
+  },
+  {
+    name: 'Mixue',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Mixue.png',
+  },
+  {
+    name: 'Momoyo',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/momoyo.jpeg',
+  },
+  {
+    name: 'Pumas',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/pumas%20basata.png',
+  },
+  {
+    name: 'Rammona',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/rammona-bakery.jpeg',
+  },
+  {
+    name: 'RS JIH',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/RS%20JIH%20Purwokerto.png',
+  },
+  {
+    name: 'SBS Frozen',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/sbs%20frozen%20food.jpg',
+  },
+  {
+    name: 'Triliun',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Triliun%20logo.jpg',
+  },
+  {
+    name: 'UMP',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/UMP.png',
+  },
+  {
+    name: 'Unsoed',
+    logo: 'https://tukbuzdngodvcysncwke.supabase.co/storage/v1/object/public/Mitra/Unsoed.png',
+  },
 ];
 
 // CTA Section
