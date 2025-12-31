@@ -1,11 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import AdminDashboard from './admin-dashboard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Users, ClipboardList, FileText, Calendar, DollarSign } from 'lucide-react'
 
-export default async function DashboardHomePage() {
+export default async function DashboardHomePage({
+  searchParams,
+}: {
+  searchParams?: { page?: string }
+}) {
   const supabase = await createClient()
 
   const {
@@ -99,10 +104,6 @@ export default async function DashboardHomePage() {
     )
   }
 
-  return (
-    <div>
-      <h1 className="text-3xl font-bold">Dashboard</h1>
-      <p className="text-gray-600 mt-2">Welcome to Djawara HVAC Platform</p>
-    </div>
-  )
+  const page = Math.max(1, Number(searchParams?.page || '1') || 1)
+  return <AdminDashboard page={page} />
 }
