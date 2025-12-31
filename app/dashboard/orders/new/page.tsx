@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, Loader2, Plus, X, Clock } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +18,8 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ClientForm } from '@/app/dashboard/clients/client-form'
 
 interface Client {
   id: string
@@ -28,7 +30,6 @@ interface Client {
 }
 
 interface Technician {
-  id: string
   full_name: string
   user_id?: string
   role?: string
@@ -62,6 +63,7 @@ export default function NewOrderPage() {
   const [loading, setLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const [clients, setClients] = useState<Client[]>([])
+  const [tenantId, setTenantId] = useState<string | null>(null)
   const [availableTechnicians, setAvailableTechnicians] = useState<Technician[]>([])
   const [availableHelpers, setAvailableHelpers] = useState<Technician[]>([])
   const [salesTeam, setSalesTeam] = useState<SalesPerson[]>([])
@@ -69,8 +71,7 @@ export default function NewOrderPage() {
   const [supportsUnitFields, setSupportsUnitFields] = useState(false)
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [newWorkInitialStatus, setNewWorkInitialStatus] = useState<'listing' | 'scheduled'>('listing')
-  const [showNewClientForm, setShowNewClientForm] = useState(false)
-  const [creatingClient, setCreatingClient] = useState(false)
+  const [clientDialogOpen, setClientDialogOpen] = useState(false)
   const [selectedTechnicianIds, setSelectedTechnicianIds] = useState<string[]>([])
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([])
   
@@ -93,13 +94,6 @@ export default function NewOrderPage() {
     order_source: 'admin_manual',
     notes: '',
     is_historical: 'false', // New field: false = new work, true = historical record
-  })
-
-  const [newClientData, setNewClientData] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
   })
 
   // Load clients and technicians
@@ -142,6 +136,8 @@ export default function NewOrderPage() {
       if (!profile?.active_tenant_id) {
         throw new Error('No active tenant')
       }
+
+      setTenantId(profile.active_tenant_id)
 
       const { data: roleRow, error: roleError } = await supabase
         .from('user_tenant_roles')
@@ -191,7 +187,9 @@ export default function NewOrderPage() {
         setClients(clientsData || [])
       }
 
-      // Load technicians/helpers from technicians table + classify by user_tenant_roles
+      // Load team members from technicians table + include user_tenant_roles for display only.
+      // For order assignment, we pick exactly 1 PIC (primary) and optional assistants (assistant),
+      // independent from the user's global role.
       const { data: techData, error: techError } = await supabase
         .from('technicians')
         .select('id, full_name, user_id, status')
@@ -229,12 +227,11 @@ export default function NewOrderPage() {
           role: t.user_id ? roleByUserId.get(t.user_id) : undefined,
         }))
 
-        const helpers = withRoles.filter((t) => (t.role || '').toLowerCase() === 'helper' || (t.role || '').toLowerCase() === 'magang')
-        const techniciansOnly = withRoles.filter((t) => !helpers.some((h) => h.id === t.id))
-
-        console.log('✅ Loaded team members:', { technicians: techniciansOnly.length, helpers: helpers.length })
-        setAvailableTechnicians(techniciansOnly)
-        setAvailableHelpers(helpers)
+        console.log('✅ Loaded team members:', { total: withRoles.length })
+        // Keep both arrays populated for backward-compatible UI layout,
+        // but assistants list will be rendered from the merged list.
+        setAvailableTechnicians(withRoles)
+        setAvailableHelpers(withRoles)
       } else {
         console.log('⚠️ No verified technicians found in database')
         setAvailableTechnicians([])
@@ -270,68 +267,6 @@ export default function NewOrderPage() {
       toast.error(err.message || 'Failed to load form data')
     } finally {
       setDataLoading(false)
-    }
-  }
-
-  const handleCreateClient = async () => {
-    if (!newClientData.name || !newClientData.phone) {
-      toast.error('Name and phone are required')
-      return
-    }
-
-    setCreatingClient(true)
-
-    try {
-      const supabase = createClient()
-      
-      // Get current user and tenant
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_tenant_id')
-        .eq('id', user.id)
-        .single()
-
-      if (!profile?.active_tenant_id) throw new Error('No active tenant')
-
-      // Create client
-      const { data: newClient, error: createError } = await supabase
-        .from('clients')
-        .insert({
-          tenant_id: profile.active_tenant_id,
-          name: newClientData.name,
-          phone: newClientData.phone,
-          email: newClientData.email || null,
-          address: newClientData.address || null,
-          is_active: true,
-          ...(viewerRole === 'sales_partner'
-            ? {
-                referred_by_id: user.id,
-                referred_by_name: null,
-              }
-            : {}),
-        })
-        .select()
-        .single()
-
-      if (createError) throw createError
-
-      toast.success(`Client "${newClientData.name}" created successfully!`)
-      
-      // Add to clients list and select it
-      setClients([...clients, newClient])
-      setFormData({ ...formData, client_id: newClient.id })
-      
-      // Reset and hide form
-      setNewClientData({ name: '', phone: '', email: '', address: '' })
-      setShowNewClientForm(false)
-    } catch (error: any) {
-      console.error('Error creating client:', error)
-      toast.error(error.message || 'Failed to create client')
-    } finally {
-      setCreatingClient(false)
     }
   }
 
@@ -452,15 +387,24 @@ export default function NewOrderPage() {
 
       // Create work order assignments (only when scheduled/historical; sales partner new work stays listing)
       if ((isHistorical || isScheduledNewWork) && (selectedTechnicianIds.length > 0 || selectedHelperIds.length > 0) && newOrder.id) {
+        const picId = selectedTechnicianIds[0] || null
+        const assistantIds = Array.from(
+          new Set(selectedHelperIds.filter((id) => id && id !== picId))
+        )
+
         const assignments = [
-          ...selectedTechnicianIds.map((techId) => ({
-            service_order_id: newOrder.id,
-            technician_id: techId,
-            assigned_by: user.id,
-            status: 'assigned',
-            role_in_order: 'primary',
-          })),
-          ...selectedHelperIds.map((techId) => ({
+          ...(picId
+            ? [
+                {
+                  service_order_id: newOrder.id,
+                  technician_id: picId,
+                  assigned_by: user.id,
+                  status: 'assigned',
+                  role_in_order: 'primary',
+                },
+              ]
+            : []),
+          ...assistantIds.map((techId) => ({
             service_order_id: newOrder.id,
             technician_id: techId,
             assigned_by: user.id,
@@ -477,7 +421,7 @@ export default function NewOrderPage() {
           console.error('Error assigning technicians:', assignError)
           toast.error('Order created but failed to assign some technicians')
         } else {
-          toast.success(`Assigned: ${selectedTechnicianIds.length} technician(s), ${selectedHelperIds.length} helper(s)`) 
+          toast.success(`Assigned: ${picId ? 1 : 0} PIC, ${assistantIds.length} assistant(s)`) 
         }
       }
 
@@ -549,105 +493,61 @@ export default function NewOrderPage() {
                   <CardTitle>Client Information</CardTitle>
                   <CardDescription>Select an existing client or add a new one</CardDescription>
                 </div>
-                {!showNewClientForm && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowNewClientForm(true)}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add New Client
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setClientDialogOpen(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add New Client
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {showNewClientForm ? (
-                <>
-                  <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 bg-blue-50 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-blue-900">New Client Form</h3>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowNewClientForm(false)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
+              <Dialog open={clientDialogOpen} onOpenChange={setClientDialogOpen}>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Add New Client</DialogTitle>
+                  </DialogHeader>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="new_client_name">Client Name *</Label>
-                        <Input
-                          id="new_client_name"
-                          placeholder="e.g., PT Jaya Abadi"
-                          value={newClientData.name}
-                          onChange={(e) => setNewClientData({ ...newClientData, name: e.target.value })}
-                          disabled={creatingClient}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="new_client_phone">Phone *</Label>
-                        <Input
-                          id="new_client_phone"
-                          type="tel"
-                          placeholder="e.g., 08123456789"
-                          value={newClientData.phone}
-                          onChange={(e) => setNewClientData({ ...newClientData, phone: e.target.value })}
-                          disabled={creatingClient}
-                        />
-                      </div>
-                    </div>
+                  {tenantId ? (
+                    <ClientForm
+                      tenantId={tenantId}
+                      redirectTo={null}
+                      onSaved={(savedClient) => {
+                        const mapped: Client = {
+                          id: savedClient.id,
+                          name: savedClient.name,
+                          phone: savedClient.phone,
+                          email: savedClient.email ?? undefined,
+                          address: savedClient.address ?? undefined,
+                        }
 
-                    <div className="space-y-2">
-                      <Label htmlFor="new_client_email">Email</Label>
-                      <Input
-                        id="new_client_email"
-                        type="email"
-                        placeholder="client@email.com"
-                        value={newClientData.email}
-                        onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })}
-                        disabled={creatingClient}
-                      />
-                    </div>
+                        setClients((prev) => {
+                          const next = [...prev.filter((c) => c.id !== mapped.id), mapped]
+                          next.sort((a, b) => a.name.localeCompare(b.name))
+                          return next
+                        })
 
-                    <div className="space-y-2">
-                      <Label htmlFor="new_client_address">Address</Label>
-                      <Textarea
-                        id="new_client_address"
-                        placeholder="Complete address..."
-                        value={newClientData.address}
-                        onChange={(e) => setNewClientData({ ...newClientData, address: e.target.value })}
-                        rows={2}
-                        disabled={creatingClient}
-                      />
-                    </div>
+                        setFormData((prev) => ({
+                          ...prev,
+                          client_id: mapped.id,
+                          client_phone: mapped.phone,
+                          location_address: mapped.address || prev.location_address,
+                        }))
 
-                    <Button
-                      type="button"
-                      onClick={handleCreateClient}
-                      disabled={creatingClient}
-                      className="w-full"
-                    >
-                      {creatingClient ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Creating Client...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Create & Select Client
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <Separator />
-                </>
-              ) : null}
+                        setClientDialogOpen(false)
+                        toast.success(`Client "${mapped.name}" created and selected`)
+                      }}
+                    />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Loading tenant context...
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
 
               <div className="space-y-2">
                 <Label htmlFor="client">Select Client *</Label>
@@ -671,7 +571,7 @@ export default function NewOrderPage() {
                     )}
                   </SelectContent>
                 </Select>
-                {clients.length === 0 && !showNewClientForm && (
+                {clients.length === 0 && (
                   <p className="text-sm text-amber-600">
                     ⚠️ No clients available. Click &quot;Add New Client&quot; button above.
                   </p>
@@ -1067,32 +967,45 @@ export default function NewOrderPage() {
               )}
 
               <div className="space-y-2">
-                <Label>Assign Team <span className="text-red-500">*</span></Label>
+                <Label>Assign PIC & Helper <span className="text-red-500">*</span></Label>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Minimal 1 teknisi wajib. Helper/magang optional.
+                  PIC (1 orang) wajib. Helper/Assistant optional.
                 </p>
                 {availableTechnicians.length === 0 ? (
                   <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
                     <p className="text-sm text-gray-500">No verified technicians available. Order will be unassigned.</p>
                   </div>
                 ) : (
+                  (() => {
+                    const picId = selectedTechnicianIds[0] || ''
+                    const allCandidates = [...availableTechnicians, ...availableHelpers]
+                    const seen = new Set<string>()
+                    const teamCandidates = allCandidates.filter((m) => {
+                      if (!m?.id) return false
+                      if (seen.has(m.id)) return false
+                      seen.add(m.id)
+                      return true
+                    })
+                    const assistantCandidates = teamCandidates.filter((m) => m.id !== picId)
+
+                    return (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2 p-4 border border-gray-200 rounded-lg bg-white">
-                      <p className="text-sm font-semibold text-gray-900">👷 Technicians</p>
-                      {availableTechnicians.map((tech) => (
+                      <p className="text-sm font-semibold text-gray-900">🧑‍🔧 PIC (Wajib 1)</p>
+                      {teamCandidates.map((tech) => (
                         <label
                           key={tech.id}
                           className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
                         >
                           <input
-                            type="checkbox"
-                            checked={selectedTechnicianIds.includes(tech.id)}
+                            type="radio"
+                            name="order_pic"
+                            checked={(selectedTechnicianIds[0] || '') === tech.id}
                             onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedTechnicianIds([...selectedTechnicianIds, tech.id])
-                              } else {
-                                setSelectedTechnicianIds(selectedTechnicianIds.filter((id) => id !== tech.id))
-                              }
+                              if (!e.target.checked) return
+                              setSelectedTechnicianIds([tech.id])
+                              // Prevent PIC also being selected as assistant
+                              setSelectedHelperIds((prev) => prev.filter((id) => id !== tech.id))
                             }}
                             className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                           />
@@ -1102,11 +1015,11 @@ export default function NewOrderPage() {
                     </div>
 
                     <div className="space-y-2 p-4 border border-gray-200 rounded-lg bg-white">
-                      <p className="text-sm font-semibold text-gray-900">🧰 Helpers (Optional)</p>
-                      {availableHelpers.length === 0 ? (
-                        <p className="text-sm text-gray-500">No helpers available</p>
+                      <p className="text-sm font-semibold text-gray-900">🧰 Helper / Assistant (Optional)</p>
+                      {assistantCandidates.length === 0 ? (
+                        <p className="text-sm text-gray-500">Pilih PIC terlebih dahulu</p>
                       ) : (
-                        availableHelpers.map((tech) => (
+                        assistantCandidates.map((tech) => (
                           <label
                             key={tech.id}
                             className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
@@ -1116,6 +1029,8 @@ export default function NewOrderPage() {
                               checked={selectedHelperIds.includes(tech.id)}
                               onChange={(e) => {
                                 if (e.target.checked) {
+                                  // Do not allow selecting PIC as assistant
+                                  if ((selectedTechnicianIds[0] || '') === tech.id) return
                                   setSelectedHelperIds([...selectedHelperIds, tech.id])
                                 } else {
                                   setSelectedHelperIds(selectedHelperIds.filter((id) => id !== tech.id))
@@ -1129,9 +1044,11 @@ export default function NewOrderPage() {
                       )}
                     </div>
                   </div>
+                    )
+                  })()
                 )}
                 <p className="text-xs text-muted-foreground mt-2">
-                  Selected: {selectedTechnicianIds.length} technician(s), {selectedHelperIds.length} helper(s)
+                  Selected: {selectedTechnicianIds.length ? 1 : 0} PIC, {selectedHelperIds.length} assistant(s)
                 </p>
               </div>
                 </>

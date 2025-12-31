@@ -59,6 +59,8 @@ export default function WorkOrderDetailPage() {
   const [workLog, setWorkLog] = useState<WorkLog | null>(null);
   const [technicianId, setTechnicianId] = useState<string>("");
   const [isHelper, setIsHelper] = useState(false);
+  const [roleInOrder, setRoleInOrder] = useState<string | null>(null);
+  const [isPicInOrder, setIsPicInOrder] = useState<boolean>(true);
   const [notes, setNotes] = useState("");
   const [photoBefore, setPhotoBefore] = useState<File | null>(null);
   const [photoAfter, setPhotoAfter] = useState<File | null>(null);
@@ -125,6 +127,28 @@ export default function WorkOrderDetailPage() {
       
       console.log("✓ Technician ID:", techData.id);
       setTechnicianId(techData.id);
+
+      // Determine per-order role (PIC vs helper) from assignments
+      try {
+        const { data: assignmentRow, error: assignmentErr } = await supabase
+          .from('work_order_assignments')
+          .select('role_in_order')
+          .eq('service_order_id', orderId)
+          .eq('technician_id', techData.id)
+          .maybeSingle()
+
+        if (assignmentErr) {
+          console.error('Assignment role error:', assignmentErr)
+        }
+
+        const role = String((assignmentRow as any)?.role_in_order || 'primary').toLowerCase()
+        setRoleInOrder(role)
+        setIsPicInOrder(role === 'primary' || role === 'supervisor')
+      } catch (e) {
+        // Backward compatibility: if assignments missing, allow as PIC (same as previous behavior)
+        setRoleInOrder(null)
+        setIsPicInOrder(true)
+      }
 
       // Fetch work order
       const { data: orderData, error: orderError } = await supabase
@@ -317,6 +341,7 @@ export default function WorkOrderDetailPage() {
   const isCheckedIn = workLog?.check_in_time && !workLog?.check_out_time;
   const isCompleted = workLog?.check_out_time;
   const isOrderCompleted = workOrder.status === "completed";
+  const canFillTechnical = !isHelper && isPicInOrder;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -427,7 +452,7 @@ export default function WorkOrderDetailPage() {
         {isOrderCompleted ? (
           // Technical Data Form for completed orders
           <>
-            {isHelper ? (
+            {!canFillTechnical ? (
               <Card className="bg-gray-50 border-gray-200">
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-3">
@@ -435,8 +460,13 @@ export default function WorkOrderDetailPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">Data Teknis</h3>
                       <p className="text-sm text-gray-700">
-                        Akun helper tidak dapat mengisi laporan teknis.
+                        {isHelper
+                          ? 'Akun helper tidak dapat mengisi laporan teknis.'
+                          : 'Anda bukan PIC untuk order ini. Hanya PIC yang dapat mengisi laporan teknis.'}
                       </p>
+                      {!isHelper && roleInOrder ? (
+                        <p className="text-xs text-gray-500 mt-1">Role di order: {roleInOrder}</p>
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>

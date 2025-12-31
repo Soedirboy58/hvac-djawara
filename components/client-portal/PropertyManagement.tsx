@@ -28,6 +28,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getActiveTenantId } from '@/lib/supabase/active-tenant'
 import Image from 'next/image'
 
 interface Property {
@@ -372,19 +373,13 @@ export function PropertyManagement({ clientId }: PropertyManagementProps) {
     setError(null)
 
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_tenant_id')
-        .single()
-
-      if (!profile?.active_tenant_id) {
-        throw new Error('No active tenant found')
-      }
+      const tenantId = await getActiveTenantId(supabase)
+      if (!tenantId) throw new Error('No active tenant found')
 
       const { error: saveError } = await supabase
         .from('property_maintenance_schedules')
         .insert({
-          tenant_id: profile.active_tenant_id,
+          tenant_id: tenantId,
           client_id: clientId,
           property_id: schedulePropertyId,
           frequency: scheduleData.frequency,

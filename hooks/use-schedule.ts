@@ -14,6 +14,7 @@ export interface ScheduleEvent {
   title: string
   start: Date
   end: Date
+  allDay?: boolean
   resource: ServiceOrder
   technician?: {
     id: string
@@ -106,7 +107,7 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
 
       // Transform to calendar events
       const calendarEvents: ScheduleEvent[] = (data || []).map((order: any) => {
-        const startDateTime = new Date(order.scheduled_date)
+        const startDateTime = new Date(`${order.scheduled_date}T00:00:00`)
         if (order.scheduled_time) {
           const [hours, minutes] = order.scheduled_time.split(':')
           startDateTime.setHours(parseInt(hours), parseInt(minutes))
@@ -114,9 +115,42 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
           startDateTime.setHours(9, 0) // Default 9 AM
         }
 
-        const endDateTime = new Date(startDateTime)
-        const duration = order.estimated_duration || 120 // Default 2 hours
-        endDateTime.setMinutes(endDateTime.getMinutes() + duration)
+        // If estimated_end_date exists, use it to create a multi-day range.
+        // Otherwise fall back to estimated_duration (minutes).
+        let endDateTime: Date
+        let allDay = false
+
+        if (order.estimated_end_date) {
+          const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`)
+          // If an end time exists, use it; else treat as all-day range.
+          if (order.estimated_end_time) {
+            const [endHours, endMinutes] = order.estimated_end_time.split(':')
+            endInclusive.setHours(parseInt(endHours), parseInt(endMinutes))
+          } else {
+            endInclusive.setHours(23, 59, 0, 0)
+          }
+
+          const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`
+          const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`
+
+          if (startYMD !== endYMD) {
+            allDay = true
+            // react-big-calendar treats all-day end as exclusive.
+            const endExclusive = new Date(endInclusive)
+            endExclusive.setHours(0, 0, 0, 0)
+            endExclusive.setDate(endExclusive.getDate() + 1)
+
+            endDateTime = endExclusive
+            // Ensure start is aligned to day start for all-day blocks.
+            startDateTime.setHours(0, 0, 0, 0)
+          } else {
+            endDateTime = endInclusive
+          }
+        } else {
+          endDateTime = new Date(startDateTime)
+          const duration = order.estimated_duration || 120 // Default 2 hours
+          endDateTime.setMinutes(endDateTime.getMinutes() + duration)
+        }
 
         const technicianName = techMap.get(order.id) || 'Unassigned'
         const technicianId = techIdMap.get(order.id)
@@ -126,6 +160,7 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
           title: `${order.order_number} - ${order.client?.name || 'Unknown'} (${technicianName})`,
           start: startDateTime,
           end: endDateTime,
+          allDay,
           resource: {
             ...order,
             assigned_technician_names: technicianName,
@@ -166,7 +201,9 @@ export function useUpdateSchedule() {
     orderId: string,
     scheduledDate: Date,
     scheduledTime?: string,
-    assignedTo?: string
+    assignedTo?: string,
+    estimatedEndDate?: Date,
+    estimatedEndTime?: string
   ) => {
     try {
       setLoading(true)
@@ -184,6 +221,14 @@ export function useUpdateSchedule() {
       if (assignedTo) {
         updates.assigned_to = assignedTo
         updates.status = 'scheduled'
+      }
+
+      if (estimatedEndDate) {
+        updates.estimated_end_date = estimatedEndDate.toISOString().split('T')[0]
+      }
+
+      if (estimatedEndTime) {
+        updates.estimated_end_time = estimatedEndTime
       }
 
       const { error: updateError } = await supabase

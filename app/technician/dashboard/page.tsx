@@ -5,12 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Calendar as BigCalendar, momentLocalizer, View } from 'react-big-calendar'
+import moment from 'moment'
+import 'react-big-calendar/lib/css/react-big-calendar.css'
 import {
   ClipboardList,
   Clock,
   CheckCircle2,
   MapPin,
-  Calendar,
+  Calendar as CalendarIcon,
   LogOut,
   User,
   Briefcase,
@@ -22,6 +25,9 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import OrderTimeline from "@/components/technician/OrderTimeline";
 import Image from "next/image";
+import AutoAttendancePrompt from "@/components/technician/AutoAttendancePrompt";
+
+const localizer = momentLocalizer(moment)
 
 interface Technician {
   id: string;
@@ -51,12 +57,53 @@ interface WorkOrder {
   service_description: string;
   location_address: string;
   scheduled_date: string;
+  scheduled_time?: string | null;
   status: string;
   priority: string;
   estimated_duration: number;
+  estimated_end_date?: string | null;
+  estimated_end_time?: string | null;
   assignment_status: string;
   assigned_at: string;
   has_technical_report?: boolean;
+}
+
+type WaitingListItem = {
+  order: {
+    id: string
+    order_number: string
+    service_title: string
+    location_address: string
+    scheduled_date: string | null
+    scheduled_time: string | null
+    status: string
+    priority: string
+    client: {
+      id: string
+      name: string
+      phone: string | null
+    } | null
+  }
+  lastService: null | {
+    order_id: string
+    order_number: string
+    service_title: string
+    completed_at_hint: string | null
+    pic_name: string | null
+    assistant_names: string[]
+  }
+}
+
+type TechnicianCalendarEvent = {
+  id: string
+  title: string
+  start: Date
+  end: Date
+  allDay?: boolean
+  resource: {
+    orderId: string
+    status: string
+  }
 }
 
 type TechnicianReimburseRequest = {
@@ -72,6 +119,9 @@ export default function TechnicianDashboard() {
   const [technician, setTechnician] = useState<Technician | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [reimburseRequests, setReimburseRequests] = useState<TechnicianReimburseRequest[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<TechnicianCalendarEvent[]>([]);
+  const [waitingList, setWaitingList] = useState<WaitingListItem[]>([]);
+  const [unassignedRecurring, setUnassignedRecurring] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isHelper, setIsHelper] = useState(false);
 
@@ -184,7 +234,7 @@ export default function TechnicianDashboard() {
       const orderIds = assignmentsData.map(a => a.service_order_id);
       const { data: ordersData, error: ordersError } = await supabase
         .from("service_orders")
-        .select("id, order_number, service_title, service_description, location_address, scheduled_date, status, priority, estimated_duration")
+        .select("id, order_number, service_title, service_description, location_address, scheduled_date, scheduled_time, status, priority, estimated_duration, estimated_end_date, estimated_end_time")
         .in("id", orderIds);
 
       if (ordersError) {
@@ -210,6 +260,209 @@ export default function TechnicianDashboard() {
         .filter((o): o is WorkOrder => !!o);
 
       setWorkOrders(formattedOrders);
+
+      // Build calendar events (assigned-to-self only)
+      const calendar: TechnicianCalendarEvent[] = (formattedOrders || [])
+        .filter((o) => !!o.scheduled_date)
+        .map((order) => {
+          const startDateTime = new Date(`${order.scheduled_date}T00:00:00`)
+          if (order.scheduled_time) {
+            const [hours, minutes] = order.scheduled_time.split(':')
+            startDateTime.setHours(parseInt(hours), parseInt(minutes))
+          } else {
+            startDateTime.setHours(9, 0, 0, 0)
+          }
+
+          let endDateTime: Date
+          let allDay = false
+
+          if (order.estimated_end_date) {
+            const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`)
+            if (order.estimated_end_time) {
+              const [endHours, endMinutes] = order.estimated_end_time.split(':')
+              endInclusive.setHours(parseInt(endHours), parseInt(endMinutes))
+            } else {
+              endInclusive.setHours(23, 59, 0, 0)
+            }
+
+            const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`
+            const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`
+
+            if (startYMD !== endYMD) {
+              allDay = true
+              const endExclusive = new Date(endInclusive)
+              endExclusive.setHours(0, 0, 0, 0)
+              endExclusive.setDate(endExclusive.getDate() + 1)
+              endDateTime = endExclusive
+              startDateTime.setHours(0, 0, 0, 0)
+            } else {
+              endDateTime = endInclusive
+            }
+          } else {
+            endDateTime = new Date(startDateTime)
+            const duration = order.estimated_duration || 120
+            endDateTime.setMinutes(endDateTime.getMinutes() + duration)
+          }
+
+          return {
+            id: order.id,
+            title: `${order.order_number} - ${order.service_title}`,
+            start: startDateTime,
+            end: endDateTime,
+            allDay,
+            resource: {
+              orderId: order.id,
+              status: order.status,
+            },
+          }
+        })
+      setCalendarEvents(calendar)
+
+      // Fetch shared waiting list: scheduled_date set, but not yet assigned to anyone.
+      // We also attach last completed service (PIC + all assistants).
+      if (techData.tenant_id) {
+        const { data: scheduledOrders, error: scheduledOrdersError } = await supabase
+          .from('service_orders')
+          .select(`
+            id,
+            order_number,
+            service_title,
+            location_address,
+            scheduled_date,
+            scheduled_time,
+            status,
+            priority,
+            client_id,
+            client:clients!client_id(id, name, phone)
+          `)
+          .eq('tenant_id', techData.tenant_id)
+          .not('scheduled_date', 'is', null)
+          .in('status', ['pending', 'scheduled'])
+          .order('scheduled_date', { ascending: true })
+          .limit(50)
+
+        if (scheduledOrdersError) {
+          console.warn('Error fetching waiting list orders:', scheduledOrdersError)
+        }
+
+        const scheduledOrderRows = (scheduledOrders || []) as any[]
+        const scheduledIds = scheduledOrderRows.map((o) => o.id)
+
+        let assignedSet = new Set<string>()
+        if (scheduledIds.length > 0) {
+          const { data: anyAssignments, error: anyAssignmentsError } = await supabase
+            .from('work_order_assignments')
+            .select('service_order_id')
+            .in('service_order_id', scheduledIds)
+
+          if (anyAssignmentsError) {
+            console.warn('Error fetching waiting list assignments:', anyAssignmentsError)
+          }
+
+          ;(anyAssignments || []).forEach((a: any) => assignedSet.add(a.service_order_id))
+        }
+
+        const waitingOrders = scheduledOrderRows.filter((o) => !assignedSet.has(o.id))
+        const waitingClientIds = Array.from(new Set(waitingOrders.map((o) => o.client_id).filter(Boolean)))
+
+        // Fetch a pool of completed orders for these clients; pick the latest per client.
+        const latestCompletedByClient = new Map<string, any>()
+        if (waitingClientIds.length > 0) {
+          const { data: completedPool, error: completedPoolError } = await supabase
+            .from('service_orders')
+            .select('id, client_id, order_number, service_title, actual_end_time, scheduled_date, updated_at')
+            .in('client_id', waitingClientIds)
+            .eq('status', 'completed')
+            .order('actual_end_time', { ascending: false })
+            .order('scheduled_date', { ascending: false })
+            .order('updated_at', { ascending: false })
+            .limit(200)
+
+          if (completedPoolError) {
+            console.warn('Error fetching last completed pool:', completedPoolError)
+          }
+
+          ;(completedPool || []).forEach((o: any) => {
+            if (!o?.client_id) return
+            if (!latestCompletedByClient.has(o.client_id)) latestCompletedByClient.set(o.client_id, o)
+          })
+        }
+
+        // Fetch executors (PIC + assistants) for those latest completed orders.
+        const latestCompletedOrderIds = Array.from(new Set(Array.from(latestCompletedByClient.values()).map((o: any) => o.id)))
+        const executorsByOrderId = new Map<string, { pic: string | null; assistants: string[] }>()
+        if (latestCompletedOrderIds.length > 0) {
+          const { data: executorRows, error: executorError } = await supabase
+            .from('work_order_assignments')
+            .select('service_order_id, role_in_order, technician:technicians(id, full_name)')
+            .in('service_order_id', latestCompletedOrderIds)
+
+          if (executorError) {
+            console.warn('Error fetching last executors:', executorError)
+          }
+
+          ;(executorRows || []).forEach((row: any) => {
+            const orderId = row.service_order_id as string
+            if (!orderId) return
+            const name = row?.technician?.full_name || null
+            const role = (row?.role_in_order || '').toLowerCase()
+
+            const existing = executorsByOrderId.get(orderId) || { pic: null, assistants: [] }
+            if (role === 'primary') {
+              existing.pic = name
+            } else if (role === 'assistant' && name) {
+              existing.assistants.push(name)
+            }
+            executorsByOrderId.set(orderId, existing)
+          })
+        }
+
+        const items: WaitingListItem[] = waitingOrders.map((o: any) => {
+          const last = o?.client_id ? latestCompletedByClient.get(o.client_id) : null
+          const exec = last?.id ? executorsByOrderId.get(last.id) : null
+
+          return {
+            order: {
+              id: o.id,
+              order_number: o.order_number,
+              service_title: o.service_title,
+              location_address: o.location_address,
+              scheduled_date: o.scheduled_date,
+              scheduled_time: o.scheduled_time,
+              status: o.status,
+              priority: o.priority,
+              client: o.client || null,
+            },
+            lastService: last
+              ? {
+                  order_id: last.id,
+                  order_number: last.order_number,
+                  service_title: last.service_title,
+                  completed_at_hint: last.actual_end_time || last.scheduled_date || last.updated_at || null,
+                  pic_name: exec?.pic || null,
+                  assistant_names: (exec?.assistants || []).filter(Boolean),
+                }
+              : null,
+          }
+        })
+
+        setWaitingList(items)
+      }
+
+      // Read-only recurring maintenance schedules that have not generated an order yet.
+      try {
+        const resp = await fetch('/api/maintenance/auto-generate')
+        const json = await resp.json()
+        if (resp.ok && json?.success) {
+          const upcoming = (json?.upcoming_maintenance || []) as any[]
+          setUnassignedRecurring(upcoming.filter((u) => !u.order_exists).slice(0, 10))
+        } else {
+          setUnassignedRecurring([])
+        }
+      } catch (err) {
+        console.warn('Error fetching upcoming maintenance:', err)
+        setUnassignedRecurring([])
+      }
 
       // Try to fetch work logs with technical reports (don't break if fails)
       try {
@@ -364,8 +617,28 @@ export default function TechnicianDashboard() {
 
   const latestReimburse = reimburseRequests[0] || null;
 
+  const calendarEventStyleGetter = (event: TechnicianCalendarEvent) => {
+    const status = (event.resource?.status || '').toLowerCase()
+    let backgroundColor = '#3b82f6'
+    if (status === 'in_progress') backgroundColor = '#8b5cf6'
+    if (status === 'completed') backgroundColor = '#10b981'
+    if (status === 'cancelled') backgroundColor = '#ef4444'
+
+    return {
+      style: {
+        backgroundColor,
+        borderRadius: '4px',
+        opacity: 0.9,
+        color: 'white',
+        border: 'none',
+        display: 'block',
+      },
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <AutoAttendancePrompt />
       {/* Header */}
       <header className="bg-white border-b md:sticky md:top-0 z-10">
         <div className="container mx-auto px-4 py-4">
@@ -498,6 +771,140 @@ export default function TechnicianDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Calendar Kerja + Waiting List (shared) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Kalender Kerja & Waiting List
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Jadwal tugas yang ditugaskan ke Anda</p>
+                  <Badge className="bg-blue-500">Assigned</Badge>
+                </div>
+                <div className="rounded-lg border bg-white p-2">
+                  <BigCalendar
+                    localizer={localizer}
+                    events={calendarEvents}
+                    startAccessor="start"
+                    endAccessor="end"
+                    style={{ height: 520 }}
+                    views={['month', 'week', 'day'] as View[]}
+                    defaultView={'month' as View}
+                    toolbar
+                    selectable={false}
+                    popup
+                    eventPropGetter={(e: any) => calendarEventStyleGetter(e as TechnicianCalendarEvent)}
+                    onSelectEvent={(e: any) => {
+                      if (isHelper) return
+                      const orderId = (e as any)?.resource?.orderId
+                      if (orderId) router.push(`/technician/orders/${orderId}`)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Waiting List (Belum Ditugaskan)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Order yang sudah punya tanggal jadwal, tapi belum ada PIC/helper yang ditetapkan.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {waitingList.length === 0 ? (
+                    <div className="rounded-lg border bg-white p-4">
+                      <p className="text-sm text-muted-foreground">Tidak ada waiting list saat ini.</p>
+                    </div>
+                  ) : (
+                    waitingList.map((item) => {
+                      const o = item.order
+                      const last = item.lastService
+                      const assistants = last?.assistant_names?.length ? last.assistant_names.join(', ') : '-'
+
+                      return (
+                        <div key={o.id} className="rounded-lg border bg-white p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">
+                                {o.client?.name || 'Pelanggan'}{' '}
+                                <span className="text-muted-foreground">({o.order_number})</span>
+                              </p>
+                              <p className="text-sm text-muted-foreground truncate">{o.service_title}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {getPriorityBadge(o.priority)}
+                              {getStatusBadge(o.status)}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="truncate">{o.location_address || '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              <span>
+                                {o.scheduled_date ? new Date(`${o.scheduled_date}T00:00:00`).toLocaleDateString('id-ID') : '-'}
+                                {o.scheduled_time ? ` • ${String(o.scheduled_time).slice(0, 5)}` : ''}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            <p>
+                              Kontak: {o.client?.phone || '-'}
+                            </p>
+                            <p>
+                              Riwayat service terakhir:{' '}
+                              {last
+                                ? `${last.order_number} • ${last.service_title} • ${last.completed_at_hint ? new Date(last.completed_at_hint).toLocaleDateString('id-ID') : '-'}`
+                                : 'Belum ada data completed'}
+                            </p>
+                            <p>
+                              Teknisi terakhir: {last?.pic_name || '-'} | Asisten terakhir: {assistants}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Recurring Maintenance (Belum Ditugaskan)</p>
+                  {unassignedRecurring.length === 0 ? (
+                    <div className="rounded-lg border bg-white p-4">
+                      <p className="text-sm text-muted-foreground">Tidak ada jadwal recurring yang belum ditugaskan.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-white divide-y">
+                      {unassignedRecurring.map((u) => (
+                        <div key={u.schedule_id} className="p-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{u.client_name} • {u.property_name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{u.property_address}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm">{new Date(`${u.next_scheduled_date}T00:00:00`).toLocaleDateString('id-ID')}</p>
+                            <Badge className="bg-gray-500">Unassigned</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -640,7 +1047,7 @@ export default function TechnicianDashboard() {
                           <span className="line-clamp-1">{order.location_address}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
+                          <CalendarIcon className="h-4 w-4" />
                           <span>
                             {new Date(order.scheduled_date).toLocaleDateString("id-ID", {
                               weekday: "short",

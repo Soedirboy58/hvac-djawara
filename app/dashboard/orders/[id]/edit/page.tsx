@@ -237,11 +237,10 @@ export default function EditOrderPage() {
         role: t.user_id ? roleByUserId.get(t.user_id) : undefined,
       }))
 
-      const helpers = team.filter((t: any) => (t.role || '').toLowerCase() === 'helper' || (t.role || '').toLowerCase() === 'magang')
-      const techniciansOnly = team.filter((t: any) => !helpers.some((h: any) => h.id === t.id))
-
-      setAvailableTechnicians(techniciansOnly)
-      setAvailableHelpers(helpers)
+      // Assignment is per-order PIC vs assistant; allow any technician record to be PIC/assistant.
+      // Keep both arrays populated for backward-compatible UI layout.
+      setAvailableTechnicians(team)
+      setAvailableHelpers(team)
 
       const { data: assignments, error: assignError } = await supabase
         .from('work_order_assignments')
@@ -258,10 +257,23 @@ export default function EditOrderPage() {
         .filter((a: any) => (a.role_in_order || '') === 'assistant')
         .map((a: any) => a.technician_id)
 
-      // Backward compatibility: if role_in_order is null for all, treat as primary
+      // Backward compatibility: if role_in_order is null for all, treat first as PIC and the rest as assistants.
       const hasAnyRole = (assignments || []).some((a: any) => a.role_in_order)
-      setSelectedTechnicianIds(hasAnyRole ? primaries : (assignments || []).map((a: any) => a.technician_id))
-      setSelectedHelperIds(hasAnyRole ? assistants : [])
+      const allAssigned = (assignments || []).map((a: any) => a.technician_id).filter(Boolean)
+
+      const picId = (hasAnyRole ? primaries[0] : allAssigned[0]) || null
+      const assistantIds = Array.from(
+        new Set(
+          [
+            ...(hasAnyRole ? assistants : allAssigned.slice(1)),
+            // If old data has multiple primaries, demote extras to assistants in UI
+            ...(hasAnyRole ? primaries.slice(1) : []),
+          ].filter((id) => id && id !== picId)
+        )
+      )
+
+      setSelectedTechnicianIds(picId ? [picId] : [])
+      setSelectedHelperIds(assistantIds)
     } catch (err: any) {
       console.error('Error loading assignment data:', err)
       toast.error('Failed to load assignment data')
@@ -339,22 +351,31 @@ export default function EditOrderPage() {
 
         if (deleteError) throw deleteError
 
-        const assignmentsPayload = [
-          ...selectedTechnicianIds.map((techId) => ({
+        const picId = selectedTechnicianIds[0] ?? null
+        const assistantIds = Array.from(new Set(selectedHelperIds)).filter(
+          (id) => Boolean(id) && id !== picId
+        )
+
+        const assignmentsPayload: any[] = []
+        if (picId) {
+          assignmentsPayload.push({
             service_order_id: orderId,
-            technician_id: techId,
+            technician_id: picId,
             assigned_by: assignedBy,
             status: 'assigned',
             role_in_order: 'primary',
-          })),
-          ...selectedHelperIds.map((techId) => ({
+          })
+        }
+
+        for (const techId of assistantIds) {
+          assignmentsPayload.push({
             service_order_id: orderId,
             technician_id: techId,
             assigned_by: assignedBy,
             status: 'assigned',
             role_in_order: 'assistant',
-          })),
-        ]
+          })
+        }
 
         const { error: insertError } = await supabase
           .from('work_order_assignments')
@@ -636,24 +657,39 @@ export default function EditOrderPage() {
               <CardTitle>Assignment</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">Minimal 1 teknisi wajib. Helper/magang optional.</p>
+              <p className="text-sm text-muted-foreground">PIC (1 orang) wajib. Helper/Assistant optional.</p>
               {dataLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Loading team...
                 </div>
               ) : (
+                (() => {
+                  const picId = selectedTechnicianIds[0] || ''
+                  const allCandidates = [...availableTechnicians, ...availableHelpers]
+                  const seen = new Set<string>()
+                  const teamCandidates = allCandidates.filter((m) => {
+                    if (!m?.id) return false
+                    if (seen.has(m.id)) return false
+                    seen.add(m.id)
+                    return true
+                  })
+                  const assistantCandidates = teamCandidates.filter((m) => m.id !== picId)
+
+                  return (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2 p-4 border rounded-lg">
-                    <p className="text-sm font-semibold">👷 Technicians</p>
-                    {availableTechnicians.map((tech) => (
+                    <p className="text-sm font-semibold">🧑‍🔧 PIC (Wajib 1)</p>
+                    {teamCandidates.map((tech) => (
                       <label key={tech.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer">
                         <input
-                          type="checkbox"
-                          checked={selectedTechnicianIds.includes(tech.id)}
+                          type="radio"
+                          name="order_pic"
+                          checked={(selectedTechnicianIds[0] || '') === tech.id}
                           onChange={(e) => {
-                            if (e.target.checked) setSelectedTechnicianIds([...selectedTechnicianIds, tech.id])
-                            else setSelectedTechnicianIds(selectedTechnicianIds.filter((id) => id !== tech.id))
+                            if (!e.target.checked) return
+                            setSelectedTechnicianIds([tech.id])
+                            setSelectedHelperIds((prev) => prev.filter((id) => id !== tech.id))
                           }}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
@@ -663,11 +699,11 @@ export default function EditOrderPage() {
                   </div>
 
                   <div className="space-y-2 p-4 border rounded-lg">
-                    <p className="text-sm font-semibold">🧰 Helpers (Optional)</p>
-                    {availableHelpers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No helpers available</p>
+                    <p className="text-sm font-semibold">🧰 Helper / Assistant (Optional)</p>
+                    {assistantCandidates.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Pilih PIC terlebih dahulu</p>
                     ) : (
-                      availableHelpers.map((tech) => (
+                      assistantCandidates.map((tech) => (
                         <label key={tech.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer">
                           <input
                             type="checkbox"
@@ -684,8 +720,10 @@ export default function EditOrderPage() {
                     )}
                   </div>
                 </div>
+                  )
+                })()
               )}
-              <p className="text-xs text-muted-foreground">Selected: {selectedTechnicianIds.length} technician(s), {selectedHelperIds.length} helper(s)</p>
+              <p className="text-xs text-muted-foreground">Selected: {selectedTechnicianIds.length ? 1 : 0} PIC, {selectedHelperIds.length} assistant(s)</p>
             </CardContent>
           </Card>
         )}

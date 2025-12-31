@@ -309,7 +309,7 @@ function OrderDetailContent() {
               {order.assigned_technician_names || order.assigned_helper_names ? (
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Technicians</p>
+                    <p className="text-xs text-gray-500">PIC</p>
                     {order.assigned_technician_names ? (
                       <Badge variant="outline" className="bg-blue-50 text-blue-700">
                         {order.assigned_technician_names}
@@ -318,12 +318,12 @@ function OrderDetailContent() {
                         )}
                       </Badge>
                     ) : (
-                      <p className="text-sm text-amber-800">No technician assigned</p>
+                      <p className="text-sm text-amber-800">No PIC assigned</p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Helpers</p>
+                    <p className="text-xs text-gray-500">Helper / Assistant</p>
                     {order.assigned_helper_names ? (
                       <Badge variant="outline" className="bg-gray-50 text-gray-700">
                         {order.assigned_helper_names}
@@ -332,7 +332,7 @@ function OrderDetailContent() {
                         )}
                       </Badge>
                     ) : (
-                      <p className="text-sm text-gray-500">No helpers assigned</p>
+                      <p className="text-sm text-gray-500">No assistants assigned</p>
                     )}
                   </div>
                 </div>

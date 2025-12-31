@@ -33,6 +33,12 @@ export type InvoicePdfData = {
   billTo: InvoicePdfBillTo
   company: InvoicePdfCompany
   items: InvoicePdfItem[]
+  ppnEnabled?: boolean
+  ppnPercent?: number
+  pphEnabled?: boolean
+  pphPercent?: number
+  dpEnabled?: boolean
+  dpAmount?: number
   notes?: string | null
 }
 
@@ -224,16 +230,33 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   y = finalY + 6
 
   // Totals
+  const ppnEnabled = Boolean(data.ppnEnabled)
+  const pphEnabled = Boolean(data.pphEnabled)
+  const dpEnabled = Boolean(data.dpEnabled)
+  const ppnPercent = Number.isFinite(data.ppnPercent as number) ? (data.ppnPercent as number) : 11
+  const pphPercent = Number.isFinite(data.pphPercent as number) ? (data.pphPercent as number) : 0
+  const dpAmount = Number.isFinite(data.dpAmount as number) ? (data.dpAmount as number) : 0
+
   const subtotal = data.items.reduce((acc, it) => {
     const qty = Number.isFinite(it.quantity) ? it.quantity : 0
     const unitPrice = Number.isFinite(it.unitPrice) ? it.unitPrice : 0
-    const disc = Number.isFinite(it.discountPercent) ? it.discountPercent! : 0
-    const tax = Number.isFinite(it.taxPercent) ? it.taxPercent! : 0
-    const line = qty * unitPrice * (1 - disc / 100) * (1 + tax / 100)
-    return acc + line
+    return acc + qty * unitPrice
   }, 0)
 
-  const terbilangText = `${terbilang(subtotal)} Rupiah`
+  const discountTotal = data.items.reduce((acc, it) => {
+    const qty = Number.isFinite(it.quantity) ? it.quantity : 0
+    const unitPrice = Number.isFinite(it.unitPrice) ? it.unitPrice : 0
+    const disc = Number.isFinite(it.discountPercent) ? it.discountPercent! : 0
+    return acc + qty * unitPrice * (disc / 100)
+  }, 0)
+
+  const dpp = Math.max(0, subtotal - discountTotal)
+  const ppnAmount = ppnEnabled ? dpp * (ppnPercent / 100) : 0
+  const pphAmount = pphEnabled ? dpp * (pphPercent / 100) : 0
+  const grandTotal = Math.max(0, dpp + ppnAmount - pphAmount)
+  const sisaTagihan = dpEnabled ? Math.max(0, grandTotal - dpAmount) : grandTotal
+
+  const terbilangText = `${terbilang(sisaTagihan)} Rupiah`
 
   const leftBlockW = right - left - 60
   doc.rect(left, y, leftBlockW, 18)
@@ -244,12 +267,48 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   const totalsLeft = left + leftBlockW
   doc.rect(totalsLeft, y, 60, 18)
   doc.setFontSize(8)
-  doc.text('Subtotal', totalsLeft + 2, y + 5)
-  doc.text(`Rp ${formatRupiahNumber(subtotal)}`, right - 2, y + 5, { align: 'right' })
-  doc.text('Total', totalsLeft + 2, y + 10)
-  doc.text(`Rp ${formatRupiahNumber(subtotal)}`, right - 2, y + 10, { align: 'right' })
-  doc.text('Sisa Tagihan', totalsLeft + 2, y + 15)
-  doc.text(`Rp ${formatRupiahNumber(subtotal)}`, right - 2, y + 15, { align: 'right' })
+  let ty = y + 5
+
+  doc.text('Subtotal', totalsLeft + 2, ty)
+  doc.text(`Rp ${formatRupiahNumber(subtotal)}`, right - 2, ty, { align: 'right' })
+  ty += 5
+
+  if (discountTotal > 0) {
+    doc.text('Diskon', totalsLeft + 2, ty)
+    doc.text(`Rp ${formatRupiahNumber(discountTotal)}`, right - 2, ty, { align: 'right' })
+    ty += 5
+  }
+
+  if (ppnEnabled || pphEnabled) {
+    doc.text('DPP', totalsLeft + 2, ty)
+    doc.text(`Rp ${formatRupiahNumber(dpp)}`, right - 2, ty, { align: 'right' })
+    ty += 5
+  }
+
+  if (ppnEnabled) {
+    doc.text(`PPN (${ppnPercent}%)`, totalsLeft + 2, ty)
+    doc.text(`Rp ${formatRupiahNumber(ppnAmount)}`, right - 2, ty, { align: 'right' })
+    ty += 5
+  }
+
+  if (pphEnabled) {
+    doc.text(`PPh (${pphPercent}%)`, totalsLeft + 2, ty)
+    doc.text(`- Rp ${formatRupiahNumber(pphAmount)}`, right - 2, ty, { align: 'right' })
+    ty += 5
+  }
+
+  doc.text('Total', totalsLeft + 2, ty)
+  doc.text(`Rp ${formatRupiahNumber(grandTotal)}`, right - 2, ty, { align: 'right' })
+  ty += 5
+
+  if (dpEnabled && dpAmount > 0) {
+    doc.text('DP', totalsLeft + 2, ty)
+    doc.text(`- Rp ${formatRupiahNumber(dpAmount)}`, right - 2, ty, { align: 'right' })
+    ty += 5
+  }
+
+  doc.text('Sisa Tagihan', totalsLeft + 2, ty)
+  doc.text(`Rp ${formatRupiahNumber(sisaTagihan)}`, right - 2, ty, { align: 'right' })
 
   y += 24
 

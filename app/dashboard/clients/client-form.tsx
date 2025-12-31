@@ -21,7 +21,14 @@ import { toast } from 'sonner'
 
 const clientSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
+  email: z.preprocess(
+    (v) => {
+      if (typeof v !== 'string') return v
+      const trimmed = v.trim()
+      return trimmed === '' ? undefined : trimmed
+    },
+    z.string().email('Invalid email address').optional()
+  ),
   phone: z.string().min(10, 'Phone number must be at least 10 digits'),
   type: z.enum(['rumah_tangga', 'perkantoran', 'komersial', 'perhotelan', 'sekolah_universitas', 'gedung_pertemuan', 'kantor_pemerintah', 'pabrik_industri']),
   address: z.string().min(5, 'Address is required'),
@@ -37,6 +44,8 @@ interface ClientFormProps {
   tenantId: string
   initialData?: Partial<ClientFormData> & { avatar_url?: string }
   clientId?: string
+  onSaved?: (client: any) => void
+  redirectTo?: string | null
 }
 
 interface SalesPerson {
@@ -46,7 +55,7 @@ interface SalesPerson {
   partnership_status?: string
 }
 
-export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps) {
+export function ClientForm({ tenantId, initialData, clientId, onSaved, redirectTo = '/dashboard/clients' }: ClientFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -226,6 +235,8 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
 
       const isSalesPartner = viewerRole === 'sales_partner'
 
+      const normalizedEmail = data.email ? String(data.email).trim() : null
+
       // Determine if selected referral is active (UUID) or passive (name string)
       const selectedPerson = salesPeople.find(p => p.id === data.referred_by_id)
       const isPassivePartner = selectedPerson?.partnership_status === 'passive'
@@ -254,7 +265,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
           .from('clients')
           .update({
             name: data.name,
-            email: data.email,
+            email: normalizedEmail,
             phone: data.phone,
             client_type: data.type,
             address: data.address,
@@ -267,6 +278,16 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
           .eq('id', clientId)
 
         if (updateError) throw updateError
+
+        onSaved?.({
+          id: clientId,
+          name: data.name,
+          phone: data.phone,
+          email: normalizedEmail,
+          address: data.address,
+          city: data.city,
+          client_type: data.type,
+        })
       } else {
         // Create new client
         const { data: newClient, error: insertError } = await supabase
@@ -274,7 +295,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
           .insert({
             tenant_id: tenantId,
             name: data.name,
-            email: data.email,
+            email: normalizedEmail,
             phone: data.phone,
             client_type: data.type,
             address: data.address,
@@ -287,6 +308,8 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
 
         if (insertError) throw insertError
         savedClientId = newClient.id
+
+        onSaved?.(newClient)
 
         // Upload avatar after client created
         if (avatarFile && savedClientId) {
@@ -301,7 +324,9 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
       toast.success('Client saved successfully!', {
         description: `${data.name} has been ${clientId ? 'updated' : 'added'} to your client list.`,
       })
-      router.push('/dashboard/clients')
+      if (redirectTo) {
+        router.push(redirectTo)
+      }
     } catch (error: any) {
       console.error('Error saving client:', error)
       toast.error('Failed to save client', {
@@ -419,7 +444,7 @@ export function ClientForm({ tenantId, initialData, clientId }: ClientFormProps)
             <h3 className="font-semibold text-gray-900">Contact Information</h3>
             
             <div>
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">Email (Optional)</Label>
               <Input
                 id="email"
                 type="email"

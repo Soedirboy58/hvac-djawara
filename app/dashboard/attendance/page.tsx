@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { AttendanceConfigCard } from './attendance-config-card'
-import { AttendanceRosterCard } from './attendance-roster-card'
+import { AttendanceTabsClient } from './attendance-tabs-client'
 
 export default async function AttendancePage() {
   const supabase = await createClient()
@@ -44,9 +43,7 @@ export default async function AttendancePage() {
         <p className="text-gray-500 mt-1">Konfigurasi kontrol kehadiran teknisi & helper</p>
       </div>
 
-      <AttendanceConfigCard />
-
-      <AttendanceRosterCard />
+      <AttendanceTabsClient />
     </div>
   );
 }

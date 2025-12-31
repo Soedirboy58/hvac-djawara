@@ -30,6 +30,21 @@ function parseTimeToMinutes(value: string) {
   return hour * 60 + minute;
 }
 
+function normalizeTimeToHHMMSS(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "00:00:00";
+  const parts = trimmed.split(":");
+  const h = String(Number(parts[0] || 0)).padStart(2, "0");
+  const m = String(Number(parts[1] || 0)).padStart(2, "0");
+  const s = String(Number(parts[2] || 0)).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+function jakartaDateTimeISO(dateISO: string, timeValue: string) {
+  const t = normalizeTimeToHHMMSS(timeValue);
+  return `${dateISO}T${t}+07:00`;
+}
+
 function getJakartaMinutes(isoTs: string) {
   const dt = new Date(isoTs);
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -95,7 +110,7 @@ export async function POST() {
       .maybeSingle();
 
     const startMinutes = parseTimeToMinutes(String(config?.work_start_time || "09:00:00"));
-    const endMinutes = parseTimeToMinutes(String(config?.work_end_time || "17:00:00"));
+    const endMinutes = parseTimeToMinutes(String(config?.work_end_time || "18:00:00"));
 
     const today = getJakartaDateISO();
 
@@ -127,6 +142,43 @@ export async function POST() {
       return NextResponse.json({ error: recentError.message }, { status: 500 });
     }
 
+    const nowIso = new Date().toISOString();
+    const nowMinutes = getJakartaMinutes(nowIso);
+
+    const maybeAutoCheckout = async (row: any) => {
+      if (!row?.id) return row;
+      if (!row.clock_in_time || row.clock_out_time) return row;
+
+      const shouldAuto = row.date < today || (row.date === today && nowMinutes >= endMinutes);
+      if (!shouldAuto) return row;
+
+      const outIso = jakartaDateTimeISO(row.date, String(config?.work_end_time || "18:00:00"));
+      const computedIsLate = getJakartaMinutes(row.clock_in_time) > startMinutes;
+      const computedHours = round2((Date.parse(outIso) - Date.parse(row.clock_in_time)) / 3600000);
+
+      await admin
+        .from("daily_attendance")
+        .update({
+          clock_out_time: outIso,
+          work_start_time: row.clock_in_time,
+          work_end_time: outIso,
+          total_work_hours: Number.isFinite(computedHours) ? computedHours : null,
+          is_late: Boolean(computedIsLate),
+          is_early_leave: false,
+          is_auto_checkout: true,
+        })
+        .eq("id", row.id);
+
+      return {
+        ...row,
+        clock_out_time: outIso,
+        total_work_hours: Number.isFinite(computedHours) ? computedHours : null,
+        is_late: Boolean(computedIsLate),
+        is_early_leave: false,
+        is_auto_checkout: true,
+      };
+    };
+
     const computeRow = (row: any) => {
       if (!row) return row;
 
@@ -145,20 +197,20 @@ export async function POST() {
         ...row,
         is_late: Boolean(isLate),
         is_early_leave: Boolean(isEarlyLeave),
-        total_work_hours: typeof totalHours === "number" && Number.isFinite(totalHours) ? totalHours : row.total_work_hours,
+        // Important: if clock_out_time is missing, force hours to null to avoid showing stale "running" totals.
+        total_work_hours: typeof totalHours === "number" && Number.isFinite(totalHours) ? totalHours : null,
       };
     };
 
-    const normalizedTodayRow = computeRow(todayRow || null);
-    const normalizedRecent = (recent || []).map(computeRow);
+    const autoToday = await maybeAutoCheckout(todayRow || null);
+    const autoRecent = await Promise.all((recent || []).map(maybeAutoCheckout));
+
+    const normalizedTodayRow = computeRow(autoToday || null);
+    const normalizedRecent = (autoRecent || []).map(computeRow);
 
     // Best-effort auto-heal: if existing stored values were computed using UTC time-of-day,
     // update today's record so subsequent reads (and other pages) match.
-    if (
-      normalizedTodayRow?.id &&
-      normalizedTodayRow?.clock_in_time &&
-      normalizedTodayRow?.clock_out_time
-    ) {
+    if (normalizedTodayRow?.id && normalizedTodayRow?.clock_in_time && normalizedTodayRow?.clock_out_time) {
       const storedHours =
         typeof todayRow?.total_work_hours === "number" && Number.isFinite(todayRow.total_work_hours)
           ? Number(todayRow.total_work_hours)

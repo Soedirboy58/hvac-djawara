@@ -125,7 +125,7 @@ export async function GET() {
       tenantId: ctx.tenantId,
       config: {
         work_start_time: row?.work_start_time ?? "09:00:00",
-        work_end_time: row?.work_end_time ?? "17:00:00",
+        work_end_time: row?.work_end_time ?? "18:00:00",
         overtime_rate_per_hour: row?.overtime_rate_per_hour ?? 5000,
         max_overtime_hours_per_day: row?.max_overtime_hours_per_day ?? 4,
       },
@@ -144,7 +144,7 @@ export async function PUT(request: Request) {
     const body = (await request.json()) as PutBody;
 
     const workStart = normalizeTime(body?.workStartTime, "09:00:00");
-    const workEnd = normalizeTime(body?.workEndTime, "17:00:00");
+    const workEnd = normalizeTime(body?.workEndTime, "18:00:00");
     const overtimeRate = normalizeNumber(body?.overtimeRatePerHour, 5000);
     const maxOvertime = Math.max(0, Math.floor(normalizeNumber(body?.maxOvertimeHoursPerDay, 4)));
 

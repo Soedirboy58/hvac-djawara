@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/table'
 import { formatCurrency } from '@/lib/utils/formatters'
 import { generateInvoicePdfBlob } from '@/lib/invoice-pdf'
+import { Plus, Trash2 } from 'lucide-react'
 
 type WorkLog = {
   id: string
@@ -59,6 +61,8 @@ type InvoiceDraftItem = {
   quantity: number
   unit: string
   unitPrice: number
+  discountPercent: number
+  taxPercent: number
 }
 
 type ExistingInvoice = {
@@ -72,6 +76,12 @@ type ExistingInvoice = {
   client_phone: string | null
   client_address: string | null
   amount_total: number
+  ppn_enabled?: boolean
+  ppn_percent?: number
+  pph_enabled?: boolean
+  pph_percent?: number
+  dp_enabled?: boolean
+  dp_amount?: number
 }
 
 function groupMaintenanceItems(maintenanceUnits: any[]): InvoiceDraftItem[] {
@@ -93,14 +103,44 @@ function groupMaintenanceItems(maintenanceUnits: any[]): InvoiceDraftItem[] {
       quantity: qty,
       unit: 'Unit',
       unitPrice: 0,
+      discountPercent: 0,
+      taxPercent: 0,
     })
   }
 
   return items
 }
 
-function itemsTotal(items: InvoiceDraftItem[]) {
-  return items.reduce((acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0), 0)
+function safeNumber(v: any) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function calcLineTotal(item: InvoiceDraftItem) {
+  const qty = safeNumber(item.quantity)
+  const unitPrice = safeNumber(item.unitPrice)
+  const disc = safeNumber(item.discountPercent)
+  const tax = safeNumber(item.taxPercent)
+
+  const base = qty * unitPrice
+  const afterDisc = base * (1 - disc / 100)
+  const afterTax = afterDisc * (1 + tax / 100)
+  return afterTax
+}
+
+function calcSubtotal(items: InvoiceDraftItem[]) {
+  return items.reduce((acc, it) => acc + safeNumber(it.quantity) * safeNumber(it.unitPrice), 0)
+}
+
+function calcDiscountTotal(items: InvoiceDraftItem[]) {
+  return items.reduce((acc, it) => {
+    const base = safeNumber(it.quantity) * safeNumber(it.unitPrice)
+    return acc + base * (safeNumber(it.discountPercent) / 100)
+  }, 0)
+}
+
+function calcGrandTotal(items: InvoiceDraftItem[]) {
+  return items.reduce((acc, it) => acc + calcLineTotal(it), 0)
 }
 
 function safeDateISO(d: Date) {
@@ -138,12 +178,52 @@ export function InvoiceFromOrderDialog({
   const [issueDate, setIssueDate] = useState<string>(() => safeDateISO(new Date()))
   const [dueDate, setDueDate] = useState<string>('')
 
+  const [dueMode, setDueMode] = useState<'7' | '14' | '30' | 'custom'>('14')
+
+  const [discEnabled, setDiscEnabled] = useState(false)
+  const [ppnEnabled, setPpnEnabled] = useState(false)
+  const [ppnPercent, setPpnPercent] = useState<number>(11)
+  const [pphEnabled, setPphEnabled] = useState(false)
+  const [pphPercent, setPphPercent] = useState<number>(0)
+  const [dpEnabled, setDpEnabled] = useState(false)
+  const [dpAmount, setDpAmount] = useState<number>(0)
+
   const [items, setItems] = useState<InvoiceDraftItem[]>([])
 
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null)
-  const total = itemsTotal(items)
+  const subtotal = calcSubtotal(items)
+  const discountTotal = calcDiscountTotal(items)
+  const total = calcGrandTotal(items)
+
+  const dpp = Math.max(0, subtotal - discountTotal)
+  const pphAmount = pphEnabled ? dpp * (safeNumber(pphPercent) / 100) : 0
+  const payable = Math.max(0, total - pphAmount)
+  const sisaTagihan = dpEnabled ? Math.max(0, payable - safeNumber(dpAmount)) : payable
+
+  const addDaysFromISO = (iso: string, days: number) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    d.setDate(d.getDate() + days)
+    return safeDateISO(d)
+  }
+
+  const resetPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
+    setPreviewBlob(null)
+  }
+
+  const newItem = (): InvoiceDraftItem => ({
+    id: `it-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    description: '',
+    quantity: 1,
+    unit: 'Unit',
+    unitPrice: 0,
+    discountPercent: 0,
+    taxPercent: 0,
+  })
 
   useEffect(() => {
     if (!open) return
@@ -166,14 +246,24 @@ export function InvoiceFromOrderDialog({
         setOrder(orderRes.data as any)
 
         // 2) If invoice exists for this order, load it (edit/print/resend)
-        const existing = await supabase
+        // Try with adjustment columns; fallback if schema not yet applied.
+        let existing = await supabase
           .from('invoices')
-          .select('id, invoice_number, issue_date, due_date, status, client_id, client_name, client_phone, client_address, amount_total')
+          .select('id, invoice_number, issue_date, due_date, status, client_id, client_name, client_phone, client_address, amount_total, ppn_enabled, ppn_percent, pph_enabled, pph_percent, dp_enabled, dp_amount')
           .eq('tenant_id', tenantId)
           .eq('service_order_id', orderId)
           .maybeSingle()
 
-        if (existing.error) throw existing.error
+        if (existing.error) {
+          const fallback = await supabase
+            .from('invoices')
+            .select('id, invoice_number, issue_date, due_date, status, client_id, client_name, client_phone, client_address, amount_total')
+            .eq('tenant_id', tenantId)
+            .eq('service_order_id', orderId)
+            .maybeSingle()
+          if (fallback.error) throw fallback.error
+          existing = fallback as any
+        }
 
         if (existing.data) {
           const inv = existing.data as ExistingInvoice
@@ -181,34 +271,58 @@ export function InvoiceFromOrderDialog({
           setInvoiceNumber(inv.invoice_number)
           setIssueDate(inv.issue_date)
           setDueDate(inv.due_date || '')
+          setDueMode(inv.due_date ? 'custom' : '14')
+          setPpnEnabled(Boolean(inv.ppn_enabled))
+          setPpnPercent(safeNumber(inv.ppn_percent || 11) || 11)
+          setPphEnabled(Boolean(inv.pph_enabled))
+          setPphPercent(safeNumber(inv.pph_percent || 0))
+          setDpEnabled(Boolean(inv.dp_enabled))
+          setDpAmount(safeNumber(inv.dp_amount || 0))
 
           // Try load invoice items (if schema already applied)
           const itemsRes = await supabase
             .from('invoice_items')
-            .select('id, description, quantity, unit, unit_price')
+            .select('id, description, quantity, unit, unit_price, discount_percent, tax_percent')
             .eq('tenant_id', tenantId)
             .eq('invoice_id', inv.id)
             .order('created_at', { ascending: true })
 
           if (!itemsRes.error && itemsRes.data) {
-            setItems(
-              (itemsRes.data as any[]).map((r) => ({
-                id: r.id,
-                description: r.description,
-                quantity: Number(r.quantity || 0),
-                unit: r.unit || 'Unit',
-                unitPrice: Number(r.unit_price || 0),
-              }))
-            )
+            const loaded = (itemsRes.data as any[]).map((r) => ({
+              id: r.id,
+              description: r.description,
+              quantity: Number(r.quantity || 0),
+              unit: r.unit || 'Unit',
+              unitPrice: Number(r.unit_price || 0),
+              discountPercent: Number(r.discount_percent || 0),
+              taxPercent: Number(r.tax_percent || 0),
+            }))
+            setItems(loaded)
+            setDiscEnabled(loaded.some((x) => safeNumber(x.discountPercent) > 0))
           }
           return
         }
 
         // 3) No existing invoice: build from technical report + spareparts
-        const workLogRes = await supabase
-          .from('technician_work_logs')
-          .select('id, work_type, completed_at, maintenance_units_data, ac_units_data')
+        // Prefer PIC work log so assistant logs don't override the source data.
+        const picAssignments = await supabase
+          .from('work_order_assignments')
+          .select('technician_id')
           .eq('service_order_id', orderId)
+          .eq('role_in_order', 'primary')
+
+        const picTechnicianIds = (picAssignments.data || []).map((r: any) => r.technician_id).filter(Boolean)
+
+        let workLogQuery = supabase
+          .from('technician_work_logs')
+          .select('id, work_type, completed_at, maintenance_units_data, ac_units_data, technician_id')
+          .eq('service_order_id', orderId)
+
+        if (picTechnicianIds.length > 0) {
+          workLogQuery = workLogQuery.in('technician_id', picTechnicianIds)
+        }
+
+        const workLogRes = await workLogQuery
           .order('completed_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -238,10 +352,10 @@ export function InvoiceFromOrderDialog({
           generated.push(...groupMaintenanceItems(wl?.maintenance_units_data || []))
         } else if (wt === 'troubleshooting') {
           const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
-          generated.push({ id: 'svc-troubleshooting', description: 'Jasa Troubleshooting AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0 })
+          generated.push({ id: 'svc-troubleshooting', description: 'Jasa Troubleshooting AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
         } else if (wt === 'pengecekan') {
           const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
-          generated.push({ id: 'svc-pengecekan', description: 'Jasa Pengecekan AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0 })
+          generated.push({ id: 'svc-pengecekan', description: 'Jasa Pengecekan AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
         } else {
           // Fallback
           generated.push({
@@ -250,6 +364,8 @@ export function InvoiceFromOrderDialog({
             quantity: 1,
             unit: 'Pekerjaan',
             unitPrice: 0,
+            discountPercent: 0,
+            taxPercent: 0,
           })
         }
 
@@ -260,10 +376,16 @@ export function InvoiceFromOrderDialog({
             quantity: Number(sp.quantity || 1),
             unit: sp.unit || 'Unit',
             unitPrice: 0,
+            discountPercent: 0,
+            taxPercent: 0,
           })
         }
 
         setItems(generated)
+
+        // defaults
+        setDueMode('14')
+        setDueDate(addDaysFromISO(issueDate, 14))
 
         // Default invoice number suggestion (INV/00001 style based on count)
         const countRes = await supabase
@@ -284,6 +406,34 @@ export function InvoiceFromOrderDialog({
     run()
   }, [open, orderId, tenantId, supabase])
 
+  // Due date auto-fill based on mode
+  useEffect(() => {
+    if (!open) return
+    if (dueMode === 'custom') return
+    const days = dueMode === '7' ? 7 : dueMode === '14' ? 14 : 30
+    const next = addDaysFromISO(issueDate, days)
+    if (next) setDueDate(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueMode, issueDate, open])
+
+  // Apply PPN toggle globally to item taxPercent
+  useEffect(() => {
+    if (!open) return
+    if (!ppnEnabled) {
+      setItems((prev) => prev.map((it) => ({ ...it, taxPercent: 0 })))
+      return
+    }
+    setItems((prev) => prev.map((it) => ({ ...it, taxPercent: safeNumber(ppnPercent) })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ppnEnabled, ppnPercent, open])
+
+  // Hide disc inputs by forcing discountPercent=0 when disabled
+  useEffect(() => {
+    if (!open) return
+    if (discEnabled) return
+    setItems((prev) => prev.map((it) => ({ ...it, discountPercent: 0 })))
+  }, [discEnabled, open])
+
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -292,7 +442,18 @@ export function InvoiceFromOrderDialog({
   }, [])
 
   const updateItem = (id: string, patch: Partial<InvoiceDraftItem>) => {
+    resetPreview()
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+  }
+
+  const addItemRow = () => {
+    resetPreview()
+    setItems((prev) => [...prev, newItem()])
+  }
+
+  const deleteItemRow = (id: string) => {
+    resetPreview()
+    setItems((prev) => prev.filter((it) => it.id !== id))
   }
 
   const buildPdf = async () => {
@@ -328,7 +489,15 @@ export function InvoiceFromOrderDialog({
         quantity: it.quantity,
         unit: it.unit,
         unitPrice: it.unitPrice,
+        discountPercent: discEnabled ? it.discountPercent : 0,
+        taxPercent: ppnEnabled ? safeNumber(ppnPercent) : 0,
       })),
+      ppnEnabled,
+      ppnPercent,
+      pphEnabled,
+      pphPercent,
+      dpEnabled,
+      dpAmount,
     })
 
     return blob
@@ -361,11 +530,11 @@ export function InvoiceFromOrderDialog({
 
     setSaving(true)
     try {
-      const amountTotal = itemsTotal(items)
+      const amountTotal = payable
 
       // Upsert invoice
       if (!invoiceId) {
-        const ins = await supabase
+        let ins = await supabase
           .from('invoices')
           .insert({
             tenant_id: tenantId,
@@ -380,10 +549,39 @@ export function InvoiceFromOrderDialog({
             issue_date: issueDate,
             due_date: dueDate || null,
             amount_total: amountTotal,
+            ppn_enabled: ppnEnabled,
+            ppn_percent: safeNumber(ppnPercent) || 0,
+            pph_enabled: pphEnabled,
+            pph_percent: safeNumber(pphPercent) || 0,
+            dp_enabled: dpEnabled,
+            dp_amount: safeNumber(dpAmount) || 0,
             notes: null,
           })
           .select('id')
           .single()
+
+        if (ins.error) {
+          // Fallback if adjustment columns not yet added
+          ins = await supabase
+            .from('invoices')
+            .insert({
+              tenant_id: tenantId,
+              invoice_number: invoiceNumber.trim(),
+              status: 'unpaid',
+              service_order_id: orderId,
+              client_id: order.clients.id,
+              client_name: order.clients.name || 'N/A',
+              client_email: order.clients.email || null,
+              client_phone: order.clients.phone || null,
+              client_address: order.location_address || order.clients.address || null,
+              issue_date: issueDate,
+              due_date: dueDate || null,
+              amount_total: amountTotal,
+              notes: null,
+            })
+            .select('id')
+            .single()
+        }
 
         if (ins.error) throw ins.error
         setInvoiceId(ins.data.id)
@@ -396,22 +594,47 @@ export function InvoiceFromOrderDialog({
           quantity: it.quantity,
           unit: it.unit,
           unit_price: it.unitPrice,
-          line_total: (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0),
+          discount_percent: discEnabled ? it.discountPercent : 0,
+          tax_percent: ppnEnabled ? safeNumber(ppnPercent) : 0,
+          line_total: calcLineTotal({
+            ...it,
+            discountPercent: discEnabled ? it.discountPercent : 0,
+            taxPercent: ppnEnabled ? safeNumber(ppnPercent) : 0,
+          }),
         }))
 
         const itemsIns = await supabase.from('invoice_items').insert(itemRows)
         if (itemsIns.error) throw itemsIns.error
       } else {
-        const upd = await supabase
+        let upd = await supabase
           .from('invoices')
           .update({
             invoice_number: invoiceNumber.trim(),
             issue_date: issueDate,
             due_date: dueDate || null,
             amount_total: amountTotal,
+            ppn_enabled: ppnEnabled,
+            ppn_percent: safeNumber(ppnPercent) || 0,
+            pph_enabled: pphEnabled,
+            pph_percent: safeNumber(pphPercent) || 0,
+            dp_enabled: dpEnabled,
+            dp_amount: safeNumber(dpAmount) || 0,
           })
           .eq('tenant_id', tenantId)
           .eq('id', invoiceId)
+
+        if (upd.error) {
+          upd = await supabase
+            .from('invoices')
+            .update({
+              invoice_number: invoiceNumber.trim(),
+              issue_date: issueDate,
+              due_date: dueDate || null,
+              amount_total: amountTotal,
+            })
+            .eq('tenant_id', tenantId)
+            .eq('id', invoiceId)
+        }
 
         if (upd.error) throw upd.error
 
@@ -425,7 +648,13 @@ export function InvoiceFromOrderDialog({
           quantity: it.quantity,
           unit: it.unit,
           unit_price: it.unitPrice,
-          line_total: (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0),
+          discount_percent: discEnabled ? it.discountPercent : 0,
+          tax_percent: ppnEnabled ? safeNumber(ppnPercent) : 0,
+          line_total: calcLineTotal({
+            ...it,
+            discountPercent: discEnabled ? it.discountPercent : 0,
+            taxPercent: ppnEnabled ? safeNumber(ppnPercent) : 0,
+          }),
         }))
         const itemsIns = await supabase.from('invoice_items').insert(itemRows)
         if (itemsIns.error) throw itemsIns.error
@@ -553,11 +782,81 @@ export function InvoiceFromOrderDialog({
                 </div>
                 <div className="space-y-2">
                   <Label>Tanggal</Label>
-                  <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                  <Input type="date" value={issueDate} onChange={(e) => { resetPreview(); setIssueDate(e.target.value) }} />
                 </div>
                 <div className="space-y-2">
                   <Label>Jatuh Tempo</Label>
-                  <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={dueMode}
+                      onChange={(e) => { resetPreview(); setDueMode(e.target.value as any) }}
+                    >
+                      <option value="7">7 hari</option>
+                      <option value="14">14 hari</option>
+                      <option value="30">30 hari</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      disabled={dueMode !== 'custom'}
+                      onChange={(e) => { resetPreview(); setDueDate(e.target.value) }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-6 items-end">
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={discEnabled} onCheckedChange={(v) => { resetPreview(); setDiscEnabled(Boolean(v)) }} />
+                  <Label className="cursor-pointer">Disc</Label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={ppnEnabled} onCheckedChange={(v) => { resetPreview(); setPpnEnabled(Boolean(v)) }} />
+                  <Label className="cursor-pointer">PPN</Label>
+                  <Input
+                    className="w-[90px]"
+                    inputMode="numeric"
+                    disabled={!ppnEnabled}
+                    value={String(ppnPercent)}
+                    onChange={(e) => { resetPreview(); setPpnPercent(safeNumber(e.target.value)) }}
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={pphEnabled} onCheckedChange={(v) => { resetPreview(); setPphEnabled(Boolean(v)) }} />
+                  <Label className="cursor-pointer">PPh</Label>
+                  <Input
+                    className="w-[90px]"
+                    inputMode="numeric"
+                    disabled={!pphEnabled}
+                    value={String(pphPercent)}
+                    onChange={(e) => { resetPreview(); setPphPercent(safeNumber(e.target.value)) }}
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={dpEnabled} onCheckedChange={(v) => { resetPreview(); setDpEnabled(Boolean(v)) }} />
+                  <Label className="cursor-pointer">DP</Label>
+                  <Input
+                    className="w-[160px]"
+                    inputMode="numeric"
+                    disabled={!dpEnabled}
+                    value={String(dpAmount)}
+                    onChange={(e) => { resetPreview(); setDpAmount(safeNumber(e.target.value)) }}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="ml-auto">
+                  <Button type="button" variant="outline" size="sm" onClick={addItemRow}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Tambah Baris
+                  </Button>
                 </div>
               </div>
 
@@ -578,8 +877,10 @@ export function InvoiceFromOrderDialog({
                       <TableHead>Deskripsi</TableHead>
                       <TableHead className="w-[110px]">Qty</TableHead>
                       <TableHead className="w-[110px]">Satuan</TableHead>
+                      {discEnabled ? <TableHead className="w-[110px]">Disc (%)</TableHead> : null}
                       <TableHead className="w-[160px]">Harga / Unit</TableHead>
                       <TableHead className="w-[160px] text-right">Jumlah</TableHead>
+                      <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -598,6 +899,15 @@ export function InvoiceFromOrderDialog({
                         <TableCell>
                           <Input value={it.unit} onChange={(e) => updateItem(it.id, { unit: e.target.value })} />
                         </TableCell>
+                        {discEnabled ? (
+                          <TableCell>
+                            <Input
+                              inputMode="numeric"
+                              value={String(it.discountPercent)}
+                              onChange={(e) => updateItem(it.id, { discountPercent: Number(e.target.value || 0) })}
+                            />
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           <Input
                             inputMode="numeric"
@@ -607,7 +917,22 @@ export function InvoiceFromOrderDialog({
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0))}
+                          {formatCurrency(calcLineTotal({
+                            ...it,
+                            discountPercent: discEnabled ? it.discountPercent : 0,
+                            taxPercent: ppnEnabled ? safeNumber(ppnPercent) : 0,
+                          }))}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteItemRow(it.id)}
+                            aria-label="Hapus baris"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -616,7 +941,16 @@ export function InvoiceFromOrderDialog({
               </div>
 
               <div className="flex justify-end text-sm">
-                <div className="font-medium">Total: {formatCurrency(total)}</div>
+                <div className="space-y-1 text-right">
+                  <div>Subtotal: <span className="font-medium">{formatCurrency(subtotal)}</span></div>
+                  {discEnabled ? <div>Diskon: <span className="font-medium">{formatCurrency(discountTotal)}</span></div> : null}
+                  {ppnEnabled || pphEnabled ? <div>DPP: <span className="font-medium">{formatCurrency(dpp)}</span></div> : null}
+                  {ppnEnabled ? <div>PPN ({ppnPercent}%): <span className="font-medium">{formatCurrency(dpp * (safeNumber(ppnPercent) / 100))}</span></div> : null}
+                  {pphEnabled ? <div>PPh ({pphPercent}%): <span className="font-medium">- {formatCurrency(pphAmount)}</span></div> : null}
+                  <div>Total: <span className="font-medium">{formatCurrency(payable)}</span></div>
+                  {dpEnabled ? <div>DP: <span className="font-medium">- {formatCurrency(safeNumber(dpAmount))}</span></div> : null}
+                  {dpEnabled ? <div>Sisa Tagihan: <span className="font-medium">{formatCurrency(sisaTagihan)}</span></div> : null}
+                </div>
               </div>
             </div>
           )}

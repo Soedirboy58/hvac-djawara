@@ -55,6 +55,9 @@ export default function TechnicianAttendancePage() {
   const [todayRow, setTodayRow] = useState<AttendanceRow | null>(null);
   const [recent, setRecent] = useState<AttendanceRow[]>([]);
 
+  const [recentPage, setRecentPage] = useState(1);
+  const recentPageSize = 7;
+
   const [notes, setNotes] = useState<string>("");
 
   useEffect(() => {
@@ -98,6 +101,9 @@ export default function TechnicianAttendancePage() {
     setTodayISO(json.today as string);
     setTodayRow((json.todayRow || null) as AttendanceRow | null);
     setRecent((json.recent || []) as AttendanceRow[]);
+
+    // Reset pagination after refresh to show newest rows first.
+    setRecentPage(1);
 
     const nextNotes = (json.todayRow?.notes as string | null) || "";
     setNotes(nextNotes);
@@ -158,6 +164,12 @@ export default function TechnicianAttendancePage() {
   const badge = statusBadge(todayRow);
   const canClockIn = !todayRow?.clock_in_time;
   const canClockOut = Boolean(todayRow?.clock_in_time) && !todayRow?.clock_out_time;
+
+  const recentTotalPages = Math.max(1, Math.ceil(recent.length / recentPageSize));
+  const safeRecentPage = Math.min(Math.max(1, recentPage), recentTotalPages);
+  const recentStart = (safeRecentPage - 1) * recentPageSize;
+  const recentEnd = recentStart + recentPageSize;
+  const recentSlice = recent.slice(recentStart, recentEnd);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -232,7 +244,32 @@ export default function TechnicianAttendancePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Riwayat (14 hari terakhir)</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Riwayat (14 hari terakhir)</CardTitle>
+            {recent.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeRecentPage <= 1}
+                >
+                  Prev
+                </Button>
+                <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  Hal {safeRecentPage} / {recentTotalPages}
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setRecentPage((p) => Math.min(recentTotalPages, p + 1))}
+                  disabled={safeRecentPage >= recentTotalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
@@ -250,7 +287,7 @@ export default function TechnicianAttendancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recent.map((r) => {
+                  {recentSlice.map((r) => {
                     const b = statusBadge(r);
                     return (
                       <tr key={r.id} className="border-b last:border-b-0">

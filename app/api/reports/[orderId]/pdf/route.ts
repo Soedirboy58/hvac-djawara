@@ -24,9 +24,22 @@ export async function GET(
     )
     
     const orderId = params.orderId
-    
+
+    // Prefer PIC (primary) work log so assistant logs don't override the report.
+    const { data: picAssignments, error: picErr } = await supabaseAdmin
+      .from('work_order_assignments')
+      .select('technician_id')
+      .eq('service_order_id', orderId)
+      .eq('role_in_order', 'primary')
+
+    if (picErr) {
+      console.error('PIC assignment lookup failed:', picErr)
+    }
+
+    const picTechnicianIds = (picAssignments || []).map((r: any) => r.technician_id).filter(Boolean)
+
     // Fetch work log with all data using admin client (bypasses RLS)
-    const { data: workLog, error } = await supabaseAdmin
+    let workLogQuery = supabaseAdmin
       .from('technician_work_logs')
       .select(`
         *,
@@ -48,6 +61,12 @@ export async function GET(
         )
       `)
       .eq('service_order_id', orderId)
+
+    if (picTechnicianIds.length > 0) {
+      workLogQuery = workLogQuery.in('technician_id', picTechnicianIds)
+    }
+
+    const { data: workLog, error } = await workLogQuery
       .order('completed_at', { ascending: false })
       .limit(1)
       .maybeSingle()

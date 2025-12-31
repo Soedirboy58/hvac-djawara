@@ -144,6 +144,7 @@ export function PeopleManagementClient({
   const [activeTab, setActiveTab] = useState<'people' | 'technicians'>('people')
   const [technicianRows, setTechnicianRows] = useState<TechnicianPerformanceRow[]>([])
   const [technicianRoster, setTechnicianRoster] = useState<TechnicianRosterRow[]>([])
+  const [staffRoleByUserId, setStaffRoleByUserId] = useState<Record<string, string>>({})
   const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false)
   const [technicianError, setTechnicianError] = useState<string | null>(null)
   const [techPage, setTechPage] = useState(1)
@@ -153,6 +154,8 @@ export function PeopleManagementClient({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
   const [isViewingMember, setIsViewingMember] = useState(false)
+  const [pendingStaffRole, setPendingStaffRole] = useState<string>('')
+  const [savingStaffRole, setSavingStaffRole] = useState(false)
   const [tenantSlug, setTenantSlug] = useState<string>('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -180,6 +183,55 @@ export function PeopleManagementClient({
   const supabase = createClient()
 
   const isTechnicianRole = (role: string) => ['technician', 'supervisor', 'team_lead'].includes(role)
+
+  // Promotion/demotion is handled in the Member Profile modal (click cardbox),
+  // so the card UI stays clean and avoids accidental role changes.
+  const isStaffTechRole = (role: string) => ['helper', 'technician', 'tech_head'].includes(String(role || '').toLowerCase())
+
+  const allowedStaffRoles = ['helper', 'technician', 'tech_head'] as const
+  const staffPromotionOrder = ['helper', 'technician', 'tech_head'] as const
+
+  const getNextStaffRole = (role: string) => {
+    const r = String(role || '').toLowerCase()
+    const idx = staffPromotionOrder.indexOf(r as any)
+    if (idx < 0) return null
+    return idx < staffPromotionOrder.length - 1 ? staffPromotionOrder[idx + 1] : null
+  }
+
+  const getPrevStaffRole = (role: string) => {
+    const r = String(role || '').toLowerCase()
+    const idx = staffPromotionOrder.indexOf(r as any)
+    if (idx < 0) return null
+    return idx > 0 ? staffPromotionOrder[idx - 1] : null
+  }
+
+  const changeStaffRole = async (userId: string, newRole: string) => {
+    try {
+      const res = await fetch('/api/people/update-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId, userId, newRole }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'Gagal update role')
+      toast.success('Role berhasil diupdate')
+      await refreshTeamMembers()
+      await fetchTechnicianRoster()
+    } catch (e: any) {
+      console.error('changeStaffRole error:', e)
+      toast.error(e?.message || 'Gagal update role')
+    }
+  }
+
+  const staffRoleLabelForUser = (userId: string | null | undefined, fallback: string) => {
+    if (userId && staffRoleByUserId[userId]) return staffRoleByUserId[userId]
+    return fallback
+  }
+
+  useEffect(() => {
+    if (!isViewingMember || !selectedMember) return
+    setPendingStaffRole(String(selectedMember.role || ''))
+  }, [isViewingMember, selectedMember])
 
   const refreshTeamMembers = async () => {
     try {
@@ -348,7 +400,37 @@ export function PeopleManagementClient({
         throw new Error(result.error || 'Failed to load technicians roster')
       }
 
-      setTechnicianRoster((result.rows || []) as TechnicianRosterRow[])
+      const roster = (result.rows || []) as TechnicianRosterRow[]
+      setTechnicianRoster(roster)
+
+      const userIds = Array.from(new Set(roster.map((r) => r.user_id).filter(Boolean))) as string[]
+      if (userIds.length > 0) {
+        const { data: rolesRows, error: rolesError } = await supabase
+          .from('user_tenant_roles')
+          .select('user_id, role')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .in('user_id', userIds)
+
+        if (!rolesError && rolesRows) {
+          const precedence = ['tech_head', 'senior_teknisi', 'technician', 'teknisi', 'helper', 'magang']
+          const byUser: Record<string, string[]> = {}
+          for (const rr of rolesRows as any[]) {
+            const uid = String(rr.user_id)
+            const role = String(rr.role || '')
+            if (!uid || !role) continue
+            if (!byUser[uid]) byUser[uid] = []
+            byUser[uid].push(role)
+          }
+          const mapped: Record<string, string> = {}
+          for (const uid of Object.keys(byUser)) {
+            const roles = byUser[uid].map((x) => String(x).toLowerCase())
+            const picked = precedence.find((p) => roles.includes(p))
+            if (picked) mapped[uid] = picked
+          }
+          setStaffRoleByUserId(mapped)
+        }
+      }
     } catch (error: any) {
       console.error('Failed to fetch technicians roster:', error)
     }
@@ -1352,6 +1434,7 @@ export function PeopleManagementClient({
                 // Some records may have only one of these fields set, so use OR.
                 const isActive = !!t.user_id || !!t.is_verified
                 const initials = (t.full_name || 'T').charAt(0).toUpperCase()
+                const displayRole = staffRoleLabelForUser(t.user_id, t.role)
 
                 return (
                   <Card key={t.id} className="cursor-default">
@@ -1391,7 +1474,7 @@ export function PeopleManagementClient({
                       <div className="mb-4">
                         <h3 className="font-bold text-lg text-gray-900 mb-1">{t.full_name}</h3>
                         <Badge variant="outline" className="text-xs">
-                          {getRoleDisplayName(t.role)}
+                          {getRoleDisplayName(displayRole)}
                         </Badge>
                       </div>
 
@@ -1919,6 +2002,100 @@ export function PeopleManagementClient({
                           </Badge>
                         )}
                       </div>
+
+                      {/* Promotion/Demotion (via modal) */}
+                      {selectedMember.user_id && isStaffTechRole(selectedMember.role) ? (
+                        <div className="mt-4 rounded-lg border p-3 bg-gray-50">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">Promosi / Demosi</div>
+                              <div className="text-xs text-gray-500">
+                                Ubah role global user (mempengaruhi akses fitur di akun teknisi).
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <Label className="text-xs text-gray-500">Role Saat Ini</Label>
+                              <div className="mt-1">
+                                <Badge variant="outline">{getRoleDisplayName(selectedMember.role)}</Badge>
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-500">Ubah Menjadi</Label>
+                              <Select value={pendingStaffRole} onValueChange={setPendingStaffRole}>
+                                <SelectTrigger className="mt-1">
+                                  <SelectValue placeholder="Pilih role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allowedStaffRoles.map((r) => (
+                                    <SelectItem key={r} value={r}>
+                                      {getRoleDisplayName(r)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Saran: gunakan Promosi/Demosi sesuai jenjang.
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Jenjang: Helper → Teknisi → Kepala Teknisi.
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {getPrevStaffRole(selectedMember.role) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPendingStaffRole(String(getPrevStaffRole(selectedMember.role)))}
+                              >
+                                Demosi
+                              </Button>
+                            ) : null}
+                            {getNextStaffRole(selectedMember.role) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPendingStaffRole(String(getNextStaffRole(selectedMember.role)))}
+                              >
+                                Promosi
+                              </Button>
+                            ) : null}
+                            <div className="flex-1" />
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={
+                                savingStaffRole ||
+                                !pendingStaffRole ||
+                                String(pendingStaffRole).toLowerCase() === String(selectedMember.role).toLowerCase()
+                              }
+                              onClick={async () => {
+                                if (!selectedMember.user_id) return
+                                const ok = window.confirm('Simpan perubahan role ini? Perubahan akan mengubah akses fitur user.')
+                                if (!ok) return
+                                setSavingStaffRole(true)
+                                try {
+                                  await changeStaffRole(selectedMember.user_id, pendingStaffRole)
+                                } finally {
+                                  setSavingStaffRole(false)
+                                }
+                              }}
+                            >
+                              {savingStaffRole ? 'Menyimpan...' : 'Simpan Perubahan'}
+                            </Button>
+                          </div>
+
+                          <div className="text-xs text-gray-500 mt-2">
+                            Catatan: jika akun sedang login di portal teknisi, lakukan refresh / logout-login agar mode helper/teknisi ikut berubah.
+                          </div>
+                        </div>
+                      ) : null}
 
                       {/* Contact Info */}
                       <div className="space-y-2 text-sm">

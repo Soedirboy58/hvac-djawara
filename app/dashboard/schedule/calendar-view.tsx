@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Calendar, momentLocalizer, View, SlotInfo } from 'react-big-calendar'
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop'
 import moment from 'moment'
@@ -26,11 +26,29 @@ import { toast } from 'sonner'
 const localizer = momentLocalizer(moment)
 const DragAndDropCalendar = withDragAndDrop(Calendar)
 
+type HolidayResource = {
+  __type: 'holiday'
+  name: string
+  date: string
+}
+
+type CalendarResource = ScheduleEvent['resource'] | HolidayResource
+
+type CalendarEvent = Omit<ScheduleEvent, 'resource'> & {
+  resource: CalendarResource
+}
+
+function isHolidayEvent(event: CalendarEvent) {
+  return (event.resource as any)?.__type === 'holiday'
+}
+
 export default function ScheduleCalendarView() {
   const router = useRouter()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [currentView, setCurrentView] = useState<View>('month')
   const [selectedTechnician, setSelectedTechnician] = useState<string>('all')
+  const [holidayEvents, setHolidayEvents] = useState<CalendarEvent[]>([])
+  const holidayCacheRef = useRef<Map<number, CalendarEvent[]>>(new Map())
   
   const { events, loading, error, refetch } = useSchedule()
   const { updateSchedule } = useUpdateSchedule()
@@ -42,10 +60,69 @@ export default function ScheduleCalendarView() {
   const endOfMonth = useMemo(() => moment(currentDate).endOf('month').toDate(), [currentDate])
   const { workload } = useTechnicianWorkload(startOfMonth, endOfMonth)
 
+  // Sync Indonesian public holidays (via Nager.Date)
+  useEffect(() => {
+    const year = currentDate.getFullYear()
+
+    const cached = holidayCacheRef.current.get(year)
+    if (cached) {
+      setHolidayEvents(cached)
+      return
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/ID`)
+        if (!res.ok) throw new Error(`Failed to fetch holidays (${res.status})`)
+        const data = (await res.json()) as Array<{
+          date: string
+          localName?: string
+          name?: string
+        }>
+
+        const mapped: CalendarEvent[] = data.map((h) => {
+          const start = new Date(`${h.date}T00:00:00`)
+          const end = new Date(start)
+          end.setDate(end.getDate() + 1)
+
+          return {
+            id: `holiday-${h.date}`,
+            title: `Libur Nasional: ${h.localName || h.name || h.date}`,
+            start,
+            end,
+            allDay: true,
+            resource: {
+              __type: 'holiday',
+              name: h.localName || h.name || 'Libur Nasional',
+              date: h.date,
+            },
+          }
+        })
+
+        holidayCacheRef.current.set(year, mapped)
+        if (!cancelled) setHolidayEvents(mapped)
+      } catch (err) {
+        console.warn('Holiday sync failed:', err)
+        if (!cancelled) setHolidayEvents([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentDate])
+
   // Filter events by selected technician
-  const filteredEvents = selectedTechnician === 'all' 
-    ? events 
-    : events.filter(e => e.resource?.technician?.id === selectedTechnician)
+  const filteredEvents: CalendarEvent[] = useMemo(() => {
+    const scheduleEvents = (selectedTechnician === 'all'
+      ? events
+      : events.filter(e => (e.resource as any)?.technician?.id === selectedTechnician)) as CalendarEvent[]
+
+    // Always show holidays regardless of technician filter
+    return [...holidayEvents, ...scheduleEvents]
+  }, [events, holidayEvents, selectedTechnician])
 
   const handleNavigate = useCallback((newDate: Date) => {
     setCurrentDate(newDate)
@@ -55,10 +132,12 @@ export default function ScheduleCalendarView() {
     setCurrentView(newView)
   }, [])
 
-  const handleSelectEvent = useCallback((event: ScheduleEvent) => {
+  const handleSelectEvent = useCallback((event: CalendarEvent) => {
     try {
-      if (event?.resource?.id) {
-        router.push(`/dashboard/orders/${event.resource.id}`)
+      if (isHolidayEvent(event)) return
+      const orderId = (event.resource as any)?.id
+      if (orderId) {
+        router.push(`/dashboard/orders/${orderId}`)
       }
     } catch (err) {
       console.error('Error navigating to order:', err)
@@ -79,13 +158,24 @@ export default function ScheduleCalendarView() {
   // Handle drag and drop events
   const handleEventDrop = async ({ event, start, end }: any) => {
     try {
+      if (isHolidayEvent(event)) return
+
+      // For multi-day all-day blocks, shift the whole range (end date) and skip time-based conflict logic.
+      if (event?.allDay) {
+        await moveEvent(event, start, end)
+        return
+      }
+
       const technicianId = event.resource?.technician?.id
       if (!technicianId) {
         toast.error('Teknisi tidak ditemukan')
         return
       }
 
-      const result = await checkConflicts(event.resource.id, technicianId, start, end)
+      // Existing conflict checker expects (technicianId, date, startTime, duration, excludeOrderId)
+      const startTime = moment(start).format('HH:mm')
+      const duration = Math.max(0, moment(end).diff(moment(start), 'minutes'))
+      const result = await checkConflicts(technicianId, start, startTime, duration, event.resource.id)
 
       if (result.hasConflict) {
         toast.error(`⚠️ Konflik terdeteksi! Teknisi sudah memiliki ${result.conflicts.length} pekerjaan pada waktu ini.`)
@@ -99,19 +189,49 @@ export default function ScheduleCalendarView() {
     }
   }
 
-  const moveEvent = async (orderId: string, start: Date, end: Date) => {
-    const scheduledDate = moment(start).format('YYYY-MM-DD')
+  const moveEvent = async (eventOrOrderId: any, start: Date, end: Date) => {
+    const orderId = typeof eventOrOrderId === 'string' ? eventOrOrderId : eventOrOrderId?.resource?.id
+    if (!orderId) return
+
+    const scheduledDate = start
     const scheduledTime = moment(start).format('HH:mm:ss')
+
+    let shiftedEstimatedEndDate: Date | undefined
+    let estimatedEndTime: string | undefined
+
+    const resource = typeof eventOrOrderId === 'string' ? null : eventOrOrderId?.resource
+    const oldStart = typeof eventOrOrderId === 'string' ? null : eventOrOrderId?.start
+
+    if (resource?.estimated_end_date && oldStart) {
+      const deltaDays = moment(start).startOf('day').diff(moment(oldStart).startOf('day'), 'days')
+      if (deltaDays !== 0) {
+        shiftedEstimatedEndDate = moment(resource.estimated_end_date).add(deltaDays, 'days').toDate()
+        if (resource.estimated_end_time) estimatedEndTime = resource.estimated_end_time
+      }
+    }
     
-    await updateSchedule(orderId, scheduledDate, scheduledTime)
+    await updateSchedule(orderId, scheduledDate, scheduledTime, undefined, shiftedEstimatedEndDate, estimatedEndTime)
 
     toast.success('✅ Jadwal berhasil dipindahkan!')
     refetch()
   }
 
   // Custom event styling
-  const eventStyleGetter = useCallback((event: ScheduleEvent) => {
-    const status = event.resource.status
+  const eventStyleGetter = useCallback((event: CalendarEvent) => {
+    if (isHolidayEvent(event)) {
+      return {
+        style: {
+          backgroundColor: '#f3f4f6',
+          borderRadius: '4px',
+          opacity: 0.9,
+          color: '#374151',
+          border: '1px solid #e5e7eb',
+          display: 'block',
+        },
+      }
+    }
+
+    const status = (event.resource as any).status
     let backgroundColor = '#3b82f6' // blue for scheduled
     
     if (status === 'in_progress') backgroundColor = '#8b5cf6' // purple
@@ -147,7 +267,7 @@ export default function ScheduleCalendarView() {
     )
   }
 
-  const scheduledCount = filteredEvents.length
+  const scheduledCount = filteredEvents.filter(e => !isHolidayEvent(e)).length
   const todayEvents = filteredEvents.filter(e => {
     const today = moment().format('YYYY-MM-DD')
     const eventDate = moment(e.start).format('YYYY-MM-DD')
@@ -313,7 +433,7 @@ export default function ScheduleCalendarView() {
                 view={currentView}
                 date={currentDate}
                 selectable
-                draggableAccessor={() => true}
+                draggableAccessor={(event: any) => !isHolidayEvent(event)}
                 eventPropGetter={eventStyleGetter}
                 views={['month', 'week', 'day', 'agenda']}
                 step={30}

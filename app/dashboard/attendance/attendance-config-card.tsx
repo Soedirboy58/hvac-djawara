@@ -37,7 +37,7 @@ export function AttendanceConfigCard() {
   }, [config])
 
   const [workStart, setWorkStart] = useState('09:00')
-  const [workEnd, setWorkEnd] = useState('17:00')
+  const [workEnd, setWorkEnd] = useState('18:00')
   const [overtimeRate, setOvertimeRate] = useState('5000')
   const [maxOvertime, setMaxOvertime] = useState('4')
 
@@ -138,6 +138,9 @@ export function AttendanceConfigCard() {
               onChange={(e) => setWorkEnd(e.target.value)}
               disabled={loading || saving}
             />
+            <p className="text-xs text-muted-foreground">
+              Jika lupa clock-out sampai jam ini, sistem akan menandai <span className="font-medium">Auto checkout</span>.
+            </p>
           </div>
 
           <div className="space-y-2">

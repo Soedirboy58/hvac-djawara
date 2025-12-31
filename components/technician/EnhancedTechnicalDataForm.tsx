@@ -98,15 +98,22 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
+  const [roleInOrder, setRoleInOrder] = useState<string | null>(null);
+  const [isPicInOrder, setIsPicInOrder] = useState<boolean>(true);
 
   // Fetch and auto-populate order data
   useEffect(() => {
     fetchOrderData();
-  }, [orderId]);
+  }, [orderId, technicianId]);
 
   const fetchOrderData = async () => {
     try {
       const supabase = createClient();
+
+      if (!technicianId) {
+        setLoading(false);
+        return;
+      }
       
       // Fetch order with client data
       const { data: orderData, error } = await supabase
@@ -150,6 +157,28 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       
       if (techData) {
         setTechnicianName(techData.full_name);
+      }
+
+      // Determine per-order role (PIC vs assistant) from assignments
+      try {
+        const { data: assignmentRow, error: assignmentErr } = await supabase
+          .from('work_order_assignments')
+          .select('role_in_order')
+          .eq('service_order_id', orderId)
+          .eq('technician_id', technicianId)
+          .maybeSingle();
+
+        if (assignmentErr) {
+          console.error('Assignment role error:', assignmentErr)
+        }
+
+        const role = String((assignmentRow as any)?.role_in_order || 'primary').toLowerCase();
+        setRoleInOrder(role);
+        setIsPicInOrder(role === 'primary' || role === 'supervisor');
+      } catch (e) {
+        // Backward compatibility: if assignment is missing, keep previous behavior (allow)
+        setRoleInOrder(null);
+        setIsPicInOrder(true);
       }
       
       // Fetch assignment_id - don't filter by status since order might be completed
@@ -508,6 +537,11 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
 
   // Submit form
   const handleSubmit = async () => {
+    if (!isPicInOrder) {
+      toast.error('Hanya PIC yang dapat mengisi/menyimpan data teknis untuk order ini');
+      return;
+    }
+
     console.log("🚀 handleSubmit called!");
     console.log("📋 Current state:", {
       workType,

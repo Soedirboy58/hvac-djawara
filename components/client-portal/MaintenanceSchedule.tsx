@@ -28,6 +28,7 @@ import {
   Eye
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getActiveTenantId } from '@/lib/supabase/active-tenant'
 
 interface MaintenanceScheduleProps {
   clientId: string
@@ -52,8 +53,87 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [suggestedStartDate, setSuggestedStartDate] = useState<string | null>(null)
 
   const supabase = createClient()
+
+  // Suggest first maintenance date from last completed service history (per property)
+  useEffect(() => {
+    let cancelled = false
+
+    async function computeSuggestion() {
+      setSuggestedStartDate(null)
+      if (!selectedProperty) return
+
+      try {
+        const { data: lastOrder } = await supabase
+          .from('service_orders')
+          .select('completed_date, scheduled_date')
+          .eq('client_id', clientId)
+          .eq('property_id', selectedProperty)
+          .eq('status', 'completed')
+          .order('completed_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const baseIso = String((lastOrder as any)?.completed_date || (lastOrder as any)?.scheduled_date || '').trim()
+        if (!baseIso) return
+
+        const baseDate = new Date(baseIso)
+        if (Number.isNaN(baseDate.getTime())) return
+
+        const next = new Date(baseDate)
+
+        const addMonths = (months: number) => {
+          const day = next.getDate()
+          next.setMonth(next.getMonth() + months)
+          // If month overflowed (e.g. Jan 31 -> Mar 3), clamp to last day of target month
+          if (next.getDate() !== day) {
+            next.setDate(0)
+          }
+        }
+
+        switch (schedule.frequency) {
+          case 'monthly':
+            addMonths(1)
+            break
+          case 'quarterly':
+            addMonths(3)
+            break
+          case 'semi_annual':
+            addMonths(6)
+            break
+          case 'annual':
+            addMonths(12)
+            break
+          case 'custom': {
+            const days = Number.isFinite(schedule.custom_days) ? Number(schedule.custom_days) : 30
+            next.setDate(next.getDate() + Math.max(1, days))
+            break
+          }
+        }
+
+        const yyyy = next.getFullYear()
+        const mm = String(next.getMonth() + 1).padStart(2, '0')
+        const dd = String(next.getDate()).padStart(2, '0')
+        const suggested = `${yyyy}-${mm}-${dd}`
+
+        if (cancelled) return
+        setSuggestedStartDate(suggested)
+        if (!schedule.start_date) {
+          setSchedule((prev) => ({ ...prev, start_date: suggested }))
+        }
+      } catch (err) {
+        // Best-effort only
+        console.warn('Failed to suggest first maintenance date:', err)
+      }
+    }
+
+    computeSuggestion()
+    return () => {
+      cancelled = true
+    }
+  }, [clientId, selectedProperty, schedule.frequency, schedule.custom_days])
 
   // Load properties and schedules
   useEffect(() => {
@@ -102,15 +182,8 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
     setSuccess(false)
 
     try {
-      // Get tenant_id
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_tenant_id')
-        .single()
-
-      if (!profile?.active_tenant_id) {
-        throw new Error('No active tenant found')
-      }
+      const tenantId = await getActiveTenantId(supabase)
+      if (!tenantId) throw new Error('No active tenant found')
 
       if (editingId) {
         // UPDATE existing schedule
@@ -133,7 +206,7 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
         const { error: insertError } = await supabase
           .from('property_maintenance_schedules')
           .insert({
-            tenant_id: profile.active_tenant_id,
+            tenant_id: tenantId,
             client_id: clientId,
             property_id: selectedProperty,
             frequency: schedule.frequency,
@@ -553,6 +626,11 @@ export function MaintenanceSchedule({ clientId }: MaintenanceScheduleProps) {
             <p className="text-xs text-gray-500 mt-1">
               The system will auto-schedule subsequent visits based on frequency
             </p>
+            {suggestedStartDate && (
+              <p className="text-xs text-gray-500 mt-1">
+                Suggested: <span className="font-medium">{suggestedStartDate}</span> (based on last completed service)
+              </p>
+            )}
           </div>
 
           {/* Maintenance Type */}
