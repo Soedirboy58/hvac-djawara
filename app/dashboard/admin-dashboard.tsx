@@ -233,7 +233,7 @@ export default async function AdminDashboard({ page }: { page: number }) {
     reimburseInbox = data || []
   }
 
-  // Notifications: maintenance due (7 days) with no generated order
+  // Notifications: maintenance needs action (overdue + next 7 days) with no generated order
   const maintenanceProbe = await supabase.from('v_upcoming_maintenance').select('schedule_id').limit(1)
   const { data: maintenanceDue } = !maintenanceProbe.error
     ? await supabase
@@ -241,7 +241,6 @@ export default async function AdminDashboard({ page }: { page: number }) {
         .select('schedule_id, client_name, property_name, next_scheduled_date, unit_count, days_until, order_exists')
         .eq('tenant_id', tenantId)
         .eq('order_exists', false)
-        .gte('days_until', 0)
         .lte('days_until', 7)
         .order('days_until', { ascending: true })
         .limit(10)
@@ -572,11 +571,11 @@ export default async function AdminDashboard({ page }: { page: number }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Notif Maintenance (7 Hari)</CardTitle>
+            <CardTitle>Notif Maintenance (Overdue + ≤7 Hari)</CardTitle>
           </CardHeader>
           <CardContent>
             {(maintenanceDue || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">Tidak ada jadwal maintenance urgent.</p>
+              <p className="text-sm text-muted-foreground">Tidak ada jadwal maintenance yang perlu action.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -584,6 +583,7 @@ export default async function AdminDashboard({ page }: { page: number }) {
                     <TableHead>Pelanggan</TableHead>
                     <TableHead>Properti</TableHead>
                     <TableHead>Tanggal</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -593,6 +593,15 @@ export default async function AdminDashboard({ page }: { page: number }) {
                       <TableCell>{m.client_name}</TableCell>
                       <TableCell>{m.property_name}</TableCell>
                       <TableCell>{m.next_scheduled_date ? formatDate(m.next_scheduled_date) : '-'}</TableCell>
+                      <TableCell>
+                        {typeof m.days_until === 'number'
+                          ? m.days_until < 0
+                            ? `Overdue (${Math.abs(m.days_until)} hari)`
+                            : m.days_until === 0
+                              ? 'Hari ini'
+                              : `H-${m.days_until}`
+                          : '-'}
+                      </TableCell>
                       <TableCell className="text-right">{m.unit_count ?? '-'}</TableCell>
                     </TableRow>
                   ))}

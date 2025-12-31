@@ -159,19 +159,27 @@ export default function UpcomingMaintenanceWidget() {
   };
 
   const getUrgencyBadge = (daysUntil: number, orderExists: boolean) => {
-    if (orderExists && daysUntil > 30) {
+    if (orderExists) {
       return <Badge className="bg-green-500">✅ Order Created</Badge>;
-    } else if (daysUntil < -3) {
-      return <Badge variant="destructive">Overdue ({Math.abs(daysUntil)}d)</Badge>;
-    } else if (daysUntil >= -3 && daysUntil <= 0) {
-      return <Badge className="bg-orange-500">Due Soon ({Math.abs(daysUntil)}d)</Badge>;
-    } else if (daysUntil <= 3) {
-      return <Badge className="bg-orange-500">Urgent ({daysUntil}d)</Badge>;
-    } else if (daysUntil <= 7) {
-      return <Badge className="bg-yellow-500">Soon ({daysUntil}d)</Badge>;
-    } else {
-      return <Badge variant="secondary">{daysUntil} days</Badge>;
     }
+
+    if (daysUntil < 0) {
+      return <Badge variant="destructive">Overdue ({Math.abs(daysUntil)} hari)</Badge>;
+    }
+
+    if (daysUntil === 0) {
+      return <Badge className="bg-orange-500">Hari ini</Badge>;
+    }
+
+    if (daysUntil <= 7) {
+      return <Badge className="bg-yellow-500">Due Soon (H-{daysUntil})</Badge>;
+    }
+
+    if (daysUntil <= 30) {
+      return <Badge className="bg-blue-500">Next (H-{daysUntil})</Badge>;
+    }
+
+    return <Badge variant="secondary">H-{daysUntil}</Badge>;
   };
 
   const getFrequencyLabel = (freq: string) => {
@@ -185,16 +193,20 @@ export default function UpcomingMaintenanceWidget() {
     return labels[freq] || freq;
   };
 
-  // Group by urgency (Overdue = lewat >3 hari)
-  const overdue = upcoming.filter((m) => m.days_until < -3);
-  const urgent = upcoming.filter((m) => m.days_until >= -3 && m.days_until <= 7);
+  // Bucket definitions (consistent across screens)
+  // - Overdue: days_until < 0
+  // - Due Soon: days_until 0..7
+  // - Next 30 Days: days_until 8..30
+  const overdue = upcoming.filter((m) => m.days_until < 0);
+  const dueSoon = upcoming.filter((m) => m.days_until >= 0 && m.days_until <= 7);
   const upcoming30 = upcoming.filter((m) => m.days_until > 7 && m.days_until <= 30);
   const recentlyCompleted = upcoming.filter((m) => m.order_exists && m.days_until > 30);
 
+  // Needs action: no order exists AND (overdue OR due soon)
   const needsAction = upcoming.filter((m) => !m.order_exists && m.days_until <= 7);
   
-  // Combine data for display: show overdue, urgent, upcoming30, AND recently completed
-  const displayData = [...overdue, ...urgent, ...upcoming30, ...recentlyCompleted];
+  // Combine data for display: show overdue, dueSoon, upcoming30, AND recently completed
+  const displayData = [...overdue, ...dueSoon, ...upcoming30, ...recentlyCompleted];
 
   // Pagination (use displayData instead of upcoming)
   const totalPages = Math.ceil(displayData.length / itemsPerPage);
@@ -234,11 +246,11 @@ export default function UpcomingMaintenanceWidget() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Urgent (≤7d)</CardTitle>
+              <CardTitle className="text-sm font-medium">Due Soon (≤7 hari)</CardTitle>
               <Clock className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-500">{urgent.length}</div>
+              <div className="text-2xl font-bold text-orange-500">{dueSoon.length}</div>
             </CardContent>
           </Card>
 
