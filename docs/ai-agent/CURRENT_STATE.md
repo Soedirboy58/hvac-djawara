@@ -1,6 +1,6 @@
 # Current State — Djawara HVAC Platform (Rolling)
 
-**Last updated:** 2025-12-26
+**Last updated:** 2026-01-01
 
 Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, fitur yang sudah live, flow penting, pola otorisasi (tenant + role), serta runbook deploy/debug. Untuk detail sesi per tanggal, lihat dokumen handoff di folder yang sama.
 
@@ -36,6 +36,18 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 ### Finance
 - **Reimburse** end-to-end (admin/finance + technician) sudah live.
 
+### Maintenance Schedule
+- **Client portal**: konfigurasi maintenance schedule per properti.
+- **Schedule Management**: tab “Maintenance Schedule” untuk monitoring + generate order.
+- Definisi urgency distandarisasi berbasis `v_upcoming_maintenance.days_until`:
+  - **Overdue**: `< 0`
+  - **Due Soon (≤7 hari)**: `0..7`
+  - **Next 30 Days**: `8..30`
+  - **Needs Action**: `order_exists = false` dan `days_until <= 7`
+
+### Admin Dashboard (KPI)
+- `/dashboard` memiliki ringkasan KPI + tabel rute kerja hari ini + notifikasi reimburse + notifikasi maintenance.
+
 ---
 
 ## 2) Arsitektur Singkat
@@ -64,6 +76,12 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 ### Sumber tenant context
 - **Admin dashboard**: `profiles.active_tenant_id`
 - **Technician portal**: `technicians.tenant_id` berdasarkan `technicians.user_id = auth.user.id`
+
+### Tenant resolver (baru)
+- Untuk mengurangi error “No active tenant found” di flow tertentu, ada helper tenant resolver yang:
+  - prefer `profiles.active_tenant_id`
+  - fallback ke `user_tenant_roles` active
+  - best-effort update `profiles.active_tenant_id` (healing)
 
 ### Roles (ringkas)
 - Authorization admin actions umumnya dibatasi: `owner`, `admin_finance`, `admin_logistic`, `tech_head`.
@@ -165,6 +183,10 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 - Attendance (admin): `app/dashboard/attendance/*`
 - Sidebar nav: `components/layout/sidebar.tsx`
 
+### Maintenance schedule
+- Client portal schedule: `components/client-portal/MaintenanceSchedule.tsx`
+- Schedule management widget: `components/maintenance/UpcomingMaintenanceWidget.tsx`
+
 ### Sales Partner dashboard
 - Dashboard landing: `app/dashboard/page.tsx`
 - Clients list + referral: `app/dashboard/clients/*`
@@ -238,4 +260,22 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
      - Absensi page = monitoring harian + konfigurasi
      - People Management = roster + performa 30 hari
    - Bisa ditambah deep-link dari People ke detail absensi per orang.
+
+---
+
+## 11) Recent Changes (2026-01-01)
+
+### Maintenance schedule: tenant fix + first maintenance date suggestion
+- Save maintenance schedule dibuat lebih robust terhadap tenant context yang kosong.
+- “First maintenance date” akan menyarankan tanggal berdasarkan last completed service order (jika ada), jika tidak ada maka manual.
+
+### Admin dashboard: KPI + notifikasi
+- Tambah dashboard KPI admin di `/dashboard` (server component) + notifikasi reimburse + notifikasi maintenance.
+
+### Maintenance urgency buckets (sync)
+- Standardisasi bucket urgency untuk maintenance:
+  - Overdue: `days_until < 0`
+  - Due Soon (≤7 hari): `0..7`
+  - Next 30 Days: `8..30`
+  - Needs Action: `order_exists=false` dan `days_until <= 7`
 
