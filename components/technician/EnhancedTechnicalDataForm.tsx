@@ -43,6 +43,17 @@ interface TechnicalDataFormProps {
   onSuccess?: () => void;
 }
 
+type DataKinerjaForm = {
+  sumber_tegangan: '' | 'ada' | 'tidak';
+  jenis_tegangan: '' | '1_phase' | '3_phase';
+  tegangan_v: string;
+  ampere_a: string;
+  grounding: string;
+  temperatur_supply: string;
+  temperatur_return: string;
+  lain_lain: string;
+};
+
 export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuccess }: TechnicalDataFormProps) {
   // Work type selection
   const [workType, setWorkType] = useState<string>("");
@@ -121,6 +132,21 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [checkInTimeISO, setCheckInTimeISO] = useState<string | null>(null);
 
   const [routeSegments, setRouteSegments] = useState<Array<{ id: string; from: string; to: string; distance_km: string; notes: string }>>([]);
+
+  const [dataKinerjaEnabled, setDataKinerjaEnabled] = useState<boolean>(false);
+  const [dataKinerja, setDataKinerja] = useState<DataKinerjaForm>({
+    sumber_tegangan: '',
+    jenis_tegangan: '',
+    tegangan_v: '',
+    ampere_a: '',
+    grounding: '',
+    temperatur_supply: '',
+    temperatur_return: '',
+    lain_lain: '',
+  });
+
+  // Preserve any legacy/free-text content inside `lain_lain` that isn't managed by our UI
+  const [lainLainExtraText, setLainLainExtraText] = useState<string>('');
   
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -260,6 +286,168 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           catatan_perbaikan: existingWorkLog.catatan_perbaikan || "",
         }));
 
+        // Parse `lain_lain` into structured sections (Data Kinerja + Rincian Rute) and preserve the rest
+        const parseLainLain = (raw: string) => {
+          const text = String(raw || '').replace(/\r\n/g, '\n');
+          const lines = text.split('\n');
+
+          const isHeader = (l: string, header: RegExp) => header.test(l.trim());
+          const headerDataKinerja = /^data\s+kinerja\b/i;
+          const headerRute = /^rincian\s+rute\b/i;
+
+          const findHeaderIndex = (header: RegExp) => lines.findIndex(l => isHeader(l, header));
+
+          const takeSection = (startIdx: number) => {
+            let endIdx = lines.length;
+            for (let i = startIdx + 1; i < lines.length; i++) {
+              if (isHeader(lines[i], headerDataKinerja) || isHeader(lines[i], headerRute)) {
+                endIdx = i;
+                break;
+              }
+            }
+            return { startIdx, endIdx, sectionLines: lines.slice(startIdx, endIdx) };
+          };
+
+          let remainingLines = [...lines];
+
+          // Extract Data Kinerja section
+          let parsedDataKinerjaEnabled = false;
+          let parsedDataKinerja: DataKinerjaForm | null = null;
+          const dkIdx = findHeaderIndex(headerDataKinerja);
+          if (dkIdx >= 0) {
+            const sec = takeSection(dkIdx);
+            parsedDataKinerjaEnabled = true;
+
+            const d: DataKinerjaForm = {
+              sumber_tegangan: '',
+              jenis_tegangan: '',
+              tegangan_v: '',
+              ampere_a: '',
+              grounding: '',
+              temperatur_supply: '',
+              temperatur_return: '',
+              lain_lain: '',
+            };
+
+            const valueOf = (prefix: RegExp) => {
+              const line = sec.sectionLines.find(l => prefix.test(l.trim()));
+              if (!line) return '';
+              return line.split(':').slice(1).join(':').trim();
+            };
+
+            const sumber = valueOf(/^sumber\s+tegangan\s*:/i).toLowerCase();
+            if (sumber.includes('ada')) d.sumber_tegangan = 'ada';
+            if (sumber.includes('tidak')) d.sumber_tegangan = 'tidak';
+
+            const jenis = valueOf(/^jenis\s+tegangan\s*:/i).toLowerCase();
+            if (jenis.includes('1')) d.jenis_tegangan = '1_phase';
+            if (jenis.includes('3')) d.jenis_tegangan = '3_phase';
+
+            const numOnly = (v: string) => {
+              const m = String(v || '').match(/-?\d+(?:[\.,]\d+)?/);
+              return m ? m[0].replace(',', '.') : '';
+            };
+
+            d.tegangan_v = numOnly(valueOf(/^tegangan\s*:/i));
+            d.ampere_a = numOnly(valueOf(/^(arus|ampere)\s*:/i));
+            d.grounding = valueOf(/^(nilai\s+grounding|grounding)\s*:/i);
+            d.temperatur_supply = numOnly(valueOf(/^temperatur\s+supply\s*:/i));
+            d.temperatur_return = numOnly(valueOf(/^temperatur\s+return\s*:/i));
+            d.lain_lain = valueOf(/^lain\s*-?\s*lain\s*:/i);
+
+            parsedDataKinerja = d;
+
+            // Remove section from remaining lines
+            remainingLines.splice(sec.startIdx, sec.endIdx - sec.startIdx);
+          }
+
+          // Extract Rincian Rute section
+          let parsedRouteSegments: Array<{ from: string; to: string; distance_km: string; notes: string }> = [];
+          const ruteIdx = remainingLines.findIndex(l => headerRute.test(l.trim()));
+          const routeLineRegex = /^\s*\d+\.\s+.+\s+→\s+.+/;
+
+          if (ruteIdx >= 0) {
+            // From the header to end or next blank-block; we keep it simple: until end
+            const after = remainingLines.slice(ruteIdx + 1);
+            const routeLines = after.filter(l => routeLineRegex.test(l));
+            parsedRouteSegments = routeLines.map((l) => {
+              const body = l.replace(/^\s*\d+\.\s*/, '').trim();
+              const [routePartRaw, notesPartRaw] = body.split(' - ');
+              const routePart = (routePartRaw || '').trim();
+              const notes = (notesPartRaw || '').trim();
+
+              const distMatch = routePart.match(/\(([^\)]+)\)/);
+              const dist = distMatch ? String(distMatch[1]).replace(/km/i, '').trim() : '';
+              const routeNoDist = routePart.replace(/\s*\([^\)]*\)\s*/g, '').trim();
+              const [fromRaw, toRaw] = routeNoDist.split('→');
+              return {
+                from: (fromRaw || '').trim(),
+                to: (toRaw || '').trim(),
+                distance_km: dist,
+                notes,
+              };
+            });
+
+            // Remove header + the route lines we recognized
+            remainingLines = remainingLines.filter((l, idx) => {
+              if (idx === ruteIdx) return false;
+              if (routeLineRegex.test(l)) return false;
+              return true;
+            });
+          } else {
+            // Backward-compat: if the entire `lain_lain` is only route lines, parse it
+            const nonEmpty = remainingLines.filter(l => l.trim().length > 0);
+            const allRouteLines = nonEmpty.length > 0 && nonEmpty.every(l => routeLineRegex.test(l));
+            if (allRouteLines) {
+              parsedRouteSegments = nonEmpty.map((l) => {
+                const body = l.replace(/^\s*\d+\.\s*/, '').trim();
+                const [routePartRaw, notesPartRaw] = body.split(' - ');
+                const routePart = (routePartRaw || '').trim();
+                const notes = (notesPartRaw || '').trim();
+
+                const distMatch = routePart.match(/\(([^\)]+)\)/);
+                const dist = distMatch ? String(distMatch[1]).replace(/km/i, '').trim() : '';
+                const routeNoDist = routePart.replace(/\s*\([^\)]*\)\s*/g, '').trim();
+                const [fromRaw, toRaw] = routeNoDist.split('→');
+                return {
+                  from: (fromRaw || '').trim(),
+                  to: (toRaw || '').trim(),
+                  distance_km: dist,
+                  notes,
+                };
+              });
+              remainingLines = [];
+            }
+          }
+
+          const extraText = remainingLines
+            .join('\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          return {
+            dataKinerjaEnabled: parsedDataKinerjaEnabled,
+            dataKinerja: parsedDataKinerja,
+            routeSegments: parsedRouteSegments,
+            extraText,
+          };
+        };
+
+        const parsed = parseLainLain(existingWorkLog.lain_lain || '');
+        setLainLainExtraText(parsed.extraText);
+
+        if (parsed.dataKinerjaEnabled) {
+          setDataKinerjaEnabled(true);
+          if (parsed.dataKinerja) setDataKinerja(parsed.dataKinerja);
+        }
+
+        if (parsed.routeSegments.length > 0) {
+          setRouteSegments(parsed.routeSegments.map((s, idx) => ({
+            id: `${Date.now()}-${idx}`,
+            ...s,
+          })));
+        }
+
         // If there is check-in time and no explicit start_time, default start_time to check-in
         if (ci && !existingWorkLog.start_time) {
           setUseCheckInAsStartTime(true);
@@ -369,25 +557,50 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     setRouteSegments(prev => prev.filter(s => s.id !== id));
   };
 
-  // Keep `lain_lain` in sync with route segments (for storage + PDF output)
-  useEffect(() => {
-    if (routeSegments.length === 0) return;
+  const buildDataKinerjaSection = (d: DataKinerjaForm) => {
+    const lines: string[] = ['DATA KINERJA'];
+    if (d.sumber_tegangan) lines.push(`Sumber tegangan: ${d.sumber_tegangan === 'ada' ? 'Ada' : 'Tidak'}`);
+    if (d.jenis_tegangan) lines.push(`Jenis tegangan: ${d.jenis_tegangan === '1_phase' ? '1 Phase' : '3 Phase'}`);
+    if (d.tegangan_v) lines.push(`Tegangan: ${String(d.tegangan_v).trim()} V`);
+    if (d.ampere_a) lines.push(`Arus: ${String(d.ampere_a).trim()} A`);
+    if (d.grounding) lines.push(`Nilai grounding: ${d.grounding.trim()}`);
+    if (d.temperatur_supply) lines.push(`Temperatur supply: ${String(d.temperatur_supply).trim()} °C`);
+    if (d.temperatur_return) lines.push(`Temperatur return: ${String(d.temperatur_return).trim()} °C`);
+    if (d.lain_lain) lines.push(`Lain-lain: ${d.lain_lain.trim()}`);
+    return lines.join('\n');
+  };
 
-    const lines = routeSegments
+  const buildRincianRuteSection = (segments: Array<{ from: string; to: string; distance_km: string; notes: string }>) => {
+    const lines = segments
       .filter(s => (s.from || s.to || s.distance_km || s.notes))
       .map((s, idx) => {
         const route = `${(s.from || '-').trim()} → ${(s.to || '-').trim()}`;
         const dist = s.distance_km ? ` (${String(s.distance_km).trim()} km)` : '';
         const notes = s.notes ? ` - ${s.notes.trim()}` : '';
         return `${idx + 1}. ${route}${dist}${notes}`;
-      })
-      .join('\n');
+      });
+    if (lines.length === 0) return '';
+    return ['RINCIAN RUTE', ...lines].join('\n');
+  };
+
+  // Keep `lain_lain` in sync with Data Kinerja + route segments (for storage + PDF output)
+  useEffect(() => {
+    const parts: string[] = [];
+    if (dataKinerjaEnabled) parts.push(buildDataKinerjaSection(dataKinerja));
+    const rute = buildRincianRuteSection(routeSegments);
+    if (rute) parts.push(rute);
+    if (lainLainExtraText && lainLainExtraText.trim()) parts.push(lainLainExtraText.trim());
+
+    const combined = parts
+      .join('\n\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
     setFormData(prev => {
-      if (prev.lain_lain === lines) return prev;
-      return { ...prev, lain_lain: lines };
+      if (prev.lain_lain === combined) return prev;
+      return { ...prev, lain_lain: combined };
     });
-  }, [routeSegments]);
+  }, [routeSegments, dataKinerjaEnabled, dataKinerja, lainLainExtraText]);
 
   // Handlers
   const handleInputChange = (field: string, value: string) => {
@@ -1350,6 +1563,126 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         </CardContent>
       </Card>
       )}
+
+      {/* Data Kinerja (opsional) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Data Kinerja</CardTitle>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="data-kinerja"
+                checked={dataKinerjaEnabled}
+                onCheckedChange={(v) => setDataKinerjaEnabled(Boolean(v))}
+              />
+              <Label htmlFor="data-kinerja">Tambahkan</Label>
+            </div>
+          </div>
+        </CardHeader>
+        {dataKinerjaEnabled ? (
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Sumber Tegangan</Label>
+                <Select
+                  value={dataKinerja.sumber_tegangan}
+                  onValueChange={(value) => setDataKinerja(prev => ({ ...prev, sumber_tegangan: value as DataKinerjaForm['sumber_tegangan'] }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ada">Ada</SelectItem>
+                    <SelectItem value="tidak">Tidak Ada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Jenis Tegangan</Label>
+                <Select
+                  value={dataKinerja.jenis_tegangan}
+                  onValueChange={(value) => setDataKinerja(prev => ({ ...prev, jenis_tegangan: value as DataKinerjaForm['jenis_tegangan'] }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1_phase">1 Phase</SelectItem>
+                    <SelectItem value="3_phase">3 Phase</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Besar Tegangan (V)</Label>
+                <Input
+                  type="number"
+                  value={dataKinerja.tegangan_v}
+                  onChange={(e) => setDataKinerja(prev => ({ ...prev, tegangan_v: e.target.value }))}
+                  placeholder="220"
+                />
+              </div>
+              <div>
+                <Label>Besar Ampere (A)</Label>
+                <Input
+                  type="number"
+                  value={dataKinerja.ampere_a}
+                  onChange={(e) => setDataKinerja(prev => ({ ...prev, ampere_a: e.target.value }))}
+                  placeholder="3"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Nilai Grounding</Label>
+                <Input
+                  value={dataKinerja.grounding}
+                  onChange={(e) => setDataKinerja(prev => ({ ...prev, grounding: e.target.value }))}
+                  placeholder="Contoh: OK / 1 ohm"
+                />
+              </div>
+              <div>
+                <Label>Temperatur Supply</Label>
+                <Input
+                  type="number"
+                  value={dataKinerja.temperatur_supply}
+                  onChange={(e) => setDataKinerja(prev => ({ ...prev, temperatur_supply: e.target.value }))}
+                  placeholder="12"
+                />
+              </div>
+              <div>
+                <Label>Temperatur Return</Label>
+                <Input
+                  type="number"
+                  value={dataKinerja.temperatur_return}
+                  onChange={(e) => setDataKinerja(prev => ({ ...prev, temperatur_return: e.target.value }))}
+                  placeholder="18"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label>Lain-lain</Label>
+              <Textarea
+                value={dataKinerja.lain_lain}
+                onChange={(e) => setDataKinerja(prev => ({ ...prev, lain_lain: e.target.value }))}
+                placeholder="Catatan tambahan terkait data kinerja"
+                rows={2}
+              />
+            </div>
+          </CardContent>
+        ) : (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Aktifkan untuk mengisi sumber tegangan, phase, V/A, grounding, suhu supply/return.
+            </p>
+          </CardContent>
+        )}
+      </Card>
 
       {/* Laporan Data Teknis */}
       <Card>
