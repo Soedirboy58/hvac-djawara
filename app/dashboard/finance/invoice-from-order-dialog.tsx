@@ -315,7 +315,7 @@ export function InvoiceFromOrderDialog({
 
         let workLogQuery = supabase
           .from('technician_work_logs')
-          .select('id, work_type, completed_at, maintenance_units_data, ac_units_data, technician_id')
+          .select('id, work_type, check_type, completed_at, maintenance_units_data, ac_units_data, technician_id')
           .eq('service_order_id', orderId)
 
         if (picTechnicianIds.length > 0) {
@@ -354,8 +354,25 @@ export function InvoiceFromOrderDialog({
           const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
           generated.push({ id: 'svc-troubleshooting', description: 'Jasa Troubleshooting AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
         } else if (wt === 'pengecekan') {
-          const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
-          generated.push({ id: 'svc-pengecekan', description: 'Jasa Pengecekan AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          const ctRaw = String(wl?.check_type || '').toLowerCase().trim()
+          const ct = ctRaw === 'survey' ? 'survey_instalasi' : ctRaw === 'performa' ? 'kinerja_ac' : ctRaw
+
+          const description =
+            ct === 'survey_instalasi'
+              ? 'Jasa Pengecekan Survey Instalasi'
+              : ct === 'kinerja_ac'
+              ? 'Jasa Pengecekan Kinerja AC'
+              : ct === 'kinerja_coldstorage'
+              ? 'Jasa Pengecekan Kinerja Coldstorage'
+              : ct === 'lain'
+              ? 'Jasa Pengecekan (Lain-lain)'
+              : 'Jasa Pengecekan'
+
+          const qty = (ct === 'kinerja_ac' || ct === 'kinerja_coldstorage') && Array.isArray(wl?.ac_units_data)
+            ? wl.ac_units_data.length
+            : 1
+
+          generated.push({ id: 'svc-pengecekan', description, quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
         } else {
           // Fallback
           generated.push({

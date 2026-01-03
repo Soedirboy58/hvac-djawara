@@ -108,8 +108,10 @@ export default function PreviewPDFPage() {
           rincian_pekerjaan: workLog.rincian_pekerjaan,
           rincian_kerusakan: workLog.rincian_kerusakan,
           catatan_rekomendasi: workLog.catatan_rekomendasi,
+          catatan_perbaikan: workLog.catatan_perbaikan,
           lama_kerja: workLog.lama_kerja,
           jarak_tempuh: workLog.jarak_tempuh,
+          lain_lain: workLog.lain_lain,
           signature_technician: workLog.signature_technician,
           signature_client: workLog.signature_client,
           signature_technician_name: workLog.signature_technician_name,
@@ -173,7 +175,6 @@ export default function PreviewPDFPage() {
           temp_ruang_3: workLog.temp_ruang_3,
           temp_ruang_4: workLog.temp_ruang_4,
           temp_ruang_5: workLog.temp_ruang_5,
-          lain_lain: workLog.lain_lain,
         });
 
         const url = URL.createObjectURL(pdfBlob);

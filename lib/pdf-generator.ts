@@ -79,6 +79,7 @@ interface WorkLogData {
   tindakan?: string;
   rincian_pekerjaan?: string;
   rincian_kerusakan?: string;
+  catatan_perbaikan?: string;
   catatan_rekomendasi?: string;
   lama_kerja?: number;
   jarak_tempuh?: number;
@@ -319,9 +320,26 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   let tableData: any[][] = [];
   
   // Jenis Pekerjaan - use rincian_pekerjaan if available, else map work_type
+  const normalizeCheckType = (value: any) => {
+    const v = String(value || '').toLowerCase().trim();
+    if (!v) return '';
+    if (v === 'survey') return 'survey_instalasi';
+    if (v === 'performa') return 'kinerja_ac';
+    return v;
+  };
+
+  const pengecekanLabel = (ctRaw: any) => {
+    const ct = normalizeCheckType(ctRaw);
+    if (ct === 'survey_instalasi') return 'Pengecekan - Survey Instalasi';
+    if (ct === 'kinerja_ac') return 'Pengecekan - Kinerja AC';
+    if (ct === 'kinerja_coldstorage') return 'Pengecekan - Kinerja Coldstorage';
+    if (ct === 'lain') return 'Pengecekan - Lain-lain';
+    return 'Pengecekan';
+  };
+
   const workTypeLabel = data.rincian_pekerjaan || 
                        (data.work_type === 'pemeliharaan' ? 'Pemeliharaan AC' :
-                        data.work_type === 'pengecekan' ? (data.check_type === 'survey' ? 'Pengecekan / Survey' : 'Pengecekan Performa AC') :
+                        data.work_type === 'pengecekan' ? pengecekanLabel(data.check_type) :
                         data.work_type === 'troubleshooting' ? 'Troubleshooting' :
                         data.work_type === 'instalasi' ? 'Instalasi AC' : 'Lain-lain');
   tableData.push(["Jenis Pekerjaan", workTypeLabel]);
@@ -343,12 +361,12 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   }
   
   // Rincian Pekerjaan - AC unit details
-  // NOTE: Form saves ac_units_data for: pengecekan(performa), troubleshooting, instalasi.
+  // NOTE: Form saves ac_units_data for: pengecekan(kinerja), troubleshooting, instalasi.
   if (
     data.ac_units_data &&
     data.ac_units_data.length > 0 &&
     (
-      (data.work_type === 'pengecekan' && data.check_type === 'performa') ||
+      (data.work_type === 'pengecekan' && (normalizeCheckType(data.check_type) === 'kinerja_ac' || normalizeCheckType(data.check_type) === 'kinerja_coldstorage')) ||
       data.work_type === 'troubleshooting' ||
       data.work_type === 'instalasi'
     )
@@ -410,14 +428,14 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     tableData.push(["Rincian Pekerjaan", unitsText.trim()]);
   }
   
-  // Problem - ALWAYS show if exists
-  tableData.push(["Problem", data.problem || "-"]);
-  
-  // Tindakan - ALWAYS show if exists  
-  tableData.push(["Tindakan", data.tindakan || "-"]);
-  
-  // Rincian Kerusakan AC - ALWAYS show if exists
-  tableData.push(["Rincian Kerusakan AC", data.rincian_kerusakan || "-"]);
+  // Troubleshooting-specific fields
+  if (data.problem) tableData.push(["Problem", data.problem]);
+  if (data.tindakan) tableData.push(["Tindakan", data.tindakan]);
+
+  // Laporan Data Teknis fields
+  if (data.rincian_kerusakan) tableData.push(["Hasil Pengecekan", data.rincian_kerusakan]);
+  if (data.catatan_perbaikan) tableData.push(["Catatan Khusus", data.catatan_perbaikan]);
+  if (data.catatan_rekomendasi) tableData.push(["Rekomendasi", data.catatan_rekomendasi]);
   
   // Waktu & Tanggal pengerjaan
   if (data.lama_kerja || data.jarak_tempuh) {
@@ -427,9 +445,9 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     tableData.push(["Waktu & Tanggal Pengerjaan", waktuText]);
   }
   
-  // Catatan/Rekomendasi (general, not unit-specific)
-  if (data.catatan_rekomendasi) {
-    tableData.push(["Catatan / Rekomendasi", data.catatan_rekomendasi]);
+  // Rincian rute / informasi lain-lain
+  if (data.lain_lain) {
+    tableData.push(["Informasi Tambahan", data.lain_lain]);
   }
   
   // Create table (ALWAYS - we now have at least work_type)

@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, X, Loader2, Plus, Trash2, PenTool, Save, MapPin, Navigation, CheckCircle2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -45,7 +46,29 @@ interface TechnicalDataFormProps {
 export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuccess }: TechnicalDataFormProps) {
   // Work type selection
   const [workType, setWorkType] = useState<string>("");
-  const [checkType, setCheckType] = useState<string>(""); // For Pengecekan: survey or performa
+  const [checkType, setCheckType] = useState<string>(""); // For Pengecekan: sub-type
+
+  const normalizeCheckType = (value: string) => {
+    const v = String(value || '').toLowerCase().trim();
+    if (!v) return '';
+    // Backward compatibility
+    if (v === 'survey') return 'survey_instalasi';
+    if (v === 'performa') return 'kinerja_ac';
+    // New values
+    if (v === 'survey_instalasi') return 'survey_instalasi';
+    if (v === 'kinerja_ac') return 'kinerja_ac';
+    if (v === 'kinerja_coldstorage') return 'kinerja_coldstorage';
+    if (v === 'lain') return 'lain';
+    // Unknown custom value
+    return v;
+  };
+
+  const isSurveyCheckType = (value: string) => normalizeCheckType(value) === 'survey_instalasi';
+  const isOtherCheckType = (value: string) => normalizeCheckType(value) === 'lain';
+  const isPerformanceCheckType = (value: string) => {
+    const v = normalizeCheckType(value);
+    return v === 'kinerja_ac' || v === 'kinerja_coldstorage';
+  };
   
   // Conditional data
   const [acUnits, setAcUnits] = useState<ACUnitData[]>([]);
@@ -93,9 +116,13 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [technicianName, setTechnicianName] = useState("");
   const [clientName, setClientName] = useState("");
   const [signatureDate, setSignatureDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [useCheckInAsStartTime, setUseCheckInAsStartTime] = useState<boolean>(false);
+  const [checkInTimeISO, setCheckInTimeISO] = useState<string | null>(null);
+
+  const [routeSegments, setRouteSegments] = useState<Array<{ id: string; from: string; to: string; distance_km: string; notes: string }>>([]);
   
   const [uploading, setUploading] = useState(false);
-  const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [roleInOrder, setRoleInOrder] = useState<string | null>(null);
@@ -196,18 +223,21 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         setAssignmentId(null);
       }
       
-      // Load existing work log if exists
+      // Load latest work log row (prefer the one created by check-in)
       const { data: existingWorkLog } = await supabase
         .from('technician_work_logs')
         .select('*')
         .eq('service_order_id', orderId)
         .eq('technician_id', technicianId)
-        .order('completed_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       
       if (existingWorkLog) {
         console.log('Found existing work log, loading data...');
+
+        const ci = existingWorkLog.check_in_time ? new Date(existingWorkLog.check_in_time).toISOString() : null;
+        setCheckInTimeISO(ci);
         
         // Load form data
         setFormData(prev => ({
@@ -229,6 +259,15 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           lain_lain: existingWorkLog.lain_lain || "",
           catatan_perbaikan: existingWorkLog.catatan_perbaikan || "",
         }));
+
+        // If there is check-in time and no explicit start_time, default start_time to check-in
+        if (ci && !existingWorkLog.start_time) {
+          setUseCheckInAsStartTime(true);
+          setFormData(prev => ({
+            ...prev,
+            start_time: prev.start_time || new Date(ci).toISOString().slice(0, 16),
+          }));
+        }
         
         // Load signatures
         setTechnicianName(existingWorkLog.signature_technician_name || techData?.full_name || "");
@@ -262,8 +301,9 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         }
         
         if (existingWorkLog.check_type) {
-          setCheckType(existingWorkLog.check_type);
-          console.log('Loaded check_type:', existingWorkLog.check_type);
+          const normalized = normalizeCheckType(existingWorkLog.check_type);
+          setCheckType(normalized);
+          console.log('Loaded check_type:', existingWorkLog.check_type, '=>', normalized);
         }
         
         if (existingWorkLog.ac_units_data && Array.isArray(existingWorkLog.ac_units_data)) {
@@ -314,50 +354,40 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     }
   };
 
-  // Calculate distance using GPS
-  const calculateDistance = async () => {
-    try {
-      setCalculatingDistance(true);
-      
-      // Get current position
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject);
-      });
-      
-      const { latitude: lat, longitude: lng } = position.coords;
-      
-      // Hardcoded company office coordinates (you should configure this)
-      // TODO: Get from company settings
-      const officeCoords = {
-        lat: -7.4246, // Example: Purwokerto
-        lng: 109.2389
-      };
-      
-      // Calculate distance using Haversine formula
-      const R = 6371; // Earth radius in km
-      const dLat = (officeCoords.lat - lat) * Math.PI / 180;
-      const dLng = (officeCoords.lng - lng) * Math.PI / 180;
-      const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat * Math.PI / 180) * Math.cos(officeCoords.lat * Math.PI / 180) *
-        Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distance = R * c;
-      
-      setFormData(prev => ({
-        ...prev,
-        jarak_tempuh: distance.toFixed(1)
-      }));
-      
-      toast.success(`Jarak: ${distance.toFixed(1)} km dari kantor`);
-      
-    } catch (error: any) {
-      console.error('Error calculating distance:', error);
-      toast.error('Gagal menghitung jarak. Aktifkan GPS.');
-    } finally {
-      setCalculatingDistance(false);
-    }
+  const addRouteSegment = () => {
+    setRouteSegments(prev => ([
+      ...prev,
+      { id: Date.now().toString(), from: '', to: '', distance_km: '', notes: '' },
+    ]));
   };
+
+  const updateRouteSegment = (id: string, field: 'from' | 'to' | 'distance_km' | 'notes', value: string) => {
+    setRouteSegments(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const removeRouteSegment = (id: string) => {
+    setRouteSegments(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Keep `lain_lain` in sync with route segments (for storage + PDF output)
+  useEffect(() => {
+    if (routeSegments.length === 0) return;
+
+    const lines = routeSegments
+      .filter(s => (s.from || s.to || s.distance_km || s.notes))
+      .map((s, idx) => {
+        const route = `${(s.from || '-').trim()} → ${(s.to || '-').trim()}`;
+        const dist = s.distance_km ? ` (${String(s.distance_km).trim()} km)` : '';
+        const notes = s.notes ? ` - ${s.notes.trim()}` : '';
+        return `${idx + 1}. ${route}${dist}${notes}`;
+      })
+      .join('\n');
+
+    setFormData(prev => {
+      if (prev.lain_lain === lines) return prev;
+      return { ...prev, lain_lain: lines };
+    });
+  }, [routeSegments]);
 
   // Handlers
   const handleInputChange = (field: string, value: string) => {
@@ -564,12 +594,13 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         toast.error("Pilih jenis pengecekan");
         return;
       }
-      if (checkType === "performa" && acUnits.length === 0) {
-        toast.error("Tambahkan minimal 1 data unit untuk pengecekan performa");
+      const ct = normalizeCheckType(checkType);
+      if ((ct === 'kinerja_ac' || ct === 'kinerja_coldstorage') && acUnits.length === 0) {
+        toast.error("Tambahkan minimal 1 data unit untuk pengecekan kinerja");
         return;
       }
-      if (checkType === "survey" && !formData.rincian_pekerjaan) {
-        toast.error("Detail survey wajib diisi");
+      if ((ct === 'survey_instalasi' || ct === 'lain') && !formData.rincian_pekerjaan) {
+        toast.error("Detail pengecekan wajib diisi");
         return;
       }
     }
@@ -684,6 +715,11 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       });
       
       // Prepare data
+      const normalizedCheckType = normalizeCheckType(checkType);
+      const startTimeISO = useCheckInAsStartTime && checkInTimeISO
+        ? checkInTimeISO
+        : (formData.start_time ? new Date(formData.start_time).toISOString() : null);
+
       const workLogData = {
         service_order_id: orderId,
         technician_id: technicianId,
@@ -692,10 +728,10 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         
         // NEW: Conditional form data
         work_type: workType,
-        check_type: checkType || null,
+        check_type: normalizedCheckType || null,
         // Save AC units data for pengecekan performa, troubleshooting, or instalasi
         ac_units_data: (
-          (workType === 'pengecekan' && checkType === 'performa') ||
+          (workType === 'pengecekan' && (normalizedCheckType === 'kinerja_ac' || normalizedCheckType === 'kinerja_coldstorage')) ||
           workType === 'troubleshooting' ||
           workType === 'instalasi'
         ) ? acUnits : null,
@@ -712,7 +748,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         catatan_rekomendasi: formData.catatan_rekomendasi,
         
         // Time tracking
-        start_time: formData.start_time ? new Date(formData.start_time).toISOString() : null,
+        start_time: startTimeISO,
         end_time: formData.end_time ? new Date(formData.end_time).toISOString() : null,
         
         // Technical data
@@ -751,10 +787,10 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       // Check if work log exists
       const { data: existingLog } = await supabase
         .from("technician_work_logs")
-        .select("id")
+        .select("id, check_in_time, check_out_time")
         .eq("service_order_id", orderId)
         .eq("technician_id", technicianId)
-        .order('completed_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       
@@ -918,8 +954,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         // Collect all units from different work types
         const allUnits: ACUnitData[] = [];
         
-        // Add units from pengecekan performa
-        if (workType === "pengecekan" && checkType === "performa") {
+        // Add units from pengecekan kinerja
+        if (workType === "pengecekan" && isPerformanceCheckType(checkType)) {
           allUnits.push(...acUnits);
         }
         
@@ -1071,30 +1107,34 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
             <div className="space-y-4 pt-4 border-t">
               <div>
                 <Label>Jenis Pengecekan <span className="text-red-500">*</span></Label>
-                <Select value={checkType} onValueChange={setCheckType}>
+                <Select value={checkType} onValueChange={(v) => setCheckType(normalizeCheckType(v))}>
                   <SelectTrigger>
                     <SelectValue placeholder="-- Pilih jenis pengecekan --" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="survey">Survey Pemasangan AC</SelectItem>
-                    <SelectItem value="performa">Check Performa AC</SelectItem>
+                    <SelectItem value="survey_instalasi">Survey Instalasi</SelectItem>
+                    <SelectItem value="kinerja_ac">Pengecekan Kinerja AC</SelectItem>
+                    <SelectItem value="kinerja_coldstorage">Pengecekan Kinerja Coldstorage</SelectItem>
+                    <SelectItem value="lain">Lain-lain</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {checkType === "performa" && (
+              {isPerformanceCheckType(checkType) && (
                 <div className="space-y-4">
                   <ACUnitDataTable data={acUnits} onChange={setAcUnits} orderId={orderId} />
                 </div>
               )}
 
-              {checkType === "survey" && (
+              {(isSurveyCheckType(checkType) || isOtherCheckType(checkType)) && (
                 <div>
-                  <Label>Detail Survey</Label>
+                  <Label>{isSurveyCheckType(checkType) ? 'Detail Survey Instalasi' : 'Detail Pengecekan'}</Label>
                   <Textarea
                     value={formData.rincian_pekerjaan}
                     onChange={(e) => handleInputChange('rincian_pekerjaan', e.target.value)}
-                    placeholder="Jelaskan hasil survey lokasi pemasangan..."
+                    placeholder={isSurveyCheckType(checkType)
+                      ? "Jelaskan hasil survey lokasi pemasangan..."
+                      : "Jelaskan detail pengecekan yang dilakukan..."}
                     rows={4}
                   />
                 </div>
@@ -1195,12 +1235,40 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label>Sebelum (Mulai)</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label>Sebelum (Mulai)</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="use-checkin"
+                    checked={useCheckInAsStartTime}
+                    onCheckedChange={(v) => {
+                      const checked = Boolean(v);
+                      setUseCheckInAsStartTime(checked);
+                      if (checked && checkInTimeISO) {
+                        setFormData(prev => ({
+                          ...prev,
+                          start_time: new Date(checkInTimeISO).toISOString().slice(0, 16),
+                        }));
+                      }
+                    }}
+                    disabled={!checkInTimeISO}
+                  />
+                  <Label htmlFor="use-checkin" className={!checkInTimeISO ? 'text-muted-foreground' : ''}>
+                    Gunakan waktu check-in
+                  </Label>
+                </div>
+              </div>
               <Input
                 type="datetime-local"
                 value={formData.start_time}
                 onChange={(e) => handleInputChange('start_time', e.target.value)}
+                disabled={useCheckInAsStartTime && !!checkInTimeISO}
               />
+              {!checkInTimeISO ? (
+                <p className="text-xs text-muted-foreground mt-1">
+                  * Check-in belum ada (atau belum dimuat)
+                </p>
+              ) : null}
             </div>
             <div>
               <Label>Sesudah (Selesai)</Label>
@@ -1283,18 +1351,27 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       </Card>
       )}
 
-      {/* Catatan & Rekomendasi */}
+      {/* Laporan Data Teknis */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Catatan / Rekomendasi</CardTitle>
+          <CardTitle className="text-lg">Laporan Data Teknis</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label>Catatan Untuk Perbaikan</Label>
+            <Label>Hasil Pengecekan</Label>
+            <Textarea
+              value={formData.rincian_kerusakan}
+              onChange={(e) => handleInputChange('rincian_kerusakan', e.target.value)}
+              placeholder="Temuan/hasil pengecekan teknisi untuk client..."
+              rows={3}
+            />
+          </div>
+          <div>
+            <Label>Catatan Khusus</Label>
             <Textarea
               value={formData.catatan_perbaikan}
               onChange={(e) => handleInputChange('catatan_perbaikan', e.target.value)}
-              placeholder="Catatan internal atau untuk perbaikan berikutnya..."
+              placeholder="Catatan khusus (misal: kondisi lokasi, akses, risiko, dll)"
               rows={2}
             />
           </div>
@@ -1324,41 +1401,78 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
                 step="0.5"
                 value={formData.lama_kerja}
                 onChange={(e) => handleInputChange('lama_kerja', e.target.value)}
-                disabled
-                className="bg-gray-50"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                * Auto dari estimasi order
+                * Default terisi dari estimasi order (boleh diubah)
               </p>
             </div>
             <div>
-              <Label>Jarak Tempuh dari Kantor (km)</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  value={formData.jarak_tempuh}
-                  onChange={(e) => handleInputChange('jarak_tempuh', e.target.value)}
-                  placeholder="0.0"
-                  readOnly
-                  className="bg-gray-50"
-                />
-                <Button
-                  type="button"
-                  onClick={calculateDistance}
-                  disabled={calculatingDistance}
-                  className="flex-shrink-0"
-                >
-                  {calculatingDistance ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Navigation className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
+              <Label>Total Jarak Tempuh (km)</Label>
+              <Input
+                type="number"
+                value={formData.jarak_tempuh}
+                onChange={(e) => handleInputChange('jarak_tempuh', e.target.value)}
+                placeholder="0.0"
+              />
               <p className="text-xs text-muted-foreground mt-1">
-                * Klik tombol untuk hitung jarak otomatis
+                * Input manual (contoh: total rute hari ini)
               </p>
             </div>
+          </div>
+
+          <div className="pt-4 border-t mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Rincian Rute (Opsional)</h3>
+                <p className="text-xs text-muted-foreground">
+                  Contoh: Kantor → Customer 1 → Customer 2 → ...
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={addRouteSegment} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Tambah Rute
+              </Button>
+            </div>
+
+            {routeSegments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada rincian rute.</p>
+            ) : (
+              <div className="space-y-2">
+                {routeSegments.map((seg, idx) => (
+                  <div key={seg.id} className="border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium">Rute #{idx + 1}</p>
+                      <Button type="button" size="icon" variant="destructive" onClick={() => removeRouteSegment(seg.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                      <Input
+                        placeholder="Dari (misal: Kantor)"
+                        value={seg.from}
+                        onChange={(e) => updateRouteSegment(seg.id, 'from', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Ke (misal: Customer 1)"
+                        value={seg.to}
+                        onChange={(e) => updateRouteSegment(seg.id, 'to', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Jarak (km)"
+                        type="number"
+                        value={seg.distance_km}
+                        onChange={(e) => updateRouteSegment(seg.id, 'distance_km', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Keterangan (opsional)"
+                        value={seg.notes}
+                        onChange={(e) => updateRouteSegment(seg.id, 'notes', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1580,7 +1694,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
               // Conditional data based on work_type
               work_type: workType,
               check_type: checkType,
-              ac_units_data: workType === 'pengecekan' && checkType === 'performa' ? acUnits : undefined,
+              ac_units_data: workType === 'pengecekan' && isPerformanceCheckType(checkType) ? acUnits : undefined,
               maintenance_units_data: workType === 'pemeliharaan' ? maintenanceUnits : undefined,
               
               // Traditional fields (for troubleshooting/instalasi/lain-lain)
@@ -1589,6 +1703,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
               rincian_pekerjaan: formData.rincian_pekerjaan,
               rincian_kerusakan: formData.rincian_kerusakan,
               catatan_rekomendasi: formData.catatan_rekomendasi,
+              catatan_perbaikan: formData.catatan_perbaikan,
+              lain_lain: formData.lain_lain,
               lama_kerja: formData.lama_kerja ? parseFloat(formData.lama_kerja) : undefined,
               jarak_tempuh: formData.jarak_tempuh ? parseFloat(formData.jarak_tempuh) : undefined,
               

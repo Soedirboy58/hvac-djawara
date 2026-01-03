@@ -100,6 +100,7 @@ export async function GET(
       ac_units_data: workLog.ac_units_data || [],
       maintenance_units_data: workLog.maintenance_units_data || [],
       catatan_rekomendasi: workLog.catatan_rekomendasi || '',
+      catatan_perbaikan: workLog.catatan_perbaikan || '',
 
       problem: workLog.problem || '',
       tindakan: workLog.tindakan || '',

@@ -166,6 +166,8 @@ export default function WorkOrderDetailPage() {
         .select("*")
         .eq("service_order_id", orderId)
         .eq("technician_id", techData.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (logData) {
@@ -211,18 +213,49 @@ export default function WorkOrderDetailPage() {
       const location = await getCurrentLocation();
       const supabase = createClient();
 
-      const { data, error } = await supabase
-        .from("technician_work_logs")
-        .insert({
-          service_order_id: orderId,
-          technician_id: technicianId,
-          check_in_time: new Date().toISOString(),
-          location_lat: location.lat,
-          location_lng: location.lng,
-          notes: notes,
-        })
-        .select()
-        .single();
+      // Reuse an existing open work log row if present (avoid duplicates)
+      const { data: existingLog } = await supabase
+        .from('technician_work_logs')
+        .select('id, check_in_time, check_out_time')
+        .eq('service_order_id', orderId)
+        .eq('technician_id', technicianId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let data: any = null;
+      let error: any = null;
+
+      if (existingLog?.id && !existingLog.check_out_time) {
+        const updateRes = await supabase
+          .from('technician_work_logs')
+          .update({
+            check_in_time: existingLog.check_in_time || new Date().toISOString(),
+            location_lat: location.lat,
+            location_lng: location.lng,
+            notes: notes,
+          })
+          .eq('id', existingLog.id)
+          .select()
+          .single();
+        data = updateRes.data;
+        error = updateRes.error;
+      } else {
+        const insertRes = await supabase
+          .from("technician_work_logs")
+          .insert({
+            service_order_id: orderId,
+            technician_id: technicianId,
+            check_in_time: new Date().toISOString(),
+            location_lat: location.lat,
+            location_lng: location.lng,
+            notes: notes,
+          })
+          .select()
+          .single();
+        data = insertRes.data;
+        error = insertRes.error;
+      }
 
       if (error) throw error;
 
