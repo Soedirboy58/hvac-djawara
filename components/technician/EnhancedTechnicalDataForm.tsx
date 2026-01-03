@@ -286,21 +286,20 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           catatan_perbaikan: existingWorkLog.catatan_perbaikan || "",
         }));
 
-        // Parse `lain_lain` into structured sections (Data Kinerja + Rincian Rute) and preserve the rest
+        // Parse `lain_lain` into structured section (Data Kinerja) and preserve the rest
         const parseLainLain = (raw: string) => {
           const text = String(raw || '').replace(/\r\n/g, '\n');
           const lines = text.split('\n');
 
           const isHeader = (l: string, header: RegExp) => header.test(l.trim());
           const headerDataKinerja = /^data\s+kinerja\b/i;
-          const headerRute = /^rincian\s+rute\b/i;
 
           const findHeaderIndex = (header: RegExp) => lines.findIndex(l => isHeader(l, header));
 
           const takeSection = (startIdx: number) => {
             let endIdx = lines.length;
             for (let i = startIdx + 1; i < lines.length; i++) {
-              if (isHeader(lines[i], headerDataKinerja) || isHeader(lines[i], headerRute)) {
+              if (isHeader(lines[i], headerDataKinerja)) {
                 endIdx = i;
                 break;
               }
@@ -361,65 +360,6 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
             remainingLines.splice(sec.startIdx, sec.endIdx - sec.startIdx);
           }
 
-          // Extract Rincian Rute section
-          let parsedRouteSegments: Array<{ from: string; to: string; distance_km: string; notes: string }> = [];
-          const ruteIdx = remainingLines.findIndex(l => headerRute.test(l.trim()));
-          const routeLineRegex = /^\s*\d+\.\s+.+\s+→\s+.+/;
-
-          if (ruteIdx >= 0) {
-            // From the header to end or next blank-block; we keep it simple: until end
-            const after = remainingLines.slice(ruteIdx + 1);
-            const routeLines = after.filter(l => routeLineRegex.test(l));
-            parsedRouteSegments = routeLines.map((l) => {
-              const body = l.replace(/^\s*\d+\.\s*/, '').trim();
-              const [routePartRaw, notesPartRaw] = body.split(' - ');
-              const routePart = (routePartRaw || '').trim();
-              const notes = (notesPartRaw || '').trim();
-
-              const distMatch = routePart.match(/\(([^\)]+)\)/);
-              const dist = distMatch ? String(distMatch[1]).replace(/km/i, '').trim() : '';
-              const routeNoDist = routePart.replace(/\s*\([^\)]*\)\s*/g, '').trim();
-              const [fromRaw, toRaw] = routeNoDist.split('→');
-              return {
-                from: (fromRaw || '').trim(),
-                to: (toRaw || '').trim(),
-                distance_km: dist,
-                notes,
-              };
-            });
-
-            // Remove header + the route lines we recognized
-            remainingLines = remainingLines.filter((l, idx) => {
-              if (idx === ruteIdx) return false;
-              if (routeLineRegex.test(l)) return false;
-              return true;
-            });
-          } else {
-            // Backward-compat: if the entire `lain_lain` is only route lines, parse it
-            const nonEmpty = remainingLines.filter(l => l.trim().length > 0);
-            const allRouteLines = nonEmpty.length > 0 && nonEmpty.every(l => routeLineRegex.test(l));
-            if (allRouteLines) {
-              parsedRouteSegments = nonEmpty.map((l) => {
-                const body = l.replace(/^\s*\d+\.\s*/, '').trim();
-                const [routePartRaw, notesPartRaw] = body.split(' - ');
-                const routePart = (routePartRaw || '').trim();
-                const notes = (notesPartRaw || '').trim();
-
-                const distMatch = routePart.match(/\(([^\)]+)\)/);
-                const dist = distMatch ? String(distMatch[1]).replace(/km/i, '').trim() : '';
-                const routeNoDist = routePart.replace(/\s*\([^\)]*\)\s*/g, '').trim();
-                const [fromRaw, toRaw] = routeNoDist.split('→');
-                return {
-                  from: (fromRaw || '').trim(),
-                  to: (toRaw || '').trim(),
-                  distance_km: dist,
-                  notes,
-                };
-              });
-              remainingLines = [];
-            }
-          }
-
           const extraText = remainingLines
             .join('\n')
             .replace(/\n{3,}/g, '\n\n')
@@ -428,7 +368,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           return {
             dataKinerjaEnabled: parsedDataKinerjaEnabled,
             dataKinerja: parsedDataKinerja,
-            routeSegments: parsedRouteSegments,
+            routeSegments: [],
             extraText,
           };
         };
@@ -441,12 +381,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           if (parsed.dataKinerja) setDataKinerja(parsed.dataKinerja);
         }
 
-        if (parsed.routeSegments.length > 0) {
-          setRouteSegments(parsed.routeSegments.map((s, idx) => ({
-            id: `${Date.now()}-${idx}`,
-            ...s,
-          })));
-        }
+        // Route details are temporarily disabled; keep any existing text untouched in `extraText`
 
         // If there is check-in time and no explicit start_time, default start_time to check-in
         if (ci && !existingWorkLog.start_time) {
@@ -570,25 +505,10 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     return lines.join('\n');
   };
 
-  const buildRincianRuteSection = (segments: Array<{ from: string; to: string; distance_km: string; notes: string }>) => {
-    const lines = segments
-      .filter(s => (s.from || s.to || s.distance_km || s.notes))
-      .map((s, idx) => {
-        const route = `${(s.from || '-').trim()} → ${(s.to || '-').trim()}`;
-        const dist = s.distance_km ? ` (${String(s.distance_km).trim()} km)` : '';
-        const notes = s.notes ? ` - ${s.notes.trim()}` : '';
-        return `${idx + 1}. ${route}${dist}${notes}`;
-      });
-    if (lines.length === 0) return '';
-    return ['RINCIAN RUTE', ...lines].join('\n');
-  };
-
-  // Keep `lain_lain` in sync with Data Kinerja + route segments (for storage + PDF output)
+  // Keep `lain_lain` in sync with Data Kinerja (for storage + PDF output)
   useEffect(() => {
     const parts: string[] = [];
     if (dataKinerjaEnabled) parts.push(buildDataKinerjaSection(dataKinerja));
-    const rute = buildRincianRuteSection(routeSegments);
-    if (rute) parts.push(rute);
     if (lainLainExtraText && lainLainExtraText.trim()) parts.push(lainLainExtraText.trim());
 
     const combined = parts
@@ -600,7 +520,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       if (prev.lain_lain === combined) return prev;
       return { ...prev, lain_lain: combined };
     });
-  }, [routeSegments, dataKinerjaEnabled, dataKinerja, lainLainExtraText]);
+  }, [dataKinerjaEnabled, dataKinerja, lainLainExtraText]);
 
   // Handlers
   const handleInputChange = (field: string, value: string) => {
@@ -1726,86 +1646,17 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           <CardTitle className="text-lg">Informasi Tambahan</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>Lama Kerja (jam)</Label>
-              <Input
-                type="number"
-                step="0.5"
-                value={formData.lama_kerja}
-                onChange={(e) => handleInputChange('lama_kerja', e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                * Default terisi dari estimasi order (boleh diubah)
-              </p>
-            </div>
-            <div>
-              <Label>Total Jarak Tempuh (km)</Label>
-              <Input
-                type="number"
-                value={formData.jarak_tempuh}
-                onChange={(e) => handleInputChange('jarak_tempuh', e.target.value)}
-                placeholder="0.0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                * Input manual (contoh: total rute hari ini)
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t mt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold">Rincian Rute (Opsional)</h3>
-                <p className="text-xs text-muted-foreground">
-                  Contoh: Kantor → Customer 1 → Customer 2 → ...
-                </p>
-              </div>
-              <Button type="button" size="sm" onClick={addRouteSegment} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Tambah Rute
-              </Button>
-            </div>
-
-            {routeSegments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada rincian rute.</p>
-            ) : (
-              <div className="space-y-2">
-                {routeSegments.map((seg, idx) => (
-                  <div key={seg.id} className="border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium">Rute #{idx + 1}</p>
-                      <Button type="button" size="icon" variant="destructive" onClick={() => removeRouteSegment(seg.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                      <Input
-                        placeholder="Dari (misal: Kantor)"
-                        value={seg.from}
-                        onChange={(e) => updateRouteSegment(seg.id, 'from', e.target.value)}
-                      />
-                      <Input
-                        placeholder="Ke (misal: Customer 1)"
-                        value={seg.to}
-                        onChange={(e) => updateRouteSegment(seg.id, 'to', e.target.value)}
-                      />
-                      <Input
-                        placeholder="Jarak (km)"
-                        type="number"
-                        value={seg.distance_km}
-                        onChange={(e) => updateRouteSegment(seg.id, 'distance_km', e.target.value)}
-                      />
-                      <Input
-                        placeholder="Keterangan (opsional)"
-                        value={seg.notes}
-                        onChange={(e) => updateRouteSegment(seg.id, 'notes', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div>
+            <Label>Lama Kerja (jam)</Label>
+            <Input
+              type="number"
+              step="0.5"
+              value={formData.lama_kerja}
+              onChange={(e) => handleInputChange('lama_kerja', e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              * Default terisi dari estimasi order (boleh diubah)
+            </p>
           </div>
         </CardContent>
       </Card>
