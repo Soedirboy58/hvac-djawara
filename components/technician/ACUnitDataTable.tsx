@@ -13,14 +13,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -30,19 +22,19 @@ import {
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { Checkbox } from "@/components/ui/checkbox";
 
 export interface ACUnitData {
   id: string;
+  source?: "inventory" | "manual";
+  inventory_unit_id?: string;
+  unit_code?: string;
+  property_id?: string;
+  property_name?: string;
+  model_ac?: string;
   nama_ruang: string;
   merk_ac: string;
   kapasitas_ac: string;
   jenis_unit: string;
-  voltage_supply: string;
-  arus_supply: string;
-  tekanan_refrigerant: string;
-  temperatur_supply: string;
-  temperatur_return: string;
   deskripsi_lain: string;
   saveToInventory?: boolean; // Flag untuk simpan ke inventory client
   inventorySaved?: boolean; // Flag apakah sudah tersimpan
@@ -83,43 +75,77 @@ export async function saveUnitsToInventory(
       return { success: false, savedCount: 0, errors: ['Order tidak ditemukan'] };
     }
 
-    // Filter units that should be saved to inventory
-    const unitsToSave = units.filter(unit => 
-      unit.saveToInventory && !unit.inventorySaved
-    );
+    const normalizeAcType = (raw: string | undefined | null) => {
+      const v = String(raw || "").trim();
+      if (!v) return "split_wall";
+      const lower = v.toLowerCase();
+
+      const known = new Set([
+        "split_wall",
+        "split_duct",
+        "cassette",
+        "floor_standing",
+        "vrv_vrf",
+        "chiller",
+        "ahu",
+        "fcu",
+        "other",
+      ]);
+      if (known.has(lower)) return lower;
+
+      const map: Record<string, string> = {
+        "split wall": "split_wall",
+        "split duct": "split_duct",
+        "floor standing": "floor_standing",
+        "vrv/vrf": "vrv_vrf",
+        "vrv": "vrv_vrf",
+        "vrf": "vrv_vrf",
+        "lainnya": "other",
+        "lain-lain": "other",
+      };
+      return map[lower] || "other";
+    };
+
+    // Filter units that should be saved to inventory (manual units)
+    const unitsToSave = units.filter((unit) => unit.saveToInventory && !unit.inventorySaved);
 
     if (unitsToSave.length === 0) {
       return { success: true, savedCount: 0, errors: [] };
     }
 
-    // Save each unit to ac_inventory
+    // Save each unit to inventory
     for (const unit of unitsToSave) {
       try {
         // Generate unique unit code
         const unitCode = `AC-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
         
-        // Parse property name and location from nama_ruang
-        const roomParts = unit.nama_ruang.split(' - ');
-        const propertyInfo = orderData.properties && Array.isArray(orderData.properties) && orderData.properties.length > 0 
-          ? orderData.properties[0] 
-          : orderData.properties;
-        const propertyName = roomParts[0] || (propertyInfo && !Array.isArray(propertyInfo) ? propertyInfo.name : 'Property');
-        const locationDetail = roomParts[1] || unit.nama_ruang;
+        const locationDetail = unit.nama_ruang;
+        const propertyIdToUse = unit.property_id || orderData.property_id;
+
+        if (!propertyIdToUse) {
+          errors.push(`Gagal simpan unit ${unit.nama_ruang}: property belum dipilih`);
+          continue;
+        }
+
+        const capacityPkRaw = (unit.kapasitas_ac || "").replace(",", ".");
+        const capacityPk = parseFloat(capacityPkRaw);
+        const capacityPkSafe = Number.isFinite(capacityPk) ? capacityPk : 1;
 
         const { error: insertError } = await supabase
           .from('ac_units')
           .insert({
             unit_code: unitCode,
             client_id: orderData.client_id,
-            property_id: orderData.property_id,
+            property_id: propertyIdToUse,
             tenant_id: orderData.tenant_id,
+            room_name: locationDetail,
             unit_name: locationDetail,
             location_detail: locationDetail,
             brand: unit.merk_ac,
-            model: unit.merk_ac,
-            ac_type: unit.jenis_unit,
-            capacity_pk: parseFloat(unit.kapasitas_ac) || 1,
-            capacity_btu: Math.round((parseFloat(unit.kapasitas_ac) || 1) * 9000),
+            model: unit.model_ac || unit.merk_ac,
+            ac_type: normalizeAcType(unit.jenis_unit),
+            capacity_pk: capacityPkSafe,
+            capacity_btu: Math.round(capacityPkSafe * 9000),
             install_date: new Date().toISOString().split('T')[0],
             last_service_date: new Date().toISOString().split('T')[0],
             condition_status: 'good',
@@ -154,24 +180,32 @@ export async function saveUnitsToInventory(
   }
 }
 
-const JENIS_UNIT_OPTIONS = [
-  "Split Wall",
-  "Split Duct",
-  "Cassette",
-  "Floor Standing",
-  "VRV/VRF",
-  "Chiller",
-  "AHU",
-  "FCU",
-  "Lainnya",
+const AC_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "split_wall", label: "Split Wall" },
+  { value: "split_duct", label: "Split Duct" },
+  { value: "cassette", label: "Cassette" },
+  { value: "floor_standing", label: "Floor Standing" },
+  { value: "vrv_vrf", label: "VRV/VRF" },
+  { value: "chiller", label: "Chiller" },
+  { value: "ahu", label: "AHU" },
+  { value: "fcu", label: "FCU" },
+  { value: "other", label: "Lainnya" },
 ];
 
+const acTypeLabel = (value: string | undefined | null) => {
+  const v = String(value || "").trim();
+  if (!v) return "-";
+  const found = AC_TYPE_OPTIONS.find((o) => o.value === v);
+  return found ? found.label : v;
+};
+
 export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [properties, setProperties] = useState<Array<{ id: string; property_name: string }>>([]);
+  const [defaultPropertyId, setDefaultPropertyId] = useState<string | null>(null);
 
   // Fetch inventory when dialog opens
   useEffect(() => {
@@ -179,6 +213,44 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
       fetchInventory();
     }
   }, [searchOpen, orderId]);
+
+  // Fetch client properties for manual unit creation
+  useEffect(() => {
+    if (orderId) {
+      fetchClientProperties();
+    }
+  }, [orderId]);
+
+  const fetchClientProperties = async () => {
+    if (!orderId) return;
+
+    try {
+      const supabase = createClient();
+
+      const { data: orderData, error: orderError } = await supabase
+        .from("service_orders")
+        .select("client_id, property_id")
+        .eq("id", orderId)
+        .single();
+
+      if (orderError || !orderData?.client_id) {
+        return;
+      }
+
+      setDefaultPropertyId(orderData.property_id || null);
+
+      const { data: propsData, error: propsError } = await supabase
+        .from("client_properties")
+        .select("id, property_name")
+        .eq("client_id", orderData.client_id)
+        .order("is_primary", { ascending: false });
+
+      if (propsError) throw propsError;
+      setProperties(propsData || []);
+    } catch (error) {
+      console.error("Error fetching client properties:", error);
+    }
+  };
 
   const fetchInventory = async () => {
     if (!orderId) return;
@@ -199,10 +271,23 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
         return;
       }
       
-      // Fetch inventory for this client
+      // Fetch inventory for this client (include property name)
       const { data: inventoryData, error } = await supabase
         .from('ac_units')
-        .select('*')
+        .select(`
+          id,
+          unit_code,
+          property_id,
+          room_name,
+          unit_name,
+          location_detail,
+          brand,
+          model,
+          ac_type,
+          capacity_pk,
+          notes,
+          client_properties(property_name)
+        `)
         .eq('client_id', orderData.client_id)
         .order('unit_code', { ascending: true });
       
@@ -220,16 +305,19 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
   const selectFromInventory = (unit: any) => {
     const newUnit: ACUnitData = {
       id: `unit-${Date.now()}`,
-      nama_ruang: unit.location_detail || unit.unit_name || "",
+      source: "inventory",
+      inventory_unit_id: unit.id,
+      unit_code: unit.unit_code,
+      property_id: unit.property_id,
+      property_name: unit.client_properties?.property_name,
+      nama_ruang: unit.room_name || unit.unit_name || unit.location_detail || "",
       merk_ac: unit.brand || "",
-      kapasitas_ac: unit.capacity_pk ? `${unit.capacity_pk} PK` : "",
+      model_ac: unit.model || "",
+      kapasitas_ac: unit.capacity_pk ? String(unit.capacity_pk) : "",
       jenis_unit: unit.ac_type || "",
-      voltage_supply: unit.voltage || "",
-      arus_supply: "",
-      tekanan_refrigerant: "",
-      temperatur_supply: "",
-      temperatur_return: "",
       deskripsi_lain: unit.notes || "",
+      saveToInventory: false,
+      inventorySaved: true,
     };
     onChange([...data, newUnit]);
     setSearchOpen(false);
@@ -240,21 +328,17 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
   const addUnit = () => {
     const newUnit: ACUnitData = {
       id: `unit-${Date.now()}`,
+      source: "manual",
+      property_id: defaultPropertyId || undefined,
       nama_ruang: "",
       merk_ac: "",
       kapasitas_ac: "",
-      jenis_unit: "",
-      voltage_supply: "",
-      arus_supply: "",
-      tekanan_refrigerant: "",
-      temperatur_supply: "",
-      temperatur_return: "",
+      jenis_unit: "split_wall",
       deskripsi_lain: "",
-      saveToInventory: false,
+      saveToInventory: Boolean(orderId),
       inventorySaved: false,
     };
     onChange([...data, newUnit]);
-    setEditingId(newUnit.id);
   };
 
   const updateUnit = (id: string, field: keyof ACUnitData, value: string) => {
@@ -280,7 +364,7 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="font-semibold">Data Kinerja Unit AC</h3>
+        <h3 className="font-semibold">Data Unit AC</h3>
         <div className="flex gap-2">
           {orderId && (
             <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
@@ -357,7 +441,7 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
 
       {data.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-          <p>Belum ada data unit. Klik "Tambah Unit" untuk menambah.</p>
+          <p>Belum ada data unit. Klik "Pilih dari Inventory" atau "Tambah Manual".</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -381,166 +465,122 @@ export function ACUnitDataTable({ data, onChange, orderId }: ACUnitDataTableProp
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Nama Ruang *</Label>
-                  <Input
-                    value={unit.nama_ruang}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "nama_ruang", e.target.value)
-                    }
-                    placeholder="Contoh: Ruang Meeting Lt. 2"
-                  />
+              {unit.source === "inventory" ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm">
+                      <div className="font-medium">{unit.nama_ruang || "-"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {unit.property_name ? `Property: ${unit.property_name}` : ""}
+                      </div>
+                    </div>
+                    {unit.unit_code ? (
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                        {unit.unit_code}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <span className="mr-4"><strong>Merk:</strong> {unit.merk_ac || "-"}</span>
+                    <span className="mr-4"><strong>Model:</strong> {unit.model_ac || "-"}</span>
+                    <span className="mr-4"><strong>Kapasitas:</strong> {unit.kapasitas_ac ? `${unit.kapasitas_ac} PK` : "-"}</span>
+                    <span><strong>Jenis:</strong> {acTypeLabel(unit.jenis_unit)}</span>
+                  </div>
+                  {unit.deskripsi_lain ? (
+                    <div className="text-xs text-muted-foreground">Catatan: {unit.deskripsi_lain}</div>
+                  ) : null}
                 </div>
-
-                <div>
-                  <Label>Merk AC *</Label>
-                  <Input
-                    value={unit.merk_ac}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "merk_ac", e.target.value)
-                    }
-                    placeholder="Contoh: Daikin, Panasonic, LG"
-                  />
-                </div>
-
-                <div>
-                  <Label>Kapasitas AC *</Label>
-                  <Input
-                    value={unit.kapasitas_ac}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "kapasitas_ac", e.target.value)
-                    }
-                    placeholder="Contoh: 2 PK, 1.5 PK"
-                  />
-                </div>
-
-                <div>
-                  <Label>Jenis Unit *</Label>
-                  <Select
-                    value={unit.jenis_unit}
-                    onValueChange={(value) =>
-                      updateUnit(unit.id, "jenis_unit", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih jenis unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {JENIS_UNIT_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label>Voltage Supply (V)</Label>
-                  <Input
-                    type="number"
-                    value={unit.voltage_supply}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "voltage_supply", e.target.value)
-                    }
-                    placeholder="Contoh: 220"
-                  />
-                </div>
-
-                <div>
-                  <Label>Arus Supply (A)</Label>
-                  <Input
-                    type="number"
-                    value={unit.arus_supply}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "arus_supply", e.target.value)
-                    }
-                    placeholder="Contoh: 10.5"
-                  />
-                </div>
-
-                <div>
-                  <Label>Tekanan Refrigerant (PSI)</Label>
-                  <Input
-                    value={unit.tekanan_refrigerant}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "tekanan_refrigerant", e.target.value)
-                    }
-                    placeholder="Contoh: 65/250"
-                  />
-                </div>
-
-                <div>
-                  <Label>Temperatur Supply (°C)</Label>
-                  <Input
-                    type="number"
-                    value={unit.temperatur_supply}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "temperatur_supply", e.target.value)
-                    }
-                    placeholder="Contoh: 12"
-                  />
-                </div>
-
-                <div>
-                  <Label>Temperatur Return (°C)</Label>
-                  <Input
-                    type="number"
-                    value={unit.temperatur_return}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "temperatur_return", e.target.value)
-                    }
-                    placeholder="Contoh: 24"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label>Deskripsi Lain-lain</Label>
-                  <Textarea
-                    value={unit.deskripsi_lain}
-                    onChange={(e) =>
-                      updateUnit(unit.id, "deskripsi_lain", e.target.value)
-                    }
-                    placeholder="Catatan tambahan tentang unit ini..."
-                    rows={2}
-                  />
-                </div>
-
-                {/* Checkbox untuk simpan ke inventory */}
-                {orderId && !unit.inventorySaved && (
-                  <div className="md:col-span-2">
-                    <div className="flex items-center space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <Checkbox
-                        id={`save-inventory-${unit.id}`}
-                        checked={unit.saveToInventory || false}
-                        onCheckedChange={(checked) =>
-                          updateUnit(unit.id, "saveToInventory", checked as any)
-                        }
-                      />
-                      <label
-                        htmlFor={`save-inventory-${unit.id}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {orderId && properties.length > 0 ? (
+                    <div className="md:col-span-2">
+                      <Label>Property <span className="text-red-500">*</span></Label>
+                      <Select
+                        value={unit.property_id || ""}
+                        onValueChange={(value) => updateUnit(unit.id, "property_id", value)}
                       >
-                        💾 Tambahkan unit ini ke Inventory Client (unit baru akan tersedia untuk kunjungan berikutnya)
-                      </label>
-                    </div>
-                    {unit.saveToInventory && (
-                      <p className="text-xs text-blue-600 mt-2">
-                        ✓ Unit ini akan disimpan ke inventory client saat work log disubmit
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih property" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {properties.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.property_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Unit manual akan dibuat sebagai aset baru di inventory client saat work log disubmit
                       </p>
-                    )}
-                  </div>
-                )}
-
-                {unit.inventorySaved && (
-                  <div className="md:col-span-2">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                      ✓ Unit ini sudah tersimpan di inventory client
                     </div>
+                  ) : null}
+
+                  <div>
+                    <Label>Nama Ruang <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={unit.nama_ruang}
+                      onChange={(e) => updateUnit(unit.id, "nama_ruang", e.target.value)}
+                      placeholder="Contoh: Ruang Meeting Lt. 2"
+                    />
                   </div>
-                )}
-              </div>
+
+                  <div>
+                    <Label>Merk <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={unit.merk_ac}
+                      onChange={(e) => updateUnit(unit.id, "merk_ac", e.target.value)}
+                      placeholder="Contoh: Daikin, Panasonic, LG"
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Model</Label>
+                    <Input
+                      value={unit.model_ac || ""}
+                      onChange={(e) => updateUnit(unit.id, "model_ac", e.target.value)}
+                      placeholder="Contoh: FTKC, CS-PN, ..."
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Kapasitas (PK) <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="number"
+                      value={unit.kapasitas_ac}
+                      onChange={(e) => updateUnit(unit.id, "kapasitas_ac", e.target.value)}
+                      placeholder="Contoh: 1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Jenis Unit <span className="text-red-500">*</span></Label>
+                    <Select
+                      value={unit.jenis_unit}
+                      onValueChange={(value) => updateUnit(unit.id, "jenis_unit", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih jenis unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AC_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Label>Catatan (Opsional)</Label>
+                    <Textarea
+                      value={unit.deskripsi_lain}
+                      onChange={(e) => updateUnit(unit.id, "deskripsi_lain", e.target.value)}
+                      placeholder="Catatan tambahan tentang unit ini..."
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
