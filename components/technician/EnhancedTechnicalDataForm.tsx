@@ -46,11 +46,7 @@ interface TechnicalDataFormProps {
 type DataKinerjaForm = {
   sumber_tegangan: '' | 'ada' | 'tidak';
   jenis_tegangan: '' | '1_phase' | '3_phase';
-  tegangan_v: string;
-  ampere_a: string;
   grounding: string;
-  temperatur_supply: string;
-  temperatur_return: string;
   lain_lain: string;
 };
 
@@ -137,11 +133,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [dataKinerja, setDataKinerja] = useState<DataKinerjaForm>({
     sumber_tegangan: '',
     jenis_tegangan: '',
-    tegangan_v: '',
-    ampere_a: '',
     grounding: '',
-    temperatur_supply: '',
-    temperatur_return: '',
     lain_lain: '',
   });
 
@@ -320,11 +312,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
             const d: DataKinerjaForm = {
               sumber_tegangan: '',
               jenis_tegangan: '',
-              tegangan_v: '',
-              ampere_a: '',
               grounding: '',
-              temperatur_supply: '',
-              temperatur_return: '',
               lain_lain: '',
             };
 
@@ -347,11 +335,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
               return m ? m[0].replace(',', '.') : '';
             };
 
-            d.tegangan_v = numOnly(valueOf(/^tegangan\s*:/i));
-            d.ampere_a = numOnly(valueOf(/^(arus|ampere)\s*:/i));
             d.grounding = valueOf(/^(nilai\s+grounding|grounding)\s*:/i);
-            d.temperatur_supply = numOnly(valueOf(/^temperatur\s+supply\s*:/i));
-            d.temperatur_return = numOnly(valueOf(/^temperatur\s+return\s*:/i));
             d.lain_lain = valueOf(/^lain\s*-?\s*lain\s*:/i);
 
             parsedDataKinerja = d;
@@ -496,13 +480,13 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     const lines: string[] = ['DATA KINERJA'];
     if (d.sumber_tegangan) lines.push(`Sumber tegangan: ${d.sumber_tegangan === 'ada' ? 'Ada' : 'Tidak'}`);
     if (d.jenis_tegangan) lines.push(`Jenis tegangan: ${d.jenis_tegangan === '1_phase' ? '1 Phase' : '3 Phase'}`);
-    if (d.tegangan_v) lines.push(`Tegangan: ${String(d.tegangan_v).trim()} V`);
-    if (d.ampere_a) lines.push(`Arus: ${String(d.ampere_a).trim()} A`);
     if (d.grounding) lines.push(`Nilai grounding: ${d.grounding.trim()}`);
-    if (d.temperatur_supply) lines.push(`Temperatur supply: ${String(d.temperatur_supply).trim()} °C`);
-    if (d.temperatur_return) lines.push(`Temperatur return: ${String(d.temperatur_return).trim()} °C`);
     if (d.lain_lain) lines.push(`Lain-lain: ${d.lain_lain.trim()}`);
     return lines.join('\n');
+  };
+
+  const updateAcUnit = (id: string, patch: Partial<ACUnitData>) => {
+    setAcUnits(prev => prev.map(u => (u.id === id ? ({ ...u, ...patch }) : u)));
   };
 
   // Keep `lain_lain` in sync with Data Kinerja (for storage + PDF output)
@@ -1489,18 +1473,91 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Data Kinerja</CardTitle>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="data-kinerja"
-                checked={dataKinerjaEnabled}
-                onCheckedChange={(v) => setDataKinerjaEnabled(Boolean(v))}
-              />
-              <Label htmlFor="data-kinerja">Tambahkan</Label>
-            </div>
+            <Button
+              type="button"
+              variant={dataKinerjaEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDataKinerjaEnabled(v => !v)}
+            >
+              {dataKinerjaEnabled ? 'Nonaktifkan' : 'Tambahkan'}
+            </Button>
           </div>
         </CardHeader>
         {dataKinerjaEnabled ? (
           <CardContent className="space-y-4">
+            {acUnits.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                Pilih unit AC terlebih dahulu (maksimal 6 unit), lalu isi pengukuran per unit.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {acUnits.slice(0, 6).map((unit, idx) => (
+                  <div key={unit.id} className="border rounded-lg p-3 bg-white">
+                    <div className="text-sm font-medium text-gray-800 mb-2">
+                      Unit {idx + 1}: {unit.nama_ruang || '-'}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <Label>Tegangan (V)</Label>
+                        <Input
+                          type="number"
+                          value={unit.voltage_supply || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { voltage_supply: e.target.value })}
+                          placeholder="220"
+                        />
+                      </div>
+                      <div>
+                        <Label>Arus (A)</Label>
+                        <Input
+                          type="number"
+                          value={unit.arus_supply || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { arus_supply: e.target.value })}
+                          placeholder="3"
+                        />
+                      </div>
+                      <div>
+                        <Label>Tekanan (psi)</Label>
+                        <Input
+                          value={unit.tekanan_refrigerant || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { tekanan_refrigerant: e.target.value })}
+                          placeholder="65/250"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                      <div>
+                        <Label>Flow (m/s)</Label>
+                        <Input
+                          type="number"
+                          value={unit.flow_ms || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { flow_ms: e.target.value })}
+                          placeholder="2.5"
+                        />
+                      </div>
+                      <div>
+                        <Label>Temp Supply (°C)</Label>
+                        <Input
+                          type="number"
+                          value={unit.temperatur_supply || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { temperatur_supply: e.target.value })}
+                          placeholder="12"
+                        />
+                      </div>
+                      <div>
+                        <Label>Temp Return (°C)</Label>
+                        <Input
+                          type="number"
+                          value={unit.temperatur_return || ''}
+                          onChange={(e) => updateAcUnit(unit.id, { temperatur_return: e.target.value })}
+                          placeholder="18"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Sumber Tegangan</Label>
@@ -1537,50 +1594,11 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label>Besar Tegangan (V)</Label>
-                <Input
-                  type="number"
-                  value={dataKinerja.tegangan_v}
-                  onChange={(e) => setDataKinerja(prev => ({ ...prev, tegangan_v: e.target.value }))}
-                  placeholder="220"
-                />
-              </div>
-              <div>
-                <Label>Besar Ampere (A)</Label>
-                <Input
-                  type="number"
-                  value={dataKinerja.ampere_a}
-                  onChange={(e) => setDataKinerja(prev => ({ ...prev, ampere_a: e.target.value }))}
-                  placeholder="3"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
                 <Label>Nilai Grounding</Label>
                 <Input
                   value={dataKinerja.grounding}
                   onChange={(e) => setDataKinerja(prev => ({ ...prev, grounding: e.target.value }))}
                   placeholder="Contoh: OK / 1 ohm"
-                />
-              </div>
-              <div>
-                <Label>Temperatur Supply</Label>
-                <Input
-                  type="number"
-                  value={dataKinerja.temperatur_supply}
-                  onChange={(e) => setDataKinerja(prev => ({ ...prev, temperatur_supply: e.target.value }))}
-                  placeholder="12"
-                />
-              </div>
-              <div>
-                <Label>Temperatur Return</Label>
-                <Input
-                  type="number"
-                  value={dataKinerja.temperatur_return}
-                  onChange={(e) => setDataKinerja(prev => ({ ...prev, temperatur_return: e.target.value }))}
-                  placeholder="18"
                 />
               </div>
             </div>
@@ -1598,7 +1616,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         ) : (
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Aktifkan untuk mengisi sumber tegangan, phase, V/A, grounding, suhu supply/return.
+              Aktifkan untuk mengisi data kinerja (pengukuran per unit) dan info sumber tegangan/phase/grounding.
             </p>
           </CardContent>
         )}

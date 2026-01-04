@@ -51,6 +51,7 @@ interface WorkLogData {
     tekanan_refrigerant?: string;
     temperatur_supply?: string;
     temperatur_return?: string;
+    flow_ms?: string;
     deskripsi_lain?: string;
 
     // Legacy / older keys (kept for backward compatibility)
@@ -476,11 +477,11 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         const mappedKey = (() => {
           if (key === "sumber tegangan") return "power_available";
           if (key === "jenis tegangan") return "phase";
-          if (key === "tegangan") return "voltage";
-          if (key === "arus") return "ampere";
           if (key === "grounding") return "grounding";
-          if (key === "temperatur supply") return "supply_temp";
-          if (key === "temperatur return") return "return_temp";
+          if (key === "lain-lain") return "notes";
+          if (key === "lain lain") return "notes";
+          if (key === "lain_lain") return "notes";
+          if (key === "catatan") return "notes";
           if (key === "catatan lain") return "notes";
           return key;
         })();
@@ -534,6 +535,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
   // Measurement table (instalasi / pengukuran teknis)
+  const MAX_COLS = 6;
   const hasAnyMeasurement = [
     data.mcb_1, data.mcb_2, data.mcb_3, data.mcb_4, data.mcb_5,
     data.volt_1, data.volt_2, data.volt_3, data.volt_4, data.volt_5,
@@ -546,6 +548,19 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     data.evaporator_in_out_1, data.evaporator_in_out_2, data.evaporator_in_out_3, data.evaporator_in_out_4, data.evaporator_in_out_5,
     data.temp_ruang_1, data.temp_ruang_2, data.temp_ruang_3, data.temp_ruang_4, data.temp_ruang_5,
   ].some((v) => v !== undefined && v !== null && v !== ("" as any));
+
+  const unitCols = Array.isArray(data.ac_units_data) ? data.ac_units_data.slice(0, MAX_COLS) : [];
+  const hasPerUnitKinerja = unitCols.some((u) => {
+    const isPresent = (v: any) => v !== undefined && v !== null && String(v).trim() !== "";
+    return (
+      isPresent(u.voltage_supply) ||
+      isPresent(u.arus_supply) ||
+      isPresent(u.tekanan_refrigerant) ||
+      isPresent(u.flow_ms) ||
+      isPresent(u.temperatur_supply) ||
+      isPresent(u.temperatur_return)
+    );
+  });
 
   const hasDataKinerja = Object.keys(dataKinerja || {}).length > 0;
 
@@ -563,16 +578,16 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     yPos += 4;
 
     const rows: Array<{ label: string; unit: string; values: Array<string | number | undefined | null> }> = [
-      { label: "MCB", unit: "A", values: [data.mcb_1, data.mcb_2, data.mcb_3, data.mcb_4, data.mcb_5] },
-      { label: "Volt", unit: "V", values: [data.volt_1, data.volt_2, data.volt_3, data.volt_4, data.volt_5] },
-      { label: "Ampere Total", unit: "A", values: [data.ampere_total_1, data.ampere_total_2, data.ampere_total_3, data.ampere_total_4, data.ampere_total_5] },
-      { label: "Ampere Kompressor", unit: "A", values: [data.ampere_kompressor_1, data.ampere_kompressor_2, data.ampere_kompressor_3, data.ampere_kompressor_4, data.ampere_kompressor_5] },
-      { label: "Ampere Kipas", unit: "A", values: [data.ampere_kipas_1, data.ampere_kipas_2, data.ampere_kipas_3, data.ampere_kipas_4, data.ampere_kipas_5] },
-      { label: "Tekanan Tinggi", unit: "psi", values: [data.tekanan_tinggi_1, data.tekanan_tinggi_2, data.tekanan_tinggi_3, data.tekanan_tinggi_4, data.tekanan_tinggi_5] },
-      { label: "Tekanan Rendah", unit: "psi", values: [data.tekanan_rendah_1, data.tekanan_rendah_2, data.tekanan_rendah_3, data.tekanan_rendah_4, data.tekanan_rendah_5] },
-      { label: "Kondensor In/Out", unit: "°C", values: [data.kondensor_in_out_1, data.kondensor_in_out_2, data.kondensor_in_out_3, data.kondensor_in_out_4, data.kondensor_in_out_5] },
-      { label: "Evaporator In/Out", unit: "°C", values: [data.evaporator_in_out_1, data.evaporator_in_out_2, data.evaporator_in_out_3, data.evaporator_in_out_4, data.evaporator_in_out_5] },
-      { label: "Temp Ruang", unit: "°C", values: [data.temp_ruang_1, data.temp_ruang_2, data.temp_ruang_3, data.temp_ruang_4, data.temp_ruang_5] },
+      { label: "MCB", unit: "A", values: [data.mcb_1, data.mcb_2, data.mcb_3, data.mcb_4, data.mcb_5, undefined] },
+      { label: "Volt", unit: "V", values: [data.volt_1, data.volt_2, data.volt_3, data.volt_4, data.volt_5, undefined] },
+      { label: "Ampere Total", unit: "A", values: [data.ampere_total_1, data.ampere_total_2, data.ampere_total_3, data.ampere_total_4, data.ampere_total_5, undefined] },
+      { label: "Ampere Kompressor", unit: "A", values: [data.ampere_kompressor_1, data.ampere_kompressor_2, data.ampere_kompressor_3, data.ampere_kompressor_4, data.ampere_kompressor_5, undefined] },
+      { label: "Ampere Kipas", unit: "A", values: [data.ampere_kipas_1, data.ampere_kipas_2, data.ampere_kipas_3, data.ampere_kipas_4, data.ampere_kipas_5, undefined] },
+      { label: "Tekanan Tinggi", unit: "psi", values: [data.tekanan_tinggi_1, data.tekanan_tinggi_2, data.tekanan_tinggi_3, data.tekanan_tinggi_4, data.tekanan_tinggi_5, undefined] },
+      { label: "Tekanan Rendah", unit: "psi", values: [data.tekanan_rendah_1, data.tekanan_rendah_2, data.tekanan_rendah_3, data.tekanan_rendah_4, data.tekanan_rendah_5, undefined] },
+      { label: "Kondensor In/Out", unit: "°C", values: [data.kondensor_in_out_1, data.kondensor_in_out_2, data.kondensor_in_out_3, data.kondensor_in_out_4, data.kondensor_in_out_5, undefined] },
+      { label: "Evaporator In/Out", unit: "°C", values: [data.evaporator_in_out_1, data.evaporator_in_out_2, data.evaporator_in_out_3, data.evaporator_in_out_4, data.evaporator_in_out_5, undefined] },
+      { label: "Temp Ruang", unit: "°C", values: [data.temp_ruang_1, data.temp_ruang_2, data.temp_ruang_3, data.temp_ruang_4, data.temp_ruang_5, undefined] },
     ];
 
     const asNumberOrText = (v?: string) => {
@@ -581,16 +596,37 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       return Number.isFinite(n) ? n : v;
     };
 
-    const kinerjaRows: Array<{ label: string; unit: string; values: Array<string | number | undefined | null> }> = hasDataKinerja
+    const repeatAcross = (v: any) => [v, v, v, v, v, v];
+    const pickUnitValue = (idx: number, key: keyof NonNullable<WorkLogData['ac_units_data']>[number]) => {
+      const u = unitCols[idx] as any;
+      return u ? u[key] : undefined;
+    };
+
+    const unitValues = (key: keyof NonNullable<WorkLogData['ac_units_data']>[number]) => {
+      const vals: Array<string | number | undefined | null> = [];
+      for (let i = 0; i < MAX_COLS; i++) vals.push(pickUnitValue(i, key) as any);
+      return vals;
+    };
+
+    const kinerjaRows: Array<{ label: string; unit: string; values: Array<string | number | undefined | null> }> = (
+      hasPerUnitKinerja || hasDataKinerja
+    )
       ? [
-          { label: "Sumber Tegangan", unit: "-", values: [dataKinerja.power_available, undefined, undefined, undefined, undefined] },
-          { label: "Jenis Tegangan", unit: "-", values: [dataKinerja.phase, undefined, undefined, undefined, undefined] },
-          { label: "Grounding", unit: "-", values: [dataKinerja.grounding, undefined, undefined, undefined, undefined] },
-          { label: "Tegangan", unit: "V", values: [asNumberOrText(dataKinerja.voltage), undefined, undefined, undefined, undefined] },
-          { label: "Arus", unit: "A", values: [asNumberOrText(dataKinerja.ampere), undefined, undefined, undefined, undefined] },
-          { label: "Temp Supply", unit: "°C", values: [asNumberOrText(dataKinerja.supply_temp), undefined, undefined, undefined, undefined] },
-          { label: "Temp Return", unit: "°C", values: [asNumberOrText(dataKinerja.return_temp), undefined, undefined, undefined, undefined] },
-          { label: "Catatan", unit: "-", values: [dataKinerja.notes, undefined, undefined, undefined, undefined] },
+          // site-level values (repeated across columns)
+          { label: "Sumber Tegangan", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.power_available) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+          { label: "Jenis Tegangan", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.phase) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+          { label: "Grounding", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.grounding) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+
+          // per-unit measurements
+          { label: "Tegangan", unit: "V", values: unitValues("voltage_supply").map((v) => asNumberOrText(v as any)) },
+          { label: "Arus", unit: "A", values: unitValues("arus_supply").map((v) => asNumberOrText(v as any)) },
+          { label: "Tekanan (psi)", unit: "psi", values: unitValues("tekanan_refrigerant").map((v) => asNumberOrText(v as any)) },
+          { label: "Flow", unit: "m/s", values: unitValues("flow_ms").map((v) => asNumberOrText(v as any)) },
+          { label: "Temp Supply", unit: "°C", values: unitValues("temperatur_supply").map((v) => asNumberOrText(v as any)) },
+          { label: "Temp Return", unit: "°C", values: unitValues("temperatur_return").map((v) => asNumberOrText(v as any)) },
+
+          // notes (site-level)
+          { label: "Catatan", unit: "-", values: hasDataKinerja ? [dataKinerja.notes, undefined, undefined, undefined, undefined, undefined] : [undefined, undefined, undefined, undefined, undefined, undefined] },
         ]
       : [];
 
@@ -605,13 +641,14 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         (r.values[2] as any) ?? "-",
         (r.values[3] as any) ?? "-",
         (r.values[4] as any) ?? "-",
+        (r.values[5] as any) ?? "-",
         r.unit,
       ]);
 
     autoTable(doc, {
       startY: yPos,
-      head: [["Parameter", "1", "2", "3", "4", "5", "Satuan"]],
-      body: body.length > 0 ? body : [["-", "-", "-", "-", "-", "-", "-"]],
+      head: [["Parameter", "1", "2", "3", "4", "5", "6", "Satuan"]],
+      body: body.length > 0 ? body : [["-", "-", "-", "-", "-", "-", "-", "-"]],
       theme: "grid",
       headStyles: {
         fillColor: colors.light,
@@ -634,7 +671,8 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
         3: { cellWidth: 18, halign: "center" },
         4: { cellWidth: 18, halign: "center" },
         5: { cellWidth: 18, halign: "center" },
-        6: { cellWidth: 20, halign: "center" },
+        6: { cellWidth: 18, halign: "center" },
+        7: { cellWidth: 20, halign: "center" },
       },
       margin: { left: 15, right: 15 },
       alternateRowStyles: {

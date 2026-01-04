@@ -36,6 +36,15 @@ export interface ACUnitData {
   kapasitas_ac: string;
   jenis_unit: string;
   deskripsi_lain: string;
+
+  // Per-unit performance/measurement fields (used in "Data Kinerja" section)
+  voltage_supply?: string;
+  arus_supply?: string;
+  tekanan_refrigerant?: string;
+  flow_ms?: string;
+  temperatur_supply?: string;
+  temperatur_return?: string;
+
   saveToInventory?: boolean; // Flag untuk simpan ke inventory client
   inventorySaved?: boolean; // Flag apakah sudah tersimpan
 }
