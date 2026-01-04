@@ -444,10 +444,62 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     if (data.jarak_tempuh) waktuText += waktuText ? ` | Jarak: ${data.jarak_tempuh} km` : `Jarak Tempuh: ${data.jarak_tempuh} km`;
     tableData.push(["Waktu & Tanggal Pengerjaan", waktuText]);
   }
+
+  // Extract DATA KINERJA block (stored inside `lain_lain`) so it can be rendered into
+  // the measurement table instead of being printed as a free-text block.
+  const extractDataKinerjaFromLainLain = (raw: any) => {
+    const text = String(raw || "").trim();
+    if (!text) return { dataKinerja: {} as Record<string, string>, lainLainWithoutKinerja: "" };
+
+    const parts = text.split(/\n\n+/);
+    let kinerjaPart: string | null = null;
+    const others: string[] = [];
+
+    for (const part of parts) {
+      const lines = part.split(/\n/).map((l) => l.trim());
+      if (lines[0] === "DATA KINERJA") {
+        kinerjaPart = part;
+      } else if (part.trim()) {
+        others.push(part.trim());
+      }
+    }
+
+    const dataKinerja: Record<string, string> = {};
+    if (kinerjaPart) {
+      const lines = kinerjaPart.split(/\n/).map((l) => l.trim()).filter(Boolean);
+      for (const line of lines.slice(1)) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim();
+
+        const mappedKey = (() => {
+          if (key === "sumber tegangan") return "power_available";
+          if (key === "jenis tegangan") return "phase";
+          if (key === "tegangan") return "voltage";
+          if (key === "arus") return "ampere";
+          if (key === "grounding") return "grounding";
+          if (key === "temperatur supply") return "supply_temp";
+          if (key === "temperatur return") return "return_temp";
+          if (key === "catatan lain") return "notes";
+          return key;
+        })();
+
+        dataKinerja[mappedKey] = value;
+      }
+    }
+
+    return {
+      dataKinerja,
+      lainLainWithoutKinerja: others.join("\n\n"),
+    };
+  };
+
+  const { dataKinerja, lainLainWithoutKinerja } = extractDataKinerjaFromLainLain(data.lain_lain);
   
-  // Rincian rute / informasi lain-lain
-  if (data.lain_lain) {
-    tableData.push(["Informasi Tambahan", data.lain_lain]);
+  // Informasi lain-lain (exclude DATA KINERJA, which is rendered into the measurement table)
+  if (lainLainWithoutKinerja && String(lainLainWithoutKinerja).trim()) {
+    tableData.push(["Informasi Tambahan", String(lainLainWithoutKinerja)]);
   }
   
   // Create table (ALWAYS - we now have at least work_type)
@@ -495,7 +547,13 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     data.temp_ruang_1, data.temp_ruang_2, data.temp_ruang_3, data.temp_ruang_4, data.temp_ruang_5,
   ].some((v) => v !== undefined && v !== null && v !== ("" as any));
 
-  if (hasAnyMeasurement || (data.lain_lain && String(data.lain_lain).trim())) {
+  const hasDataKinerja = Object.keys(dataKinerja || {}).length > 0;
+
+  if (
+    hasAnyMeasurement ||
+    hasDataKinerja ||
+    (lainLainWithoutKinerja && String(lainLainWithoutKinerja).trim())
+  ) {
     if (yPos > 235) {
       doc.addPage();
       yPos = 20;
@@ -504,7 +562,7 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     drawSectionTitle("DATA PENGUKURAN TEKNIS", yPos);
     yPos += 4;
 
-    const rows: Array<{ label: string; unit: string; values: Array<number | undefined> }> = [
+    const rows: Array<{ label: string; unit: string; values: Array<string | number | undefined | null> }> = [
       { label: "MCB", unit: "A", values: [data.mcb_1, data.mcb_2, data.mcb_3, data.mcb_4, data.mcb_5] },
       { label: "Volt", unit: "V", values: [data.volt_1, data.volt_2, data.volt_3, data.volt_4, data.volt_5] },
       { label: "Ampere Total", unit: "A", values: [data.ampere_total_1, data.ampere_total_2, data.ampere_total_3, data.ampere_total_4, data.ampere_total_5] },
@@ -517,15 +575,36 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       { label: "Temp Ruang", unit: "°C", values: [data.temp_ruang_1, data.temp_ruang_2, data.temp_ruang_3, data.temp_ruang_4, data.temp_ruang_5] },
     ];
 
-    const body = rows
+    const asNumberOrText = (v?: string) => {
+      if (!v) return undefined;
+      const n = parseFloat(String(v).replace(",", "."));
+      return Number.isFinite(n) ? n : v;
+    };
+
+    const kinerjaRows: Array<{ label: string; unit: string; values: Array<string | number | undefined | null> }> = hasDataKinerja
+      ? [
+          { label: "Sumber Tegangan", unit: "-", values: [dataKinerja.power_available, undefined, undefined, undefined, undefined] },
+          { label: "Jenis Tegangan", unit: "-", values: [dataKinerja.phase, undefined, undefined, undefined, undefined] },
+          { label: "Grounding", unit: "-", values: [dataKinerja.grounding, undefined, undefined, undefined, undefined] },
+          { label: "Tegangan", unit: "V", values: [asNumberOrText(dataKinerja.voltage), undefined, undefined, undefined, undefined] },
+          { label: "Arus", unit: "A", values: [asNumberOrText(dataKinerja.ampere), undefined, undefined, undefined, undefined] },
+          { label: "Temp Supply", unit: "°C", values: [asNumberOrText(dataKinerja.supply_temp), undefined, undefined, undefined, undefined] },
+          { label: "Temp Return", unit: "°C", values: [asNumberOrText(dataKinerja.return_temp), undefined, undefined, undefined, undefined] },
+          { label: "Catatan", unit: "-", values: [dataKinerja.notes, undefined, undefined, undefined, undefined] },
+        ]
+      : [];
+
+    const rowsToRender = hasAnyMeasurement ? rows : kinerjaRows;
+
+    const body = rowsToRender
       .filter((r) => r.values.some((v) => v !== undefined && v !== null && v !== ("" as any)))
       .map((r) => [
         r.label,
-        r.values[0] ?? "-",
-        r.values[1] ?? "-",
-        r.values[2] ?? "-",
-        r.values[3] ?? "-",
-        r.values[4] ?? "-",
+        (r.values[0] as any) ?? "-",
+        (r.values[1] as any) ?? "-",
+        (r.values[2] as any) ?? "-",
+        (r.values[3] as any) ?? "-",
+        (r.values[4] as any) ?? "-",
         r.unit,
       ]);
 
@@ -565,8 +644,8 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
 
     yPos = (doc as any).lastAutoTable.finalY + 6;
 
-    if (data.lain_lain && String(data.lain_lain).trim()) {
-      const extraLines = doc.splitTextToSize(String(data.lain_lain), contentWidth - 10);
+    if (lainLainWithoutKinerja && String(lainLainWithoutKinerja).trim()) {
+      const extraLines = doc.splitTextToSize(String(lainLainWithoutKinerja), contentWidth - 10);
       const lineH = 4;
       const boxH = 6 + extraLines.length * lineH;
       if (yPos + boxH > 270) {
