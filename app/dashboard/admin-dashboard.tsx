@@ -105,9 +105,12 @@ export default async function AdminDashboard({ page }: { page: number }) {
   const daysElapsed = daysElapsedInMonthJakarta(now)
 
   // Business-week anchor (Mon–Sat, Jakarta)
+  // If today is Monday, default to showing the *previous* business-week
+  // so the KPI doesn't reset to 0 at the start of the week.
   const weekdayJakarta = getJakartaWeekday(now)
-  const deltaToMonday = (weekdayJakarta - 1 + 7) % 7
-  const weekStartDate = addDays(now, -deltaToMonday)
+  const anchorForWeek = weekdayJakarta === 1 ? addDays(now, -7) : now
+  const deltaToMonday = (getJakartaWeekday(anchorForWeek) - 1 + 7) % 7
+  const weekStartDate = addDays(anchorForWeek, -deltaToMonday)
   const saturdayDate = addDays(weekStartDate, 5)
 
   const weekStartParts = getJakartaParts(weekStartDate)
@@ -414,7 +417,7 @@ export default async function AdminDashboard({ page }: { page: number }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(Math.round(weeklyExpenses))}</div>
-            <p className="text-xs text-muted-foreground mt-1">Expense operasional (Senin–Sabtu, berdasarkan tanggal)</p>
+            <p className="text-xs text-muted-foreground mt-1">Expense operasional (Senin–Sabtu, minggu terakhir)</p>
           </CardContent>
         </Card>
       </div>
