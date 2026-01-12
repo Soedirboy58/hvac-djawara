@@ -367,13 +367,20 @@ export function useOrder(orderId: string | null) {
       if (fetchError) throw fetchError
 
       // Fetch technician assignments separately
-      const { data: assignments } = await supabase
+      const { data: assignments, error: assignmentsError } = await supabase
         .from('work_order_assignments')
         .select(`
           role_in_order,
-          technician:technicians!technician_id(id, full_name)
+          technicians (
+            id,
+            full_name
+          )
         `)
         .eq('service_order_id', orderId)
+
+      if (assignmentsError) {
+        console.error('Error fetching assignments:', assignmentsError)
+      }
 
       // Aggregate technician names
       let technicianNames = 'Unassigned'
@@ -383,6 +390,18 @@ export function useOrder(orderId: string | null) {
       let firstTechnician = null
 
       if (assignments && assignments.length > 0) {
+        const nameForAssignment = (a: any) => {
+          const tech = a.technicians
+          if (Array.isArray(tech)) return tech[0]?.full_name
+          return tech?.full_name
+        }
+
+        const firstTechForAssignment = (a: any) => {
+          const tech = a.technicians
+          if (Array.isArray(tech)) return tech[0] ?? null
+          return tech ?? null
+        }
+
         const hasAnyRole = assignments.some((a: any) => a.role_in_order)
         const primaries = hasAnyRole
           ? assignments.filter((a: any) => (a.role_in_order || 'primary') === 'primary')
@@ -392,18 +411,18 @@ export function useOrder(orderId: string | null) {
           : []
 
         const techNames = primaries
-          .map((a: any) => a.technician?.full_name)
+          .map(nameForAssignment)
           .filter(Boolean)
 
         const assistantNames = assistants
-          .map((a: any) => a.technician?.full_name)
+          .map(nameForAssignment)
           .filter(Boolean)
 
         technicianNames = techNames.length > 0 ? techNames.join(', ') : 'Unassigned'
         technicianCount = techNames.length
         helperNames = assistantNames.length > 0 ? assistantNames.join(', ') : undefined
         helperCount = assistantNames.length
-        firstTechnician = primaries[0]?.technician || assignments[0]?.technician || null
+        firstTechnician = firstTechForAssignment(primaries[0]) || firstTechForAssignment(assignments[0]) || null
       }
 
       // Merge data
