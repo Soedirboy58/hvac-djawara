@@ -28,7 +28,7 @@ function OrderDetailContent() {
   const router = useRouter()
   const orderId = params.id as string
   
-  const { order, loading, error, refetch } = useOrder(orderId)
+  const { order, loading, error, refetch, viewerRole } = useOrder(orderId)
   const { updateOrder } = useUpdateOrder()
   
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | ''>('')
@@ -108,6 +108,8 @@ function OrderDetailContent() {
     )
   }
 
+  const isSalesPartner = viewerRole === 'sales_partner'
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -127,12 +129,14 @@ function OrderDetailContent() {
           <Badge className={statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800'}>
             {statusConfig[order.status]?.label || order.status}
           </Badge>
-          <Link href={`/dashboard/orders/${order.id}/edit`}>
-            <Button variant="outline" size="sm">
-              <Edit className="w-4 h-4 mr-2" />
-              Edit Order
-            </Button>
-          </Link>
+          {!isSalesPartner && (
+            <Link href={`/dashboard/orders/${order.id}/edit`}>
+              <Button variant="outline" size="sm">
+                <Edit className="w-4 h-4 mr-2" />
+                Edit Order
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -143,9 +147,11 @@ function OrderDetailContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Client Information</CardTitle>
-              <Link href={`/dashboard/orders/${order.id}/edit#location`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#location`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-start gap-3">
@@ -178,9 +184,11 @@ function OrderDetailContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Service Details</CardTitle>
-              <Link href={`/dashboard/orders/${order.id}/edit#service-details`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#service-details`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -215,9 +223,11 @@ function OrderDetailContent() {
                 <CardTitle>Project Timeline</CardTitle>
                 <CardDescription>Track order progress and important dates</CardDescription>
               </div>
-              <Link href={`/dashboard/orders/${order.id}/edit#schedule`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#schedule`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent>
               <div className="relative space-y-4 pl-6">
@@ -315,9 +325,11 @@ function OrderDetailContent() {
                 <Users className="w-5 h-5" />
                 Assigned Team
               </CardTitle>
-              <Link href={`/dashboard/orders/${order.id}/edit#assignment`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#assignment`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent>
               {order.assigned_technician_names || order.assigned_helper_names ? (
@@ -356,11 +368,13 @@ function OrderDetailContent() {
                   <p className="text-sm text-amber-800">No technician assigned yet</p>
                 </div>
               )}
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-xs text-gray-500 text-center">
-                  💡 Untuk ubah PIC/Helper, klik tombol <strong>"Edit"</strong> pada section ini
-                </p>
-              </div>
+              {!isSalesPartner && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs text-gray-500 text-center">
+                    💡 Untuk ubah PIC/Helper, klik tombol <strong>"Edit"</strong> pada section ini
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -368,9 +382,11 @@ function OrderDetailContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Notes</CardTitle>
-              <Link href={`/dashboard/orders/${order.id}/edit#notes`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#notes`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent>
               {order.notes ? (
@@ -382,11 +398,13 @@ function OrderDetailContent() {
                   <p className="text-sm text-gray-500">No notes added yet</p>
                 </div>
               )}
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-xs text-gray-500 text-center">
-                  💡 Untuk ubah catatan, klik tombol <strong>"Edit"</strong> pada section ini
-                </p>
-              </div>
+              {!isSalesPartner && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs text-gray-500 text-center">
+                    💡 Untuk ubah catatan, klik tombol <strong>"Edit"</strong> pada section ini
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -397,9 +415,11 @@ function OrderDetailContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Order Status</CardTitle>
-              <Link href={`/dashboard/orders/${order.id}/edit#status`}>
-                <Button variant="outline" size="sm">Edit</Button>
-              </Link>
+              {!isSalesPartner && (
+                <Link href={`/dashboard/orders/${order.id}/edit#status`}>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
@@ -416,11 +436,13 @@ function OrderDetailContent() {
                   </Badge>
                 </div>
               )}
-              <div className="pt-3 border-t">
-                <p className="text-xs text-gray-500 text-center">
-                  💡 Untuk ubah status, klik tombol <strong>"Edit"</strong> pada section ini
-                </p>
-              </div>
+              {!isSalesPartner && (
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-gray-500 text-center">
+                    💡 Untuk ubah status, klik tombol <strong>"Edit"</strong> pada section ini
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

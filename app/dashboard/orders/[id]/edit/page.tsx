@@ -162,6 +162,12 @@ export default function EditOrderPage() {
 
       const viewerRole = (roleRow as any)?.role ?? null
       setViewerRole(viewerRole)
+
+      if (viewerRole === 'sales_partner') {
+        toast.message('Akses mitra sales: hanya lihat detail order')
+        router.replace(`/dashboard/orders/${orderId}`)
+        return
+      }
       
       const { data, error } = await supabase
         .from('service_orders')

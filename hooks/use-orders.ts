@@ -286,6 +286,7 @@ export function useOrder(orderId: string | null) {
   const [order, setOrder] = useState<ServiceOrder | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [viewerRole, setViewerRole] = useState<string | null>(null)
   const supabase = createClient()
 
   const fetchOrder = useCallback(async () => {
@@ -325,6 +326,7 @@ export function useOrder(orderId: string | null) {
       }
 
       const viewerRole = (roleRow as any)?.role ?? null
+      setViewerRole(viewerRole)
 
       let allowedClientIds: string[] | null = null
       if (viewerRole === 'sales_partner') {
@@ -436,6 +438,7 @@ export function useOrder(orderId: string | null) {
     loading,
     error,
     refetch,
+    viewerRole,
   }
 }
 
