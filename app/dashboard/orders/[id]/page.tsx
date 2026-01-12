@@ -141,8 +141,11 @@ function OrderDetailContent() {
         <div className="space-y-6 md:col-span-2">
           {/* Client Information */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Client Information</CardTitle>
+              <Link href={`/dashboard/orders/${order.id}/edit#location`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-start gap-3">
@@ -173,8 +176,11 @@ function OrderDetailContent() {
 
           {/* Service Details */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Service Details</CardTitle>
+              <Link href={`/dashboard/orders/${order.id}/edit#service-details`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -204,9 +210,14 @@ function OrderDetailContent() {
 
           {/* Timeline & Dates */}
           <Card>
-            <CardHeader>
-              <CardTitle>Project Timeline</CardTitle>
-              <CardDescription>Track order progress and important dates</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between">
+              <div className="space-y-1">
+                <CardTitle>Project Timeline</CardTitle>
+                <CardDescription>Track order progress and important dates</CardDescription>
+              </div>
+              <Link href={`/dashboard/orders/${order.id}/edit#schedule`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent>
               <div className="relative space-y-4 pl-6">
@@ -299,11 +310,14 @@ function OrderDetailContent() {
         <div className="space-y-6">
           {/* Assigned Technician Info */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="w-5 h-5" />
                 Assigned Team
               </CardTitle>
+              <Link href={`/dashboard/orders/${order.id}/edit#assignment`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent>
               {order.assigned_technician_names || order.assigned_helper_names ? (
@@ -344,7 +358,7 @@ function OrderDetailContent() {
               )}
               <div className="mt-4 pt-4 border-t">
                 <p className="text-xs text-gray-500 text-center">
-                  💡 To assign or change technicians, click <strong>"Edit Order"</strong> button above
+                  💡 Untuk ubah PIC/Helper, klik tombol <strong>"Edit"</strong> pada section ini
                 </p>
               </div>
             </CardContent>
@@ -352,8 +366,11 @@ function OrderDetailContent() {
 
           {/* Notes Section - Read Only */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Notes</CardTitle>
+              <Link href={`/dashboard/orders/${order.id}/edit#notes`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent>
               {order.notes ? (
@@ -367,7 +384,7 @@ function OrderDetailContent() {
               )}
               <div className="mt-4 pt-4 border-t">
                 <p className="text-xs text-gray-500 text-center">
-                  💡 To add or edit notes, click <strong>"Edit Order"</strong> button above
+                  💡 Untuk ubah catatan, klik tombol <strong>"Edit"</strong> pada section ini
                 </p>
               </div>
             </CardContent>
@@ -378,8 +395,11 @@ function OrderDetailContent() {
         <div className="space-y-6">
           {/* Order Status Info */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Order Status</CardTitle>
+              <Link href={`/dashboard/orders/${order.id}/edit#status`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
@@ -398,7 +418,7 @@ function OrderDetailContent() {
               )}
               <div className="pt-3 border-t">
                 <p className="text-xs text-gray-500 text-center">
-                  💡 To change status, click <strong>"Edit Order"</strong> button above
+                  💡 Untuk ubah status, klik tombol <strong>"Edit"</strong> pada section ini
                 </p>
               </div>
             </CardContent>

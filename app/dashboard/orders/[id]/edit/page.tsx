@@ -13,11 +13,54 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 
-const TIME_SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-  '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
-]
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const hours = Math.floor(i / 2)
+  const minutes = i % 2 === 0 ? '00' : '30'
+  return `${String(hours).padStart(2, '0')}:${minutes}`
+})
+
+type EditSection = 'service-details' | 'location' | 'schedule' | 'assignment' | 'notes' | 'status' | null
+
+const SECTION_IDS = new Set<Exclude<EditSection, null>>([
+  'service-details',
+  'location',
+  'schedule',
+  'assignment',
+  'notes',
+  'status',
+])
+
+const normalizeDateInput = (value: any): string => {
+  if (!value) return ''
+  const str = String(value)
+  // Support ISO datetime (YYYY-MM-DDTHH:mm:ss...) and date-only.
+  return str.length >= 10 ? str.slice(0, 10) : str
+}
+
+const normalizeTimeInput = (value: any): string => {
+  if (!value) return ''
+  const str = String(value)
+  // Support HH:MM:SS and HH:MM.
+  return str.length >= 5 ? str.slice(0, 5) : str
+}
+
+const extractUnitInfoFromNotes = (notes: string): { unit_count: string; unit_category: string } => {
+  const unitCountMatch = notes.match(/Jumlah\s*Unit\s*:\s*(\d+)/i)
+  const unitCategoryMatch = notes.match(/Kategori\s*Unit\s*:\s*([^\n•]+)/i)
+  return {
+    unit_count: unitCountMatch?.[1] ? String(parseInt(unitCountMatch[1], 10)) : '',
+    unit_category: unitCategoryMatch?.[1] ? unitCategoryMatch[1].trim() : '',
+  }
+}
+
+const stripUnitInfoFromNotes = (notes: string): string => {
+  return (notes || '')
+    .replace(/\s*•\s*Kategori\s*Unit\s*:\s*[^\n•]+/gi, '')
+    .replace(/Kategori\s*Unit\s*:\s*[^\n]+\n?/gi, '')
+    .replace(/Jumlah\s*Unit\s*:\s*\d+\n?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 export default function EditOrderPage() {
   const router = useRouter()
@@ -30,6 +73,8 @@ export default function EditOrderPage() {
   const [dataLoading, setDataLoading] = useState(true)
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [supportsUnitFields, setSupportsUnitFields] = useState(false)
+  const [supportsServiceCategoryFields, setSupportsServiceCategoryFields] = useState(false)
+  const [activeSection, setActiveSection] = useState<EditSection>(null)
   const [availableTechnicians, setAvailableTechnicians] = useState<Array<{ id: string; full_name: string; role?: string }>>([])
   const [availableHelpers, setAvailableHelpers] = useState<Array<{ id: string; full_name: string; role?: string }>>([])
   const [selectedTechnicianIds, setSelectedTechnicianIds] = useState<string[]>([])
@@ -38,6 +83,7 @@ export default function EditOrderPage() {
     service_title: '',
     service_description: '',
     order_type: '',
+    service_category_planned: '',
     unit_count: '',
     unit_category: '',
     priority: 'medium',
@@ -54,6 +100,36 @@ export default function EditOrderPage() {
     fetchOrder()
     loadAssignmentData()
   }, [orderId])
+
+  useEffect(() => {
+    if (loading) return
+
+    const syncFromHash = () => {
+      const hash = window.location.hash
+      const id = (hash || '').replace('#', '')
+
+      if (!id) {
+        setActiveSection(null)
+        return
+      }
+
+      const section = SECTION_IDS.has(id as any) ? (id as Exclude<EditSection, null>) : null
+      setActiveSection(section)
+      if (!section) return
+      const el = document.getElementById(id)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    // Try immediately and again shortly after to handle slower renders.
+    syncFromHash()
+    const t = window.setTimeout(syncFromHash, 100)
+    window.addEventListener('hashchange', syncFromHash)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('hashchange', syncFromHash)
+    }
+  }, [loading])
 
   const fetchOrder = async () => {
     try {
@@ -117,22 +193,36 @@ export default function EditOrderPage() {
         .eq('tenant_id', data.tenant_id)
         .limit(1)
 
-      setSupportsUnitFields(!unitFieldProbeError)
+      const unitFieldsEnabled = !unitFieldProbeError
+      setSupportsUnitFields(unitFieldsEnabled)
+
+      const { error: categoryProbeError } = await supabase
+        .from('service_orders')
+        .select('id, service_category_planned')
+        .eq('tenant_id', data.tenant_id)
+        .limit(1)
+
+      setSupportsServiceCategoryFields(!categoryProbeError)
+
+      const rawNotes = (data.notes as string) || ''
+      const extractedUnitInfo = !unitFieldsEnabled ? extractUnitInfoFromNotes(rawNotes) : { unit_count: '', unit_category: '' }
+      const cleanedNotes = !unitFieldsEnabled ? stripUnitInfoFromNotes(rawNotes) : rawNotes
 
       setFormData({
         service_title: data.service_title || '',
         service_description: data.service_description || '',
         order_type: data.order_type || '',
-        unit_count: data.unit_count ? String(data.unit_count) : '',
-        unit_category: data.unit_category || '',
+        service_category_planned: data.service_category_planned || '',
+        unit_count: unitFieldsEnabled ? (data.unit_count ? String(data.unit_count) : '') : extractedUnitInfo.unit_count,
+        unit_category: unitFieldsEnabled ? (data.unit_category || '') : extractedUnitInfo.unit_category,
         priority: data.priority || 'medium',
         status: data.status || '',
         location_address: data.location_address || '',
-        start_date: data.scheduled_date || '',
-        start_time: data.scheduled_time || '',
-        end_date: data.estimated_end_date || '',
-        end_time: data.estimated_end_time || '',
-        notes: data.notes || '',
+        start_date: normalizeDateInput(data.scheduled_date),
+        start_time: normalizeTimeInput(data.scheduled_time),
+        end_date: normalizeDateInput(data.estimated_end_date),
+        end_time: normalizeTimeInput(data.estimated_end_time),
+        notes: cleanedNotes || '',
       })
     } catch (error: any) {
       console.error('Error fetching order:', error)
@@ -140,6 +230,102 @@ export default function EditOrderPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const buildNotesWithUnitFallback = () => {
+    const base = stripUnitInfoFromNotes(formData.notes?.trim() || '')
+    if (supportsUnitFields) return base || null
+
+    const unitCountText = formData.unit_count ? `Jumlah Unit: ${formData.unit_count}` : ''
+    const unitCategoryText = formData.unit_category ? `Kategori Unit: ${formData.unit_category}` : ''
+    const unitInfo = [unitCountText, unitCategoryText].filter(Boolean).join(' • ')
+
+    if (!unitInfo) return base || null
+    if (!base) return unitInfo
+    return `${base}\n\n${unitInfo}`
+  }
+
+  const buildUpdatePayloadForSection = (section: EditSection, isSalesPartner: boolean) => {
+    const updated_at = new Date().toISOString()
+
+    if (!section) {
+      const notesWithUnitFallback = buildNotesWithUnitFallback()
+      const updatePayload: any = {
+        service_title: formData.service_title,
+        service_description: formData.service_description || null,
+        order_type: formData.order_type,
+        ...(supportsServiceCategoryFields
+          ? { service_category_planned: formData.service_category_planned || null }
+          : {}),
+        ...(supportsUnitFields
+          ? {
+              unit_count: formData.unit_count ? parseInt(formData.unit_count) : null,
+              unit_category: formData.unit_category || null,
+            }
+          : {}),
+        priority: formData.priority,
+        location_address: formData.location_address,
+        notes: notesWithUnitFallback,
+        updated_at,
+      }
+
+      if (!isSalesPartner) {
+        updatePayload.status = formData.status
+        updatePayload.scheduled_date = formData.start_date || null
+        updatePayload.scheduled_time = formData.start_time || null
+        updatePayload.estimated_end_date = formData.end_date || null
+        updatePayload.estimated_end_time = formData.end_time || null
+      }
+
+      return updatePayload
+    }
+
+    if (section === 'service-details') {
+      const updatePayload: any = {
+        service_title: formData.service_title,
+        service_description: formData.service_description || null,
+        order_type: formData.order_type,
+        ...(supportsServiceCategoryFields
+          ? { service_category_planned: formData.service_category_planned || null }
+          : {}),
+        ...(supportsUnitFields
+          ? {
+              unit_count: formData.unit_count ? parseInt(formData.unit_count) : null,
+              unit_category: formData.unit_category || null,
+            }
+          : { notes: buildNotesWithUnitFallback() }),
+        priority: formData.priority,
+        updated_at,
+      }
+      return updatePayload
+    }
+
+    if (section === 'status') {
+      if (isSalesPartner) return null
+      return { status: formData.status, updated_at }
+    }
+
+    if (section === 'location') {
+      return { location_address: formData.location_address, updated_at }
+    }
+
+    if (section === 'schedule') {
+      if (isSalesPartner) return null
+      return {
+        scheduled_date: formData.start_date || null,
+        scheduled_time: formData.start_time || null,
+        estimated_end_date: formData.end_date || null,
+        estimated_end_time: formData.end_time || null,
+        updated_at,
+      }
+    }
+
+    if (section === 'notes') {
+      return { notes: buildNotesWithUnitFallback(), updated_at }
+    }
+
+    // assignment is handled separately
+    return null
   }
 
   const loadAssignmentData = async () => {
@@ -290,46 +476,81 @@ export default function EditOrderPage() {
 
       const isSalesPartner = viewerRole === 'sales_partner'
 
-      if (!isSalesPartner && selectedTechnicianIds.length < 1) {
-        toast.error('Minimal pilih 1 teknisi (helper optional)')
+      // In per-section edit mode, only validate/apply the chosen section.
+      if (activeSection === 'assignment') {
+        if (selectedTechnicianIds.length < 1) {
+          toast.error('Minimal pilih 1 teknisi (helper optional)')
+          return
+        }
+
+        const { data: auth } = await supabase.auth.getUser()
+        const assignedBy = auth?.user?.id || null
+
+        const { error: deleteError } = await supabase
+          .from('work_order_assignments')
+          .delete()
+          .eq('service_order_id', orderId)
+
+        if (deleteError) throw deleteError
+
+        const picId = selectedTechnicianIds[0] ?? null
+        const assistantIds = Array.from(new Set(selectedHelperIds)).filter(
+          (id) => Boolean(id) && id !== picId
+        )
+
+        const assignmentsPayload: any[] = []
+        if (picId) {
+          assignmentsPayload.push({
+            service_order_id: orderId,
+            technician_id: picId,
+            assigned_by: assignedBy,
+            status: 'assigned',
+            role_in_order: 'primary',
+          })
+        }
+
+        for (const techId of assistantIds) {
+          assignmentsPayload.push({
+            service_order_id: orderId,
+            technician_id: techId,
+            assigned_by: assignedBy,
+            status: 'assigned',
+            role_in_order: 'assistant',
+          })
+        }
+
+        const { error: insertError } = await supabase
+          .from('work_order_assignments')
+          .insert(assignmentsPayload)
+
+        if (insertError) throw insertError
+
+        // Touch the order so it shows as updated.
+        const { error: touchError } = await supabase
+          .from('service_orders')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', orderId)
+
+        if (touchError) {
+          // best-effort
+          console.warn('Unable to touch service_orders.updated_at:', touchError)
+        }
+
+        toast.success('Assignment updated successfully!')
+        router.push(`/dashboard/orders/${orderId}`)
         return
       }
 
-      const notesWithUnitFallback = (() => {
-        const base = formData.notes?.trim() || ''
-        if (supportsUnitFields) return base || null
-
-        const unitCountText = formData.unit_count ? `Jumlah Unit: ${formData.unit_count}` : ''
-        const unitCategoryText = formData.unit_category ? `Kategori Unit: ${formData.unit_category}` : ''
-        const unitInfo = [unitCountText, unitCategoryText].filter(Boolean).join(' • ')
-
-        if (!unitInfo) return base || null
-        if (!base) return unitInfo
-        return `${base}\n\n${unitInfo}`
-      })()
-
-      const updatePayload: any = {
-        service_title: formData.service_title,
-        service_description: formData.service_description || null,
-        order_type: formData.order_type,
-        ...(supportsUnitFields
-          ? {
-              unit_count: formData.unit_count ? parseInt(formData.unit_count) : null,
-              unit_category: formData.unit_category || null,
-            }
-          : {}),
-        priority: formData.priority,
-        location_address: formData.location_address,
-        notes: notesWithUnitFallback,
-        updated_at: new Date().toISOString(),
+      const updatePayload = buildUpdatePayloadForSection(activeSection, isSalesPartner)
+      if (activeSection && updatePayload === null) {
+        toast.error('Anda tidak punya akses untuk mengedit bagian ini')
+        return
       }
 
-      if (!isSalesPartner) {
-        updatePayload.status = formData.status
-        updatePayload.scheduled_date = formData.start_date || null
-        updatePayload.scheduled_time = formData.start_time || null
-        updatePayload.estimated_end_date = formData.end_date || null
-        updatePayload.estimated_end_time = formData.end_time || null
+      // In full edit mode, assignment is also synced.
+      if (!activeSection && !isSalesPartner && selectedTechnicianIds.length < 1) {
+        toast.error('Minimal pilih 1 teknisi (helper optional)')
+        return
       }
 
       const { error } = await supabase
@@ -339,7 +560,7 @@ export default function EditOrderPage() {
 
       if (error) throw error
 
-      if (!isSalesPartner) {
+      if (!activeSection && !isSalesPartner) {
         // Sync assignments: replace existing with current selection
         const { data: auth } = await supabase.auth.getUser()
         const assignedBy = auth?.user?.id || null
@@ -435,11 +656,13 @@ export default function EditOrderPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Service Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Service Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {(!activeSection || activeSection === 'service-details') && (
+        <div id="service-details" className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Service Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="service_title">Service Title *</Label>
               <Input
@@ -505,7 +728,11 @@ export default function EditOrderPage() {
                 <Label htmlFor="order_type">Service Type *</Label>
                 <Select 
                   value={formData.order_type} 
-                  onValueChange={(value) => setFormData({ ...formData, order_type: value })}
+                  onValueChange={(value) => setFormData({
+                    ...formData,
+                    order_type: value,
+                    service_category_planned: value === 'survey' ? '' : formData.service_category_planned,
+                  })}
                 >
                   <SelectTrigger id="order_type">
                     <SelectValue placeholder="Select type" />
@@ -520,6 +747,51 @@ export default function EditOrderPage() {
                     <SelectItem value="pengadaan">Procurement</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service_category_planned">
+                  {formData.order_type === 'survey' ? 'Kategori Tindak Lanjut (A-D)' : 'Kategori Service (A-D)'}
+                </Label>
+                <Select
+                  value={formData.service_category_planned || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, service_category_planned: value })}
+                  disabled={!supportsServiceCategoryFields}
+                >
+                  <SelectTrigger id="service_category_planned">
+                    <SelectValue
+                      placeholder={
+                        supportsServiceCategoryFields
+                          ? 'Pilih kategori (opsional)'
+                          : 'Belum tersedia (DB belum update)'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">A - Maintenance / Pemeliharaan</SelectItem>
+                    <SelectItem value="B">B - Minor Repair (Electrical/Support)</SelectItem>
+                    <SelectItem value="C">C - Major Repair (Part Utama Unit)</SelectItem>
+                    <SelectItem value="D">D - Sistem Refrigerasi (Vacuum/Refrigerant/Leak)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {formData.order_type === 'survey' ? (
+                  <p className="text-xs text-muted-foreground">
+                    Gunakan kategori ini untuk perbaikan/tindak lanjut setelah checking & penawaran disetujui.
+                  </p>
+                ) : null}
+
+                {formData.service_category_planned ? (
+                  <p className="text-xs text-muted-foreground">
+                    {formData.service_category_planned === 'A'
+                      ? 'A: Maintenance / pemeliharaan rutin (ringan)'
+                      : formData.service_category_planned === 'B'
+                        ? 'B: Minor repair (electrical/support)'
+                        : formData.service_category_planned === 'C'
+                          ? 'C: Major repair (part utama unit)'
+                          : 'D: Sistem refrigerasi (vacuum / refrigerant / leak)'}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -540,15 +812,26 @@ export default function EditOrderPage() {
                 </Select>
               </div>
             </div>
+            </CardContent>
+          </Card>
+        </div>
+        )}
 
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
+        {/* Status (separate section so hash edit can be specific) */}
+        {(!activeSection || activeSection === 'status') && (
+        <div id="status" className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Label htmlFor="status_select">Status</Label>
               <Select 
                 disabled={viewerRole === 'sales_partner'}
                 value={formData.status} 
                 onValueChange={(value) => setFormData({ ...formData, status: value })}
               >
-                <SelectTrigger id="status">
+                <SelectTrigger id="status_select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -559,16 +842,19 @@ export default function EditOrderPage() {
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+        )}
 
         {/* Location */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Location</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {(!activeSection || activeSection === 'location') && (
+        <div id="location" className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Location</CardTitle>
+            </CardHeader>
+            <CardContent>
             <div className="space-y-2">
               <Label htmlFor="location">Service Location *</Label>
               <Textarea
@@ -579,15 +865,19 @@ export default function EditOrderPage() {
                 required
               />
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+        )}
 
         {/* Schedule */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Schedule</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {(!activeSection || activeSection === 'schedule') && (
+        <div id="schedule" className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Schedule</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="start_date">Start Date</Label>
@@ -647,16 +937,19 @@ export default function EditOrderPage() {
                 </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+        )}
 
         {/* Assignment */}
-        {viewerRole !== 'sales_partner' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Assignment</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+        {viewerRole !== 'sales_partner' && (!activeSection || activeSection === 'assignment') && (
+          <div id="assignment" className="scroll-mt-24">
+            <Card>
+              <CardHeader>
+                <CardTitle>Assignment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">PIC (1 orang) wajib. Helper/Assistant optional.</p>
               {dataLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -724,24 +1017,29 @@ export default function EditOrderPage() {
                 })()
               )}
               <p className="text-xs text-muted-foreground">Selected: {selectedTechnicianIds.length ? 1 : 0} PIC, {selectedHelperIds.length} assistant(s)</p>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {(!activeSection || activeSection === 'notes') && (
+        <div id="notes" className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Additional Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
             <Textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={4}
               placeholder="Any additional information..."
             />
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+        )}
 
         {/* Actions */}
         <div className="flex justify-end gap-4">

@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -20,6 +20,14 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
+
+interface SalesPerson {
+  id: string
+  full_name: string
+  role: string
+  partnership_status?: string
+  raw_name?: string
+}
 
 interface EditClientFormProps {
   client: any
@@ -40,6 +48,15 @@ export function EditClientForm({ client, onSave, onCancel }: EditClientFormProps
     company_address_npwp: client.company_address_npwp || '',
     notes_internal: client.notes_internal || '',
   })
+
+  const [referralSelection, setReferralSelection] = useState<string>(
+    client.referred_by_id || client.referred_by_name || ''
+  )
+  const [referralManualName, setReferralManualName] = useState<string>(client.referred_by_name || '')
+  const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([])
+  const [loadingSalesPeople, setLoadingSalesPeople] = useState(false)
+  const [viewerRole, setViewerRole] = useState<string | null>(null)
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null)
   
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(client.avatar_url || null)
@@ -48,6 +65,86 @@ export function EditClientForm({ client, onSave, onCancel }: EditClientFormProps
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const supabase = createClient()
+
+  useEffect(() => {
+    const loadViewerContext = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        if (userError) throw userError
+        if (!user) return
+
+        setViewerUserId(user.id)
+
+        const tenantId = client?.tenant_id
+        if (!tenantId) return
+
+        const { data: roleRow } = await supabase
+          .from('user_tenant_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        const role = (roleRow as any)?.role ?? null
+        setViewerRole(role)
+
+        if (role === 'sales_partner') {
+          // Sales partner shouldn't edit referral; keep behavior consistent with create form.
+          // Also prefill selection to self (for display consistency).
+          setReferralSelection(user.id)
+        }
+      } catch (e) {
+        console.error('Error loading viewer context:', e)
+      }
+    }
+
+    loadViewerContext()
+  }, [supabase, client?.tenant_id])
+
+  useEffect(() => {
+    const fetchSalesPeople = async () => {
+      if (!client?.tenant_id) return
+      if (viewerRole === 'sales_partner') {
+        setSalesPeople([])
+        setLoadingSalesPeople(false)
+        return
+      }
+
+      setLoadingSalesPeople(true)
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('partnership_network')
+          .select('id, full_name, role, partnership_status, user_id')
+          .eq('tenant_id', client.tenant_id)
+          .eq('role', 'sales_partner')
+          .order('full_name')
+
+        if (fetchError) throw fetchError
+
+        const formattedData: SalesPerson[] =
+          data?.map((partner: any) => {
+            const isActive = partner.partnership_status === 'active' && partner.user_id
+            const rawName = String(partner.full_name ?? '').trim()
+            return {
+              id: isActive ? partner.user_id : rawName,
+              full_name: isActive ? rawName : `${rawName} (Passive Partner)`,
+              role: partner.role,
+              partnership_status: partner.partnership_status,
+              raw_name: rawName,
+            }
+          }) ?? []
+
+        setSalesPeople(formattedData)
+      } catch (e) {
+        console.error('Error fetching sales people:', e)
+      } finally {
+        setLoadingSalesPeople(false)
+      }
+    }
+
+    fetchSalesPeople()
+  }, [supabase, client?.tenant_id, viewerRole])
 
   async function handleAvatarSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -130,11 +227,29 @@ export function EditClientForm({ client, onSave, onCancel }: EditClientFormProps
         avatarUrl = await uploadAvatar()
       }
 
+      const normalizedEmail = String(formData.email ?? '').trim() || null
+
+        const manualName = String(referralManualName || '').trim()
+      const selectedPerson = salesPeople.find(p => p.id === referralSelection)
+      const isPassivePartner = selectedPerson?.partnership_status === 'passive'
+
+      const referralData = viewerRole === 'sales_partner'
+        ? {}
+        : (manualName
+          ? { referred_by_id: null, referred_by_name: manualName }
+          : (referralSelection
+            ? (isPassivePartner
+              ? { referred_by_id: null, referred_by_name: selectedPerson?.raw_name ?? null }
+              : { referred_by_id: referralSelection, referred_by_name: null })
+            : { referred_by_id: null, referred_by_name: null }))
+
       const { error: updateError } = await supabase
         .from('clients')
         .update({
           ...formData,
+          email: normalizedEmail,
           avatar_url: avatarUrl,
+          ...referralData,
           updated_at: new Date().toISOString()
         })
         .eq('id', client.id)
@@ -311,6 +426,54 @@ export function EditClientForm({ client, onSave, onCancel }: EditClientFormProps
               />
             </div>
           </div>
+
+          {/* Referral Information */}
+          {viewerRole === 'sales_partner' ? (
+            <div className="space-y-2 pt-4 border-t">
+              <h3 className="font-semibold text-gray-900">Referral Information</h3>
+              <p className="text-sm text-muted-foreground">
+                Referral dinonaktifkan untuk akun sales partner.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-4 border-t">
+              <h3 className="font-semibold text-gray-900">Referral Information</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Referred By (Sales/Marketing)
+                </label>
+                <select
+                  value={referralSelection}
+                  onChange={(e) => {
+                    setReferralSelection(e.target.value)
+                    setReferralManualName('')
+                  }}
+                  disabled={loadingSalesPeople}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50"
+                >
+                  <option value="">-- Select Sales Person (Optional) --</option>
+                  {salesPeople.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.full_name} ({String(person.role ?? '').replace('_', ' ')})
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Atau isi nama referral (manual)
+                  </label>
+                  <Input
+                    value={referralManualName}
+                    onChange={(e) => {
+                      setReferralManualName(e.target.value)
+                      if (e.target.value.trim()) setReferralSelection('')
+                    }}
+                    placeholder="Nama sales/marketing (opsional)"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Business Details (if not residential) */}
           {formData.client_type !== 'rumah_tangga' && (

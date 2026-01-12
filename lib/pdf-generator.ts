@@ -596,7 +596,12 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       return Number.isFinite(n) ? n : v;
     };
 
-    const repeatAcross = (v: any) => [v, v, v, v, v, v];
+    const unitCountForColumns = Math.min(MAX_COLS, Math.max(1, unitCols.length || 0));
+    const repeatAcrossUnits = (v: any) => {
+      const out = new Array(MAX_COLS).fill(undefined);
+      for (let i = 0; i < unitCountForColumns; i++) out[i] = v;
+      return out;
+    };
     const pickUnitValue = (idx: number, key: keyof NonNullable<WorkLogData['ac_units_data']>[number]) => {
       const u = unitCols[idx] as any;
       return u ? u[key] : undefined;
@@ -613,9 +618,9 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
     )
       ? [
           // site-level values (repeated across columns)
-          { label: "Sumber Tegangan", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.power_available) : [undefined, undefined, undefined, undefined, undefined, undefined] },
-          { label: "Jenis Tegangan", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.phase) : [undefined, undefined, undefined, undefined, undefined, undefined] },
-          { label: "Grounding", unit: "-", values: hasDataKinerja ? repeatAcross(dataKinerja.grounding) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+          { label: "Sumber Tegangan", unit: "-", values: hasDataKinerja ? repeatAcrossUnits(dataKinerja.power_available) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+          { label: "Jenis Tegangan", unit: "-", values: hasDataKinerja ? repeatAcrossUnits(dataKinerja.phase) : [undefined, undefined, undefined, undefined, undefined, undefined] },
+          { label: "Grounding", unit: "-", values: hasDataKinerja ? repeatAcrossUnits(dataKinerja.grounding) : [undefined, undefined, undefined, undefined, undefined, undefined] },
 
           // per-unit measurements
           { label: "Tegangan", unit: "V", values: unitValues("voltage_supply").map((v) => asNumberOrText(v as any)) },

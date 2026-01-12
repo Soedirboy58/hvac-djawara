@@ -49,143 +49,27 @@ export default function PreviewPDFPage() {
         router.push("/technician/login");
         return;
       }
-      
-      const { data: techData } = await supabase
-        .from('technicians')
-        .select('id, full_name')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (!techData) {
-        toast.error("Teknisi tidak ditemukan");
-        return;
-      }
-      
-      // Fetch work log with all data
-      const { data: workLog, error } = await supabase
-        .from('technician_work_logs')
-        .select('*')
-        .eq('service_order_id', orderId)
-        .eq('technician_id', techData.id)
-        .order('completed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error || !workLog) {
-        toast.error("Data teknis tidak ditemukan");
-        router.push("/technician/dashboard");
-        return;
-      }
-      
-      // Fetch order data
-      const { data: order } = await supabase
-        .from('service_orders')
-        .select(`
-          *,
-          clients (
-            name,
-            address,
-            phone
-          )
-        `)
-        .eq('id', orderId)
-        .single();
-      
-      if (order) {
-        setOrderData(order);
-        
-        // Generate PDF
-        const pdfBlob = await generateTechnicalReportPDF({
-          order_number: order.order_number,
-          service_title: order.service_title,
-          client_name: order.clients?.name,
-          location: order.location_address || order.clients?.address,
-          scheduled_date: order.scheduled_date,
-          technician_name: techData.full_name || workLog.signature_technician_name,
 
-          problem: workLog.problem,
-          tindakan: workLog.tindakan,
-          rincian_pekerjaan: workLog.rincian_pekerjaan,
-          rincian_kerusakan: workLog.rincian_kerusakan,
-          catatan_rekomendasi: workLog.catatan_rekomendasi,
-          catatan_perbaikan: workLog.catatan_perbaikan,
-          lama_kerja: workLog.lama_kerja,
-          jarak_tempuh: workLog.jarak_tempuh,
-          lain_lain: workLog.lain_lain,
-          signature_technician: workLog.signature_technician,
-          signature_client: workLog.signature_client,
-          signature_technician_name: workLog.signature_technician_name,
-          signature_client_name: workLog.signature_client_name,
-          signature_date: workLog.signature_date,
-          photos: workLog.documentation_photos || [],
-          photo_captions: workLog.photo_captions || [],
-          work_type: workLog.work_type,
-          check_type: workLog.check_type,
-          ac_units_data: workLog.ac_units_data || [],
-          maintenance_units_data: workLog.maintenance_units_data || [],
-
-          // Installation/measurement fields (stored as columns)
-          mcb_1: workLog.mcb_1,
-          mcb_2: workLog.mcb_2,
-          mcb_3: workLog.mcb_3,
-          mcb_4: workLog.mcb_4,
-          mcb_5: workLog.mcb_5,
-          volt_1: workLog.volt_1,
-          volt_2: workLog.volt_2,
-          volt_3: workLog.volt_3,
-          volt_4: workLog.volt_4,
-          volt_5: workLog.volt_5,
-          ampere_total_1: workLog.ampere_total_1,
-          ampere_total_2: workLog.ampere_total_2,
-          ampere_total_3: workLog.ampere_total_3,
-          ampere_total_4: workLog.ampere_total_4,
-          ampere_total_5: workLog.ampere_total_5,
-          ampere_kompressor_1: workLog.ampere_kompressor_1,
-          ampere_kompressor_2: workLog.ampere_kompressor_2,
-          ampere_kompressor_3: workLog.ampere_kompressor_3,
-          ampere_kompressor_4: workLog.ampere_kompressor_4,
-          ampere_kompressor_5: workLog.ampere_kompressor_5,
-          ampere_kipas_1: workLog.ampere_kipas_1,
-          ampere_kipas_2: workLog.ampere_kipas_2,
-          ampere_kipas_3: workLog.ampere_kipas_3,
-          ampere_kipas_4: workLog.ampere_kipas_4,
-          ampere_kipas_5: workLog.ampere_kipas_5,
-          tekanan_tinggi_1: workLog.tekanan_tinggi_1,
-          tekanan_tinggi_2: workLog.tekanan_tinggi_2,
-          tekanan_tinggi_3: workLog.tekanan_tinggi_3,
-          tekanan_tinggi_4: workLog.tekanan_tinggi_4,
-          tekanan_tinggi_5: workLog.tekanan_tinggi_5,
-          tekanan_rendah_1: workLog.tekanan_rendah_1,
-          tekanan_rendah_2: workLog.tekanan_rendah_2,
-          tekanan_rendah_3: workLog.tekanan_rendah_3,
-          tekanan_rendah_4: workLog.tekanan_rendah_4,
-          tekanan_rendah_5: workLog.tekanan_rendah_5,
-          kondensor_in_out_1: workLog.kondensor_in_out_1,
-          kondensor_in_out_2: workLog.kondensor_in_out_2,
-          kondensor_in_out_3: workLog.kondensor_in_out_3,
-          kondensor_in_out_4: workLog.kondensor_in_out_4,
-          kondensor_in_out_5: workLog.kondensor_in_out_5,
-          evaporator_in_out_1: workLog.evaporator_in_out_1,
-          evaporator_in_out_2: workLog.evaporator_in_out_2,
-          evaporator_in_out_3: workLog.evaporator_in_out_3,
-          evaporator_in_out_4: workLog.evaporator_in_out_4,
-          evaporator_in_out_5: workLog.evaporator_in_out_5,
-          temp_ruang_1: workLog.temp_ruang_1,
-          temp_ruang_2: workLog.temp_ruang_2,
-          temp_ruang_3: workLog.temp_ruang_3,
-          temp_ruang_4: workLog.temp_ruang_4,
-          temp_ruang_5: workLog.temp_ruang_5,
-        });
-
-        const url = URL.createObjectURL(pdfBlob);
-        setPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
+      // IMPORTANT: Use the same API as client document downloads.
+      // This avoids accidentally selecting an empty check-in/out log and ensures spareparts/photos/signatures are included.
+      const response = await fetch(`/api/reports/${orderId}/pdf`, { cache: 'no-store' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({} as any));
+        throw new Error(errorData?.error || 'Data teknis tidak ditemukan');
       }
+
+      const reportData = await response.json();
+      setOrderData({ order_number: reportData.orderNumber || reportData.order_number || '' });
+
+      const pdfBlob = await generateTechnicalReportPDF(reportData);
+      const url = URL.createObjectURL(pdfBlob);
+      setPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
     } catch (error) {
       console.error('Error loading PDF:', error);
-      toast.error("Gagal memuat PDF");
+      toast.error(error instanceof Error ? error.message : "Gagal memuat PDF");
     } finally {
       setLoading(false);
     }

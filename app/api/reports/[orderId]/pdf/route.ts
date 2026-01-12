@@ -38,41 +38,81 @@ export async function GET(
 
     const picTechnicianIds = (picAssignments || []).map((r: any) => r.technician_id).filter(Boolean)
 
-    // Fetch work log with all data using admin client (bypasses RLS)
-    let workLogQuery = supabaseAdmin
-      .from('technician_work_logs')
-      .select(`
-        *,
-        service_orders (
-          order_number,
-          service_title,
-          location_address,
-          scheduled_date,
-          clients (
-            name,
-            phone,
-            email,
-            address,
-            client_type
-          )
-        ),
-        technicians (
-          full_name
+    const workLogSelect = `
+      *,
+      service_orders (
+        order_number,
+        service_title,
+        location_address,
+        scheduled_date,
+        clients (
+          name,
+          phone,
+          email,
+          address,
+          client_type
         )
-      `)
-      .eq('service_order_id', orderId)
+      ),
+      technicians (
+        full_name
+      )
+    `
 
-    if (picTechnicianIds.length > 0) {
-      workLogQuery = workLogQuery.in('technician_id', picTechnicianIds)
+    const baseWorkLogQuery = (restrictToPic: boolean) => {
+      let q = supabaseAdmin
+        .from('technician_work_logs')
+        .select(workLogSelect)
+        .eq('service_order_id', orderId)
+
+      if (restrictToPic && picTechnicianIds.length > 0) {
+        q = q.in('technician_id', picTechnicianIds)
+      }
+
+      return q
     }
 
-    const { data: workLog, error } = await workLogQuery
-      .order('completed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const fetchLatestWorkLog = async (
+      restrictToPic: boolean,
+      decorate: (q: ReturnType<typeof baseWorkLogQuery>) => ReturnType<typeof baseWorkLogQuery>
+    ) => {
+      const { data, error } = await decorate(baseWorkLogQuery(restrictToPic))
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Work log lookup failed:', error)
+      }
+
+      return data || null
+    }
+
+    // IMPORTANT: Only use technical report logs for BAST generation.
+    // Otherwise, other log types (attendance/check-in/out/etc) could be selected and cause empty BAST.
+    let workLog =
+      (await fetchLatestWorkLog(true, (q) => q.eq('log_type', 'technical_report').eq('report_type', 'bast')))
+      ?? (await fetchLatestWorkLog(false, (q) => q.eq('log_type', 'technical_report').eq('report_type', 'bast')))
+      ?? (await fetchLatestWorkLog(true, (q) => q.eq('log_type', 'technical_report')))
+      ?? (await fetchLatestWorkLog(false, (q) => q.eq('log_type', 'technical_report')))
+
+    // Legacy fallback: older rows may not have log_type/report_type set.
+    // Pick the most recent row that looks like a report to avoid check-in/out logs.
+    if (!workLog) {
+      const reportLikeOr = [
+        'signature_technician.not.is.null',
+        'signature_client.not.is.null',
+        'documentation_photos.not.is.null',
+        'rincian_pekerjaan.not.is.null',
+        'rincian_kerusakan.not.is.null',
+      ].join(',')
+
+      workLog =
+        (await fetchLatestWorkLog(true, (q) => q.or(reportLikeOr)))
+        ?? (await fetchLatestWorkLog(false, (q) => q.or(reportLikeOr)))
+    }
     
-    if (error || !workLog) {
-      console.error('Work log not found:', error);
+    if (!workLog) {
+      console.error('Work log not found: no matching technical report')
       return NextResponse.json(
         { error: 'Technical report not found' },
         { status: 404 }

@@ -9,6 +9,14 @@ export type InvoicePdfCompany = {
   paymentLines?: string[]
   signName?: string
   signTitle?: string
+
+  // Document branding (kop) assets (URL or data URL)
+  logoUrl?: string
+  stampUrl?: string
+  signatureImageUrl?: string
+
+  // Visual tuning
+  signatureScale?: number
 }
 
 export type InvoicePdfBillTo = {
@@ -50,6 +58,43 @@ function formatRupiahNumber(value: number) {
 function clampInt(n: number) {
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.floor(n))
+}
+
+function clampNumber(n: number, min: number, max: number) {
+  if (!Number.isFinite(n)) return min
+  return Math.min(max, Math.max(min, n))
+}
+
+function wrapAndClampLines(doc: jsPDF, parts: string[], maxWidth: number, maxLines: number) {
+  const lines: string[] = []
+  for (const p of parts) {
+    const text = String(p || '').trim()
+    if (!text) continue
+    const wrapped = doc.splitTextToSize(text, maxWidth) as string[]
+    for (const w of wrapped) {
+      const t = String(w || '').trim()
+      if (!t) continue
+      lines.push(t)
+      if (lines.length >= maxLines) break
+    }
+    if (lines.length >= maxLines) break
+  }
+
+  if (lines.length <= maxLines) return lines
+  return lines.slice(0, maxLines)
+}
+
+function withEllipsis(doc: jsPDF, text: string, maxWidth: number) {
+  const t = String(text || '').trim()
+  if (!t) return t
+  if (doc.getTextWidth(t) <= maxWidth) return t
+
+  const ell = '…'
+  let s = t
+  while (s.length > 0 && doc.getTextWidth(s + ell) > maxWidth) {
+    s = s.slice(0, -1)
+  }
+  return s ? s + ell : ell
 }
 
 // Very small Indonesian "terbilang" helper for invoice totals.
@@ -101,6 +146,37 @@ function terbilang(n: number): string {
   return toWords(x).trim()
 }
 
+// Helper to load remote images as base64 (for jsPDF addImage)
+function loadImage(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('Failed to get canvas context'))
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+async function resolveImageDataUrl(urlOrDataUrl?: string): Promise<string | null> {
+  const v = String(urlOrDataUrl || '').trim()
+  if (!v) return null
+  if (v.startsWith('data:image/')) return v
+  try {
+    return await loadImage(v)
+  } catch (e) {
+    console.warn('Failed to load image for PDF:', e)
+    return null
+  }
+}
+
 export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -110,6 +186,16 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   let y = 18
 
   // Title
+  // Optional logo (kop)
+  const logoDataUrl = await resolveImageDataUrl(data.company.logoUrl)
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', left, 10, 18, 18)
+    } catch (e) {
+      console.warn('Failed to add logo image:', e)
+    }
+  }
+
   doc.setFontSize(16)
   doc.setFont('helvetica', 'bold')
   doc.text('INVOICE', pageWidth / 2, y, { align: 'center' })
@@ -132,41 +218,81 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   // Bill to box (left)
   y += 10
   doc.setFontSize(9)
-  doc.text('Tagihan Kepada', left, y)
-  y += 3
-
-  const boxTop = y
   const boxW = (right - left - 10) / 2
   const boxH = 28
+
+  const pad = 3
+  const contentMaxW = boxW - pad * 2
+  const lineH = 4
+
+  const infoTitleY = y
+
+  // Titles (keep aligned)
+  doc.text('Tagihan Kepada', left, infoTitleY)
+
+  // Company box (right)
+  const companyLeft = left + boxW + 10
+  doc.text('Informasi Perusahaan', companyLeft, infoTitleY)
+
+  const boxTop = infoTitleY + 3
   doc.rect(left, boxTop, boxW, boxH)
 
   doc.setFont('helvetica', 'bold')
   doc.text(data.billTo.name || '-', left + 3, boxTop + 6)
   doc.setFont('helvetica', 'normal')
-  if (data.billTo.address) doc.text(`Jl. ${data.billTo.address}`, left + 3, boxTop + 12)
-  if (data.billTo.phone) doc.text(`Telp: ${data.billTo.phone}`, left + 3, boxTop + 18)
 
-  // Company box (right)
-  const companyLeft = left + boxW + 10
-  doc.text('Informasi Perusahaan', companyLeft, y)
-  y += 3
+  const billPhoneY = boxTop + boxH - 5
+  const billAddrStartY = boxTop + 12
+  const billAddrMaxLines = Math.max(1, Math.floor(((billPhoneY - 1) - billAddrStartY) / lineH))
+  const billAddrParts = data.billTo.address ? [`Jl. ${data.billTo.address}`] : []
+  const billAddrLines = wrapAndClampLines(doc, billAddrParts, contentMaxW, billAddrMaxLines)
+  let by = billAddrStartY
+  for (let i = 0; i < billAddrLines.length; i++) {
+    const isLast = i === billAddrLines.length - 1
+    const line = isLast ? withEllipsis(doc, billAddrLines[i], contentMaxW) : billAddrLines[i]
+    doc.text(line, left + pad, by)
+    by += lineH
+  }
+
+  if (data.billTo.phone) {
+    doc.text(withEllipsis(doc, `Telp: ${data.billTo.phone}`, contentMaxW), left + pad, billPhoneY)
+  }
 
   doc.rect(companyLeft, boxTop, boxW, boxH)
   doc.setFont('helvetica', 'bold')
   doc.text(data.company.name, companyLeft + 3, boxTop + 6)
   doc.setFont('helvetica', 'normal')
 
+  const hasPhone = Boolean(data.company.phone)
+  const hasEmail = Boolean(data.company.email)
+
+  // Put contacts at the bottom; if both exist, combine into one line to free vertical space for address.
+  const contactLines: string[] = []
+  if (hasPhone && hasEmail) {
+    contactLines.push(`Telp: ${data.company.phone} | Email: ${data.company.email}`)
+  } else {
+    if (hasPhone) contactLines.push(`Telp: ${data.company.phone}`)
+    if (hasEmail) contactLines.push(`Email: ${data.company.email}`)
+  }
+
+  const contactBottomY = boxTop + boxH - 2
+  const contactStartY = contactBottomY - (contactLines.length - 1) * lineH
+  for (let i = 0; i < contactLines.length; i++) {
+    doc.text(withEllipsis(doc, contactLines[i], contentMaxW), companyLeft + pad, contactStartY + i * lineH)
+  }
+
   const addrLines = data.company.addressLines || []
-  let cy = boxTop + 12
-  for (const line of addrLines.slice(0, 2)) {
-    doc.text(line, companyLeft + 3, cy)
-    cy += 5
-  }
-  if (data.company.phone) {
-    doc.text(`Telp: ${data.company.phone}`, companyLeft + 3, boxTop + 22)
-  }
-  if (data.company.email) {
-    doc.text(`Email: ${data.company.email}`, companyLeft + 3, boxTop + 27)
+  const addrStartY = boxTop + 12
+  const addrMaxBottom = contactLines.length > 0 ? contactStartY - 1 : contactBottomY - 1
+  const addrMaxLines = Math.max(1, Math.floor((addrMaxBottom - addrStartY) / lineH))
+  const addrWrapped = wrapAndClampLines(doc, addrLines, contentMaxW, addrMaxLines)
+
+  let cy = addrStartY
+  for (let i = 0; i < addrWrapped.length; i++) {
+    const isLast = i === addrWrapped.length - 1
+    const line = isLast ? withEllipsis(doc, addrWrapped[i], contentMaxW) : addrWrapped[i]
+    doc.text(line, companyLeft + pad, cy)
+    cy += lineH
   }
 
   y = boxTop + boxH + 8
@@ -197,11 +323,11 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
     head: [[
       'No.',
       'Deskripsi',
-      'Kuantitas',
+      'Qty',
       'Satuan',
-      'Diskon',
-      'Pajak',
-      'Harga / Unit',
+      'Disc',
+      'Tax',
+      'Harga/Unit',
       'Jumlah',
     ]],
     body,
@@ -214,14 +340,16 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
       fillColor: [255, 255, 255],
       textColor: [0, 0, 0],
       lineWidth: 0.2,
+      halign: 'center',
+      valign: 'middle',
     },
     columnStyles: {
       0: { cellWidth: 8 },
-      2: { cellWidth: 16, halign: 'right' },
+      2: { cellWidth: 14, halign: 'right' },
       3: { cellWidth: 14 },
       4: { cellWidth: 12, halign: 'right' },
-      5: { cellWidth: 10, halign: 'right' },
-      6: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 12, halign: 'right' },
+      6: { cellWidth: 24, halign: 'right' },
       7: { cellWidth: 24, halign: 'right' },
     },
   })
@@ -325,11 +453,48 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
     py += 4
   }
 
-  doc.text('Dengan Hormat,', right - 55, y + 6)
+  const sigX = right - 55
+  doc.text('Dengan Hormat,', sigX, y + 6)
+
+  // Optional stamp + signature image
+  const stampDataUrl = await resolveImageDataUrl(data.company.stampUrl)
+  const signatureDataUrl = await resolveImageDataUrl(data.company.signatureImageUrl)
+  if (stampDataUrl) {
+    try {
+      doc.addImage(stampDataUrl, 'PNG', sigX + 28, y + 10, 22, 22)
+    } catch (e) {
+      console.warn('Failed to add stamp image:', e)
+    }
+  }
+  if (signatureDataUrl) {
+    try {
+      const scale = clampNumber(Number(data.company.signatureScale ?? 1), 0.2, 3)
+      let w = 40 * scale
+      let h = 14 * scale
+
+      const maxW = 55
+      const maxH = 16
+      if (w > maxW) {
+        const r = maxW / w
+        w *= r
+        h *= r
+      }
+      if (h > maxH) {
+        const r = maxH / h
+        w *= r
+        h *= r
+      }
+
+      doc.addImage(signatureDataUrl, 'PNG', sigX, y + 14, w, h)
+    } catch (e) {
+      console.warn('Failed to add signature image:', e)
+    }
+  }
+
   doc.setFont('helvetica', 'bold')
-  doc.text(data.company.signName || data.company.name, right - 55, y + 28)
+  doc.text(data.company.signName || data.company.name, sigX, y + 32)
   doc.setFont('helvetica', 'normal')
-  if (data.company.signTitle) doc.text(data.company.signTitle, right - 55, y + 33)
+  if (data.company.signTitle) doc.text(data.company.signTitle, sigX, y + 37)
 
   return doc.output('blob') as Blob
 }

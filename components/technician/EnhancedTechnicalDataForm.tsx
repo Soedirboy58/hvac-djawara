@@ -50,6 +50,17 @@ type DataKinerjaForm = {
   lain_lain: string;
 };
 
+type ServiceCategory = '' | 'A' | 'B' | 'C' | 'D';
+
+type PartsCatalogItem = {
+  id: string;
+  name: string;
+  part_code: string | null;
+  default_unit: string | null;
+  availability_status: string | null;
+  category_hint: string | null;
+};
+
 export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuccess }: TechnicalDataFormProps) {
   // Work type selection
   const [workType, setWorkType] = useState<string>("");
@@ -146,6 +157,27 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
   const [roleInOrder, setRoleInOrder] = useState<string | null>(null);
   const [isPicInOrder, setIsPicInOrder] = useState<boolean>(true);
 
+  const [orderType, setOrderType] = useState<string>('');
+
+  const [supportsServiceCategoryFields, setSupportsServiceCategoryFields] = useState<boolean>(false);
+  const [serviceCategoryPlanned, setServiceCategoryPlanned] = useState<ServiceCategory>('');
+  const [serviceCategoryActual, setServiceCategoryActual] = useState<ServiceCategory>('');
+
+  const [supportsPartsCatalog, setSupportsPartsCatalog] = useState<boolean>(false);
+  const [partsCatalog, setPartsCatalog] = useState<PartsCatalogItem[]>([]);
+  const [loadingPartsCatalog, setLoadingPartsCatalog] = useState<boolean>(false);
+
+  const serviceCategoryDescriptions: Record<string, string> = {
+    A: 'Maintenance / pemeliharaan rutin (ringan)'
+      ,
+    B: 'Minor repair (electrical/support)'
+      ,
+    C: 'Major repair (part utama unit)'
+      ,
+    D: 'Sistem refrigerasi (vacuum / refrigerant / leak)'
+      ,
+  };
+
   // Fetch and auto-populate order data
   useEffect(() => {
     fetchOrderData();
@@ -179,6 +211,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       if (error) throw error;
       
       if (orderData) {
+        setOrderType(String((orderData as any)?.order_type || ''));
+
         // Auto-populate form with order data
         setFormData(prev => ({
           ...prev,
@@ -191,6 +225,49 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         }));
         
         setClientName(orderData.clients?.name || "");
+
+        // Probe support for new service category fields (backward compatible)
+        try {
+          const probe = await supabase
+            .from('service_orders')
+            .select('service_category_planned, service_category_actual')
+            .eq('id', orderId)
+            .limit(1);
+
+          const supports = !probe.error;
+          setSupportsServiceCategoryFields(supports);
+          if (supports) {
+            const planned = String((orderData as any)?.service_category_planned || '').toUpperCase() as ServiceCategory;
+            const actual = String((orderData as any)?.service_category_actual || '').toUpperCase() as ServiceCategory;
+            setServiceCategoryPlanned(planned);
+            setServiceCategoryActual(actual);
+          }
+        } catch {
+          setSupportsServiceCategoryFields(false);
+        }
+
+        // Load parts catalog (no pricing) - keep graceful if table doesn't exist yet
+        try {
+          setLoadingPartsCatalog(true);
+          const { data: parts, error: partsError } = await supabase
+            .from('parts_catalog')
+            .select('id, name, part_code, default_unit, availability_status, category_hint')
+            .eq('is_active', true)
+            .order('name', { ascending: true });
+
+          if (partsError) {
+            setSupportsPartsCatalog(false);
+            setPartsCatalog([]);
+          } else {
+            setSupportsPartsCatalog(true);
+            setPartsCatalog((parts || []) as any);
+          }
+        } catch {
+          setSupportsPartsCatalog(false);
+          setPartsCatalog([]);
+        } finally {
+          setLoadingPartsCatalog(false);
+        }
       }
       
       // Fetch technician name
@@ -241,15 +318,74 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
         setAssignmentId(null);
       }
       
-      // Load latest work log row (prefer the one created by check-in)
-      const { data: existingWorkLog } = await supabase
+      // Load latest BAST technical report (not check-in/out logs).
+      // Prefer PIC (primary) work log so edits always update the same record used by BAST.
+      let picTechnicianIds: string[] = [];
+      try {
+        const { data: picAssignments } = await supabase
+          .from('work_order_assignments')
+          .select('technician_id')
+          .eq('service_order_id', orderId)
+          .eq('role_in_order', 'primary');
+        picTechnicianIds = (picAssignments || []).map((r: any) => r.technician_id).filter(Boolean);
+      } catch {
+        picTechnicianIds = [];
+      }
+
+      const reportLikeFilter = [
+        'signature_technician.not.is.null',
+        'signature_client.not.is.null',
+        'documentation_photos.not.is.null',
+        'rincian_pekerjaan.not.is.null',
+        'rincian_kerusakan.not.is.null',
+      ].join(',');
+
+      let existingWorkLog: any | null = null;
+
+      // 1) Preferred: explicitly tagged BAST technical report.
+      let existingWorkLogQuery = supabase
         .from('technician_work_logs')
         .select('*')
         .eq('service_order_id', orderId)
-        .eq('technician_id', technicianId)
+        .eq('log_type', 'technical_report')
+        .eq('report_type', 'bast');
+
+      if (picTechnicianIds.length > 0) {
+        existingWorkLogQuery = existingWorkLogQuery.in('technician_id', picTechnicianIds);
+      } else {
+        existingWorkLogQuery = existingWorkLogQuery.eq('technician_id', technicianId);
+      }
+
+      const { data: taggedLog } = await existingWorkLogQuery
+        .order('completed_at', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      existingWorkLog = taggedLog || null;
+
+      // 2) Fallback for legacy data: pick the most recent report-like row (avoid check-in/out logs).
+      if (!existingWorkLog) {
+        let legacyQuery = supabase
+          .from('technician_work_logs')
+          .select('*')
+          .eq('service_order_id', orderId)
+          .or(reportLikeFilter);
+
+        if (picTechnicianIds.length > 0) {
+          legacyQuery = legacyQuery.in('technician_id', picTechnicianIds);
+        } else {
+          legacyQuery = legacyQuery.eq('technician_id', technicianId);
+        }
+
+        const { data: legacyLog } = await legacyQuery
+          .order('completed_at', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        existingWorkLog = legacyLog || null;
+      }
       
       if (existingWorkLog) {
         console.log('Found existing work log, loading data...');
@@ -429,6 +565,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
             file: null as any, // existing photo, no file
             preview: url,
             caption: existingWorkLog.photo_captions?.[idx] || "",
+            uploading: false,
+            uploaded: true,
           }));
           setPhotos(loadedPhotos);
         }
@@ -461,6 +599,8 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
     }
   };
 
+  const isSurveyOrder = String(orderType || '').toLowerCase() === 'survey';
+
   const addRouteSegment = () => {
     setRouteSegments(prev => ([
       ...prev,
@@ -487,6 +627,48 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
 
   const updateAcUnit = (id: string, patch: Partial<ACUnitData>) => {
     setAcUnits(prev => prev.map(u => (u.id === id ? ({ ...u, ...patch }) : u)));
+  };
+
+  const addRecommendedPartLine = (unitId: string) => {
+    setAcUnits(prev => prev.map(u => {
+      if (u.id !== unitId) return u;
+      const current = Array.isArray(u.recommended_parts) ? u.recommended_parts : [];
+      const next = [
+        ...current,
+        {
+          line_id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          part_id: '',
+          part_name: '',
+          quantity: 1,
+          unit: 'pcs',
+          notes: '',
+        },
+      ];
+      return { ...u, recommended_parts: next };
+    }));
+  };
+
+  const removeRecommendedPartLine = (unitId: string, lineId: string) => {
+    setAcUnits(prev => prev.map(u => {
+      if (u.id !== unitId) return u;
+      const current = Array.isArray(u.recommended_parts) ? u.recommended_parts : [];
+      return { ...u, recommended_parts: current.filter(l => l.line_id !== lineId) };
+    }));
+  };
+
+  const updateRecommendedPartLine = (
+    unitId: string,
+    lineId: string,
+    patch: Partial<NonNullable<ACUnitData['recommended_parts']>[number]>
+  ) => {
+    setAcUnits(prev => prev.map(u => {
+      if (u.id !== unitId) return u;
+      const current = Array.isArray(u.recommended_parts) ? u.recommended_parts : [];
+      return {
+        ...u,
+        recommended_parts: current.map(l => (l.line_id === lineId ? { ...l, ...patch } : l)),
+      };
+    }));
   };
 
   // Keep `lain_lain` in sync with Data Kinerja (for storage + PDF output)
@@ -902,14 +1084,73 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
       });
       
       // Check if work log exists
-      const { data: existingLog } = await supabase
+      let picTechnicianIds: string[] = [];
+      try {
+        const { data: picAssignments } = await supabase
+          .from('work_order_assignments')
+          .select('technician_id')
+          .eq('service_order_id', orderId)
+          .eq('role_in_order', 'primary');
+        picTechnicianIds = (picAssignments || []).map((r: any) => r.technician_id).filter(Boolean);
+      } catch {
+        picTechnicianIds = [];
+      }
+
+      const reportLikeFilter = [
+        'signature_technician.not.is.null',
+        'signature_client.not.is.null',
+        'documentation_photos.not.is.null',
+        'rincian_pekerjaan.not.is.null',
+        'rincian_kerusakan.not.is.null',
+      ].join(',');
+
+      let existingLogQuery = supabase
         .from("technician_work_logs")
         .select("id, check_in_time, check_out_time")
         .eq("service_order_id", orderId)
-        .eq("technician_id", technicianId)
+        .eq('log_type', 'technical_report')
+        .eq('report_type', 'bast');
+
+      if (picTechnicianIds.length > 0) {
+        existingLogQuery = existingLogQuery.in('technician_id', picTechnicianIds);
+      } else {
+        existingLogQuery = existingLogQuery.eq("technician_id", technicianId);
+      }
+
+      let { data: existingLog } = await existingLogQuery
+        .order('completed_at', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Fallback: if no tagged report exists yet, try to update the latest legacy report-like row.
+      if (!existingLog) {
+        let legacyLogQuery = supabase
+          .from('technician_work_logs')
+          .select('id, check_in_time, check_out_time')
+          .eq('service_order_id', orderId)
+          .or(reportLikeFilter);
+
+        if (picTechnicianIds.length > 0) {
+          legacyLogQuery = legacyLogQuery.in('technician_id', picTechnicianIds);
+        } else {
+          legacyLogQuery = legacyLogQuery.eq('technician_id', technicianId);
+        }
+
+        const { data: legacyExisting } = await legacyLogQuery
+          .order('completed_at', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        existingLog = legacyExisting || null;
+
+        // If we are updating a legacy row, ensure the row gets tagged so future loads/BAST pick it.
+        if (existingLog) {
+          (workLogData as any).log_type = 'technical_report';
+          (workLogData as any).report_type = 'bast';
+        }
+      }
       
       let workLogId;
       
@@ -970,12 +1211,15 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           console.log('✓ Set check_out_time');
         }
         
-        // Update service order status to completed
+        // Update service order status to completed (+ optional service_category_actual)
+        const orderPatch: any = { status: 'completed' };
+        if (supportsServiceCategoryFields && serviceCategoryActual && !isSurveyOrder) {
+          orderPatch.service_category_actual = serviceCategoryActual;
+        }
+
         const { error: orderUpdateError } = await supabase
           .from('service_orders')
-          .update({ 
-            status: 'completed'
-          })
+          .update(orderPatch)
           .eq('id', orderId);
         
         if (orderUpdateError) {
@@ -1628,6 +1872,159 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           <CardTitle className="text-lg">Laporan Data Teknis</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {supportsServiceCategoryFields && !isSurveyOrder ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Kategori Planned (A–D)</Label>
+                <Input value={serviceCategoryPlanned || '-'} readOnly />
+              </div>
+              <div>
+                <Label>Kategori Aktual (A–D)</Label>
+                <Select
+                  value={serviceCategoryActual}
+                  onValueChange={(v) => setServiceCategoryActual((v || '') as ServiceCategory)}
+                  disabled={!isPicInOrder}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">A</SelectItem>
+                    <SelectItem value="B">B</SelectItem>
+                    <SelectItem value="C">C</SelectItem>
+                    <SelectItem value="D">D</SelectItem>
+                  </SelectContent>
+                </Select>
+                {serviceCategoryActual ? (
+                  <p className="text-xs text-muted-foreground mt-1">{serviceCategoryDescriptions[String(serviceCategoryActual)] || ''}</p>
+                ) : null}
+                {!isPicInOrder ? (
+                  <p className="text-xs text-muted-foreground mt-1">Hanya PIC yang dapat mengubah kategori aktual.</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Per-unit outcome + recommendation + parts (catalog only) */}
+          {acUnits.length > 0 ? (
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Hasil per Unit & Rekomendasi Penawaran</div>
+              {acUnits.slice(0, 6).map((unit, idx) => (
+                <div key={unit.id} className="border rounded-lg p-3 bg-white space-y-3">
+                  <div className="text-sm font-medium text-gray-800">
+                    Unit {idx + 1}: {unit.nama_ruang || '-'}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <Label>Status Hasil</Label>
+                      <Select
+                        value={unit.repair_outcome || ''}
+                        onValueChange={(v) => updateAcUnit(unit.id, { repair_outcome: (v || '') as any })}
+                        disabled={!isPicInOrder}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ok">OK (Selesai)</SelectItem>
+                          <SelectItem value="fix_now">Bisa diperbaiki langsung</SelectItem>
+                          <SelectItem value="need_quote">Butuh penawaran</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Catatan / Rekomendasi</Label>
+                      <Input
+                        value={unit.recommendation_notes || ''}
+                        onChange={(e) => updateAcUnit(unit.id, { recommendation_notes: e.target.value })}
+                        placeholder="Ringkas: temuan & rekomendasi"
+                        disabled={!isPicInOrder}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium">Rekomendasi Part</div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addRecommendedPartLine(unit.id)}
+                        disabled={!isPicInOrder || loadingPartsCatalog}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Tambah Part
+                      </Button>
+                    </div>
+
+                    {(unit.recommended_parts || []).length === 0 ? (
+                      <div className="text-xs text-muted-foreground">Belum ada part direkomendasikan.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(unit.recommended_parts || []).map((line) => (
+                          <div key={line.line_id} className="flex gap-2 items-start border rounded-lg p-2">
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-2">
+                              <div className="md:col-span-2 space-y-2">
+                                <Input
+                                  value={line.part_name || ''}
+                                  onChange={(e) => {
+                                    const nextName = e.target.value;
+                                    updateRecommendedPartLine(unit.id, line.line_id, {
+                                      part_name: nextName,
+                                      part_id: '',
+                                    });
+                                  }}
+                                  placeholder="Nama part (manual)"
+                                  disabled={!isPicInOrder}
+                                />
+                              </div>
+                              <div>
+                                <Input
+                                  type="number"
+                                  value={line.quantity}
+                                  onChange={(e) => updateRecommendedPartLine(unit.id, line.line_id, { quantity: parseFloat(e.target.value || '0') || 0 })}
+                                  placeholder="Qty"
+                                  disabled={!isPicInOrder}
+                                />
+                              </div>
+                              <div>
+                                <Input
+                                  value={line.unit}
+                                  onChange={(e) => updateRecommendedPartLine(unit.id, line.line_id, { unit: e.target.value })}
+                                  placeholder="Unit"
+                                  disabled={!isPicInOrder}
+                                />
+                              </div>
+                              <div>
+                                <Input
+                                  value={line.notes || ''}
+                                  onChange={(e) => updateRecommendedPartLine(unit.id, line.line_id, { notes: e.target.value })}
+                                  placeholder="Catatan"
+                                  disabled={!isPicInOrder}
+                                />
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="destructive"
+                              onClick={() => removeRecommendedPartLine(unit.id, line.line_id)}
+                              disabled={!isPicInOrder}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           <div>
             <Label>Hasil Pengecekan</Label>
             <Textarea

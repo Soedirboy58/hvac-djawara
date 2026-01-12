@@ -84,11 +84,86 @@ export default function OrdersPage() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+
+  const [needsQuoteOnly, setNeedsQuoteOnly] = useState(false)
+  const [quoteNeededOrderIds, setQuoteNeededOrderIds] = useState<Set<string>>(new Set())
+  const [quoteNeededLoading, setQuoteNeededLoading] = useState(false)
   
   const { orders, loading, error } = useOrders({
     status: statusFilter === 'all' ? undefined : statusFilter,
     search: searchQuery,
   })
+
+  // Clear selection & reset page when filters change
+  useEffect(() => {
+    setSelectedOrders(new Set())
+    setCurrentPage(1)
+  }, [statusFilter, searchQuery, needsQuoteOnly])
+
+  // Fetch latest technical work logs per order to determine "need quotation" queue
+  useEffect(() => {
+    const run = async () => {
+      try {
+        if (viewerRole === 'sales_partner') {
+          setQuoteNeededOrderIds(new Set())
+          return
+        }
+
+        if (!orders || orders.length === 0) {
+          setQuoteNeededOrderIds(new Set())
+          return
+        }
+
+        setQuoteNeededLoading(true)
+        const supabase = createClient()
+
+        const orderIds = orders.map((o) => o.id).filter(Boolean)
+        if (orderIds.length === 0) {
+          setQuoteNeededOrderIds(new Set())
+          return
+        }
+
+        const { data: logs, error: logsError } = await supabase
+          .from('technician_work_logs')
+          .select('service_order_id, ac_units_data, created_at')
+          .in('service_order_id', orderIds)
+          .eq('log_type', 'technical_report')
+          .order('created_at', { ascending: false })
+
+        if (logsError) {
+          console.warn('Failed to load technician work logs for quotation queue:', logsError.message)
+          setQuoteNeededOrderIds(new Set())
+          return
+        }
+
+        const seen = new Set<string>()
+        const quoteIds = new Set<string>()
+
+        const hasNeedQuote = (acUnitsData: any): boolean => {
+          if (!Array.isArray(acUnitsData)) return false
+          return acUnitsData.some((u: any) => String(u?.repair_outcome || '').toLowerCase() === 'need_quote')
+        }
+
+        for (const row of logs || []) {
+          const serviceOrderId = String((row as any).service_order_id || '')
+          if (!serviceOrderId || seen.has(serviceOrderId)) continue
+          seen.add(serviceOrderId)
+          if (hasNeedQuote((row as any).ac_units_data)) {
+            quoteIds.add(serviceOrderId)
+          }
+        }
+
+        setQuoteNeededOrderIds(quoteIds)
+      } catch (e) {
+        console.error('Failed to compute quotation queue:', e)
+        setQuoteNeededOrderIds(new Set())
+      } finally {
+        setQuoteNeededLoading(false)
+      }
+    }
+
+    run()
+  }, [orders, viewerRole])
 
   useEffect(() => {
     const loadViewerRole = async () => {
@@ -148,13 +223,18 @@ export default function OrdersPage() {
   }, [orders])
 
   // Pagination
-  const paginatedOrders = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     if (!orders) return []
-    const startIndex = (currentPage - 1) * pageSize
-    return orders.slice(startIndex, startIndex + pageSize)
-  }, [orders, currentPage, pageSize])
+    if (!needsQuoteOnly) return orders
+    return orders.filter((o) => quoteNeededOrderIds.has(o.id))
+  }, [orders, needsQuoteOnly, quoteNeededOrderIds])
 
-  const totalPages = orders ? Math.ceil(orders.length / pageSize) : 0
+  const paginatedOrders = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return filteredOrders.slice(startIndex, startIndex + pageSize)
+  }, [filteredOrders, currentPage, pageSize])
+
+  const totalPages = filteredOrders.length > 0 ? Math.ceil(filteredOrders.length / pageSize) : 0
 
   // Selection handlers
   const toggleSelectAll = () => {
@@ -355,6 +435,31 @@ export default function OrdersPage() {
               </div>
             </CardContent>
           </Card>
+
+          {viewerRole !== 'sales_partner' ? (
+            <Card
+              className={`${needsQuoteOnly ? 'border-orange-300' : ''} cursor-pointer`}
+              onClick={() => setNeedsQuoteOnly((v) => !v)}
+              title={needsQuoteOnly ? 'Klik untuk menampilkan semua order' : 'Klik untuk memfilter order yang butuh penawaran'}
+            >
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Butuh Penawaran</p>
+                    <h3 className="text-2xl font-bold mt-1">
+                      {quoteNeededLoading ? '…' : quoteNeededOrderIds.size}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {needsQuoteOnly ? 'Filter aktif' : 'Klik untuk filter'}
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       )}
 
@@ -442,7 +547,7 @@ export default function OrdersPage() {
               {paginatedOrders.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                    No orders found
+                    {needsQuoteOnly ? 'Tidak ada order yang butuh penawaran' : 'No orders found'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -473,6 +578,14 @@ export default function OrdersPage() {
                           <Badge variant="outline" className="mt-1">
                             {order.order_type}
                           </Badge>
+                          {quoteNeededOrderIds.has(order.id) ? (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 ml-2 border-orange-300 text-orange-700"
+                            >
+                              Butuh Penawaran
+                            </Badge>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate">
@@ -600,11 +713,11 @@ export default function OrdersPage() {
           </Table>
 
           {/* Pagination */}
-          {orders && orders.length > 0 && (
+          {filteredOrders.length > 0 && (
             <div className="flex items-center justify-between pt-4 border-t">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">
-                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, orders.length)} of {orders.length} orders
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
                 </span>
                 <Select value={pageSize.toString()} onValueChange={(v) => {
                   setPageSize(parseInt(v))

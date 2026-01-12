@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Calendar as BigCalendar, momentLocalizer, View } from 'react-big-calendar'
 import moment from 'moment'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
@@ -74,8 +75,7 @@ type WaitingListItem = {
     order_number: string
     service_title: string
     location_address: string
-    scheduled_date: string | null
-    scheduled_time: string | null
+    created_at: string
     status: string
     priority: string
     client: {
@@ -124,6 +124,94 @@ export default function TechnicianDashboard() {
   const [unassignedRecurring, setUnassignedRecurring] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isHelper, setIsHelper] = useState(false);
+  const [waitingListPage, setWaitingListPage] = useState(0);
+  const [recurringPage, setRecurringPage] = useState(0);
+  const [completedSearch, setCompletedSearch] = useState("");
+  const [completedWorkDate, setCompletedWorkDate] = useState("");
+  const [completedPage, setCompletedPage] = useState(0);
+
+  const WAITING_PAGE_SIZE = 5;
+  const RECURRING_PAGE_SIZE = 5;
+  const COMPLETED_PAGE_SIZE = 5;
+
+  const parseLocalDate = (value: any): Date | null => {
+    if (!value) return null;
+    const str = String(value);
+    // Prefer a stable local parse for date-only values from Postgres (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const d = new Date(`${str}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(str);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const isInCurrentMonth = (value: any): boolean => {
+    const d = parseLocalDate(value);
+    if (!d) return false;
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  };
+
+  const currentMonthUnassignedRecurring = unassignedRecurring.filter((u) =>
+    isInCurrentMonth(u?.next_scheduled_date)
+  );
+
+  const normalizeDateOnly = (value: any): string => {
+    if (!value) return "";
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    if (str.length >= 10) return str.slice(0, 10);
+    const d = new Date(str);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+  };
+
+  const completedQuery = completedSearch.trim().toLowerCase();
+  const activeOrders = workOrders.filter((o) => o.status !== "completed");
+  const completedOrdersForList = workOrders.filter((o) => o.status === "completed");
+  const filteredCompletedOrders = completedOrdersForList
+    .filter((o) => {
+      if (!completedQuery) return true;
+      const haystack = [
+        o.order_number,
+        o.service_title,
+        o.service_description,
+        o.location_address,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(completedQuery);
+    })
+    .filter((o) => {
+      if (!completedWorkDate) return true;
+      return normalizeDateOnly(o.scheduled_date) === completedWorkDate;
+    });
+
+  const completedTotalPages = Math.max(1, Math.ceil(filteredCompletedOrders.length / COMPLETED_PAGE_SIZE));
+  const completedStart = completedPage * COMPLETED_PAGE_SIZE;
+  const completedPageItems = filteredCompletedOrders.slice(completedStart, completedStart + COMPLETED_PAGE_SIZE);
+
+  const waitingListTotalPages = Math.max(1, Math.ceil(waitingList.length / WAITING_PAGE_SIZE));
+  const waitingListStart = waitingListPage * WAITING_PAGE_SIZE;
+  const waitingListPageItems = waitingList.slice(waitingListStart, waitingListStart + WAITING_PAGE_SIZE);
+
+  const recurringTotalPages = Math.max(1, Math.ceil(currentMonthUnassignedRecurring.length / RECURRING_PAGE_SIZE));
+  const recurringStart = recurringPage * RECURRING_PAGE_SIZE;
+  const recurringPageItems = currentMonthUnassignedRecurring.slice(recurringStart, recurringStart + RECURRING_PAGE_SIZE);
+
+  useEffect(() => {
+    setWaitingListPage(0);
+  }, [waitingList.length]);
+
+  useEffect(() => {
+    setRecurringPage(0);
+  }, [currentMonthUnassignedRecurring.length]);
+
+  useEffect(() => {
+    setCompletedPage(0);
+  }, [completedSearch, completedWorkDate]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -225,100 +313,101 @@ export default function TechnicianDashboard() {
         throw assignError;
       }
 
+      let formattedOrders: WorkOrder[] = [];
       if (!assignmentsData || assignmentsData.length === 0) {
         setWorkOrders([]);
-        return;
-      }
+        setCalendarEvents([]);
+      } else {
+        // Fetch service orders separately (include all orders)
+        const orderIds = assignmentsData.map((a) => a.service_order_id);
+        const { data: ordersData, error: ordersError } = await supabase
+          .from("service_orders")
+          .select("id, order_number, service_title, service_description, location_address, scheduled_date, scheduled_time, status, priority, estimated_duration, estimated_end_date, estimated_end_time")
+          .in("id", orderIds);
 
-      // Fetch service orders separately (include all orders)
-      const orderIds = assignmentsData.map(a => a.service_order_id);
-      const { data: ordersData, error: ordersError } = await supabase
-        .from("service_orders")
-        .select("id, order_number, service_title, service_description, location_address, scheduled_date, scheduled_time, status, priority, estimated_duration, estimated_end_date, estimated_end_time")
-        .in("id", orderIds);
+        if (ordersError) {
+          console.error("Error fetching orders:", ordersError);
+          throw ordersError;
+        }
 
-      if (ordersError) {
-        console.error("Error fetching orders:", ordersError);
-        throw ordersError;
-      }
+        // Merge assignment data with order data
+        formattedOrders = (assignmentsData || [])
+          .map((assignment: { status: string; assigned_at: string; service_order_id: string }) => {
+            const order = (ordersData || []).find((o) => o.id === assignment.service_order_id);
+            if (!order) return null;
 
-      // Merge assignment data with order data
-      const formattedOrders: WorkOrder[] = (assignmentsData || [])
-        .map((assignment: { status: string; assigned_at: string; service_order_id: string }) => {
-          const order = (ordersData || []).find((o) => o.id === assignment.service_order_id);
-          if (!order) return null;
+            const merged: WorkOrder = {
+              ...order,
+              assignment_status: assignment.status,
+              assigned_at: assignment.assigned_at,
+              has_technical_report: false,
+            };
 
-          const merged: WorkOrder = {
-            ...order,
-            assignment_status: assignment.status,
-            assigned_at: assignment.assigned_at,
-            has_technical_report: false,
-          };
+            return merged;
+          })
+          .filter((o): o is WorkOrder => !!o);
 
-          return merged;
-        })
-        .filter((o): o is WorkOrder => !!o);
+        setWorkOrders(formattedOrders);
 
-      setWorkOrders(formattedOrders);
-
-      // Build calendar events (assigned-to-self only)
-      const calendar: TechnicianCalendarEvent[] = (formattedOrders || [])
-        .filter((o) => !!o.scheduled_date)
-        .map((order) => {
-          const startDateTime = new Date(`${order.scheduled_date}T00:00:00`)
-          if (order.scheduled_time) {
-            const [hours, minutes] = order.scheduled_time.split(':')
-            startDateTime.setHours(parseInt(hours), parseInt(minutes))
-          } else {
-            startDateTime.setHours(9, 0, 0, 0)
-          }
-
-          let endDateTime: Date
-          let allDay = false
-
-          if (order.estimated_end_date) {
-            const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`)
-            if (order.estimated_end_time) {
-              const [endHours, endMinutes] = order.estimated_end_time.split(':')
-              endInclusive.setHours(parseInt(endHours), parseInt(endMinutes))
+        // Build calendar events (assigned-to-self only)
+        const calendar: TechnicianCalendarEvent[] = (formattedOrders || [])
+          .filter((o) => !!o.scheduled_date)
+          .map((order) => {
+            const startDateTime = new Date(`${order.scheduled_date}T00:00:00`);
+            if (order.scheduled_time) {
+              const [hours, minutes] = order.scheduled_time.split(':');
+              startDateTime.setHours(parseInt(hours), parseInt(minutes));
             } else {
-              endInclusive.setHours(23, 59, 0, 0)
+              startDateTime.setHours(9, 0, 0, 0);
             }
 
-            const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`
-            const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`
+            let endDateTime: Date;
+            let allDay = false;
 
-            if (startYMD !== endYMD) {
-              allDay = true
-              const endExclusive = new Date(endInclusive)
-              endExclusive.setHours(0, 0, 0, 0)
-              endExclusive.setDate(endExclusive.getDate() + 1)
-              endDateTime = endExclusive
-              startDateTime.setHours(0, 0, 0, 0)
+            if (order.estimated_end_date) {
+              const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`);
+              if (order.estimated_end_time) {
+                const [endHours, endMinutes] = order.estimated_end_time.split(':');
+                endInclusive.setHours(parseInt(endHours), parseInt(endMinutes));
+              } else {
+                endInclusive.setHours(23, 59, 0, 0);
+              }
+
+              const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`;
+              const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`;
+
+              if (startYMD !== endYMD) {
+                allDay = true;
+                const endExclusive = new Date(endInclusive);
+                endExclusive.setHours(0, 0, 0, 0);
+                endExclusive.setDate(endExclusive.getDate() + 1);
+                endDateTime = endExclusive;
+                startDateTime.setHours(0, 0, 0, 0);
+              } else {
+                endDateTime = endInclusive;
+              }
             } else {
-              endDateTime = endInclusive
+              endDateTime = new Date(startDateTime);
+              const duration = order.estimated_duration || 120;
+              endDateTime.setMinutes(endDateTime.getMinutes() + duration);
             }
-          } else {
-            endDateTime = new Date(startDateTime)
-            const duration = order.estimated_duration || 120
-            endDateTime.setMinutes(endDateTime.getMinutes() + duration)
-          }
 
-          return {
-            id: order.id,
-            title: `${order.order_number} - ${order.service_title}`,
-            start: startDateTime,
-            end: endDateTime,
-            allDay,
-            resource: {
-              orderId: order.id,
-              status: order.status,
-            },
-          }
-        })
-      setCalendarEvents(calendar)
+            return {
+              id: order.id,
+              title: `${order.order_number} - ${order.service_title}`,
+              start: startDateTime,
+              end: endDateTime,
+              allDay,
+              resource: {
+                orderId: order.id,
+                status: order.status,
+              },
+            };
+          });
+        setCalendarEvents(calendar);
+      }
 
-      // Fetch shared waiting list: scheduled_date set, but not yet assigned to anyone.
+      // Fetch shared waiting list: orders still in admin pipeline (listing/pending) and not yet assigned.
       // We also attach last completed service (PIC + all assistants).
       if (techData.tenant_id) {
         const { data: scheduledOrders, error: scheduledOrdersError } = await supabase
@@ -328,17 +417,15 @@ export default function TechnicianDashboard() {
             order_number,
             service_title,
             location_address,
-            scheduled_date,
-            scheduled_time,
+            created_at,
             status,
             priority,
             client_id,
             client:clients!client_id(id, name, phone)
           `)
           .eq('tenant_id', techData.tenant_id)
-          .not('scheduled_date', 'is', null)
-          .in('status', ['pending', 'scheduled'])
-          .order('scheduled_date', { ascending: true })
+          .in('status', ['listing', 'pending'])
+          .order('created_at', { ascending: false })
           .limit(50)
 
         if (scheduledOrdersError) {
@@ -427,8 +514,7 @@ export default function TechnicianDashboard() {
               order_number: o.order_number,
               service_title: o.service_title,
               location_address: o.location_address,
-              scheduled_date: o.scheduled_date,
-              scheduled_time: o.scheduled_time,
+              created_at: o.created_at,
               status: o.status,
               priority: o.priority,
               client: o.client || null,
@@ -455,7 +541,7 @@ export default function TechnicianDashboard() {
         const json = await resp.json()
         if (resp.ok && json?.success) {
           const upcoming = (json?.upcoming_maintenance || []) as any[]
-          setUnassignedRecurring(upcoming.filter((u) => !u.order_exists).slice(0, 10))
+          setUnassignedRecurring(upcoming.filter((u) => !u.order_exists))
         } else {
           setUnassignedRecurring([])
         }
@@ -550,6 +636,8 @@ export default function TechnicianDashboard() {
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
+      listing: "bg-gray-500",
+      pending: "bg-amber-500",
       scheduled: "bg-blue-500",
       in_progress: "bg-yellow-500",
       completed: "bg-green-500",
@@ -639,6 +727,44 @@ export default function TechnicianDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AutoAttendancePrompt />
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          .tech-calendar .rbc-toolbar {
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+          }
+          .tech-calendar .rbc-toolbar-label {
+            order: -1;
+            width: 100%;
+            text-align: center;
+            font-size: 0.95rem;
+          }
+          .tech-calendar .rbc-btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+          }
+          .tech-calendar .rbc-btn-group button {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            line-height: 1;
+          }
+          .tech-calendar .rbc-header {
+            padding: 4px 0;
+            font-size: 0.75rem;
+          }
+          .tech-calendar .rbc-date-cell {
+            padding-right: 6px;
+            font-size: 0.75rem;
+          }
+          .tech-calendar .rbc-event {
+            padding: 1px 3px;
+            font-size: 0.7rem;
+            line-height: 1.1;
+          }
+        }
+      `}</style>
       {/* Header */}
       <header className="bg-white border-b md:sticky md:top-0 z-10">
         <div className="container mx-auto px-4 py-4">
@@ -787,34 +913,59 @@ export default function TechnicianDashboard() {
                   <p className="text-sm text-muted-foreground">Jadwal tugas yang ditugaskan ke Anda</p>
                   <Badge className="bg-blue-500">Assigned</Badge>
                 </div>
-                <div className="rounded-lg border bg-white p-2">
-                  <BigCalendar
-                    localizer={localizer}
-                    events={calendarEvents}
-                    startAccessor="start"
-                    endAccessor="end"
-                    style={{ height: 520 }}
-                    views={['month', 'week', 'day'] as View[]}
-                    defaultView={'month' as View}
-                    toolbar
-                    selectable={false}
-                    popup
-                    eventPropGetter={(e: any) => calendarEventStyleGetter(e as TechnicianCalendarEvent)}
-                    onSelectEvent={(e: any) => {
-                      if (isHelper) return
-                      const orderId = (e as any)?.resource?.orderId
-                      if (orderId) router.push(`/technician/orders/${orderId}`)
-                    }}
-                  />
+                <div className="rounded-lg border bg-white p-2 tech-calendar">
+                  <div className="h-[420px] sm:h-[520px]">
+                    <BigCalendar
+                      localizer={localizer}
+                      events={calendarEvents}
+                      startAccessor="start"
+                      endAccessor="end"
+                      style={{ height: '100%' }}
+                      views={['month', 'week', 'day'] as View[]}
+                      defaultView={'month' as View}
+                      toolbar
+                      selectable={false}
+                      popup
+                      eventPropGetter={(e: any) => calendarEventStyleGetter(e as TechnicianCalendarEvent)}
+                      onSelectEvent={(e: any) => {
+                        if (isHelper) return
+                        const orderId = (e as any)?.resource?.orderId
+                        if (orderId) router.push(`/technician/orders/${orderId}`)
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Waiting List (Belum Ditugaskan)</p>
-                  <p className="text-xs text-muted-foreground">
-                    Order yang sudah punya tanggal jadwal, tapi belum ada PIC/helper yang ditetapkan.
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    Waiting List (Belum Ditugaskan) ({waitingList.length})
                   </p>
+                  {waitingList.length > WAITING_PAGE_SIZE ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setWaitingListPage((p) => Math.max(0, p - 1))}
+                        disabled={waitingListPage <= 0}
+                      >
+                        Prev
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setWaitingListPage((p) => Math.min(waitingListTotalPages - 1, p + 1))
+                        }
+                        disabled={waitingListPage >= waitingListTotalPages - 1}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-3">
@@ -823,7 +974,7 @@ export default function TechnicianDashboard() {
                       <p className="text-sm text-muted-foreground">Tidak ada waiting list saat ini.</p>
                     </div>
                   ) : (
-                    waitingList.map((item) => {
+                    waitingListPageItems.map((item) => {
                       const o = item.order
                       const last = item.lastService
                       const assistants = last?.assistant_names?.length ? last.assistant_names.join(', ') : '-'
@@ -852,8 +1003,7 @@ export default function TechnicianDashboard() {
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4 text-muted-foreground" />
                               <span>
-                                {o.scheduled_date ? new Date(`${o.scheduled_date}T00:00:00`).toLocaleDateString('id-ID') : '-'}
-                                {o.scheduled_time ? ` • ${String(o.scheduled_time).slice(0, 5)}` : ''}
+                                {new Date(o.created_at).toLocaleDateString('id-ID')}
                               </span>
                             </div>
                           </div>
@@ -879,14 +1029,40 @@ export default function TechnicianDashboard() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">Recurring Maintenance (Belum Ditugaskan)</p>
-                  {unassignedRecurring.length === 0 ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">
+                      Recurring Maintenance (Belum Ditugaskan) ({currentMonthUnassignedRecurring.length})
+                    </p>
+                    {currentMonthUnassignedRecurring.length > RECURRING_PAGE_SIZE ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRecurringPage((p) => Math.max(0, p - 1))}
+                          disabled={recurringPage <= 0}
+                        >
+                          Prev
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRecurringPage((p) => Math.min(recurringTotalPages - 1, p + 1))}
+                          disabled={recurringPage >= recurringTotalPages - 1}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {currentMonthUnassignedRecurring.length === 0 ? (
                     <div className="rounded-lg border bg-white p-4">
                       <p className="text-sm text-muted-foreground">Tidak ada jadwal recurring yang belum ditugaskan.</p>
                     </div>
                   ) : (
                     <div className="rounded-lg border bg-white divide-y">
-                      {unassignedRecurring.map((u) => (
+                      {recurringPageItems.map((u) => (
                         <div key={u.schedule_id} className="p-3 flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{u.client_name} • {u.property_name}</p>
@@ -1016,8 +1192,15 @@ export default function TechnicianDashboard() {
                 <p>Belum ada tugas yang diberikan</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {workOrders.map((order) => (
+              <div className="space-y-6">
+                {/* Tugas Aktif */}
+                <div className="space-y-3">
+                  {activeOrders.length === 0 ? (
+                    <div className="rounded-lg border bg-white p-4">
+                      <p className="text-sm text-muted-foreground">Tidak ada tugas aktif.</p>
+                    </div>
+                  ) : (
+                    activeOrders.map((order) => (
                   <Card
                     key={order.id}
                     className={isHelper ? "transition-shadow" : "cursor-pointer hover:shadow-md transition-shadow"}
@@ -1111,7 +1294,182 @@ export default function TechnicianDashboard() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                    ))
+                  )}
+                </div>
+
+                {/* Tugas Selesai (Pagination + Filter) */}
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Tugas Selesai</p>
+                      <p className="text-xs text-muted-foreground">
+                        Cari berdasarkan nama/order/lokasi dan tanggal kerja.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <Input
+                        value={completedSearch}
+                        onChange={(e) => setCompletedSearch(e.target.value)}
+                        placeholder="Cari nama / order / lokasi"
+                        className="sm:w-64"
+                      />
+                      <Input
+                        type="date"
+                        value={completedWorkDate}
+                        onChange={(e) => setCompletedWorkDate(e.target.value)}
+                        className="sm:w-44"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">Menampilkan {filteredCompletedOrders.length} tugas selesai</p>
+                    {filteredCompletedOrders.length > COMPLETED_PAGE_SIZE ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCompletedPage((p) => Math.max(0, p - 1))}
+                          disabled={completedPage <= 0}
+                        >
+                          Prev
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCompletedPage((p) => Math.min(completedTotalPages - 1, p + 1))}
+                          disabled={completedPage >= completedTotalPages - 1}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {filteredCompletedOrders.length === 0 ? (
+                    <div className="rounded-lg border bg-white p-4">
+                      <p className="text-sm text-muted-foreground">Tidak ada tugas selesai yang cocok.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {completedPageItems.map((order) => (
+                        <Card
+                          key={order.id}
+                          className={isHelper ? "transition-shadow" : "cursor-pointer hover:shadow-md transition-shadow"}
+                          onClick={() => {
+                            if (isHelper) return;
+                            router.push(`/technician/orders/${order.id}`);
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-semibold">{order.order_number}</span>
+                                  {getStatusBadge(order.status)}
+                                  {getPriorityBadge(order.priority)}
+                                </div>
+                                <h3 className="font-medium mb-1">{order.service_title}</h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {order.service_description}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1 text-sm text-muted-foreground mb-3">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4" />
+                                <span className="line-clamp-1">{order.location_address}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CalendarIcon className="h-4 w-4" />
+                                <span>
+                                  {new Date(order.scheduled_date).toLocaleDateString("id-ID", {
+                                    weekday: "short",
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                <span>Estimasi: {order.estimated_duration} jam</span>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons - Only show for completed orders */}
+                            {!isHelper && order.status === "completed" && (
+                              <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={(e) => handlePreviewPDF(e, order.id)}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Preview PDF
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={(e) => handleEditOrder(e, order.id)}
+                                >
+                                  <Edit3 className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Button>
+                              </div>
+                            )}
+
+                            <div className="mt-3">
+                              <OrderTimeline
+                                steps={[
+                                  {
+                                    status:
+                                      order.assignment_status === "assigned" ||
+                                      order.assignment_status === "accepted" ||
+                                      order.status === "in_progress" ||
+                                      order.status === "completed"
+                                        ? "completed"
+                                        : "pending",
+                                    label: "Ditugaskan",
+                                  },
+                                  {
+                                    status:
+                                      order.status === "in_progress" || order.status === "completed"
+                                        ? "completed"
+                                        : order.assignment_status === "in_progress"
+                                          ? "current"
+                                          : "pending",
+                                    label: "Proses",
+                                  },
+                                  {
+                                    status:
+                                      order.status === "completed" && !order.has_technical_report
+                                        ? "current"
+                                        : order.status === "completed" && order.has_technical_report
+                                          ? "completed"
+                                          : "pending",
+                                    label: "Selesai",
+                                  },
+                                  {
+                                    status: order.has_technical_report ? "completed" : "pending",
+                                    label: "Laporan",
+                                  },
+                                ]}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

@@ -28,6 +28,53 @@ export type SubscriptionPlan = 'basic' | 'pro' | 'enterprise'
 export interface Database {
   public: {
     Tables: {
+      document_branding_settings: {
+        Row: {
+          tenant_id: string
+          company_name: string | null
+          address_lines: string[] | null
+          phone: string | null
+          email: string | null
+          logo_url: string | null
+          stamp_url: string | null
+          signature_image_url: string | null
+          signature_name: string | null
+          signature_title: string | null
+          signature_scale: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          tenant_id: string
+          company_name?: string | null
+          address_lines?: string[] | null
+          phone?: string | null
+          email?: string | null
+          logo_url?: string | null
+          stamp_url?: string | null
+          signature_image_url?: string | null
+          signature_name?: string | null
+          signature_title?: string | null
+          signature_scale?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          tenant_id?: string
+          company_name?: string | null
+          address_lines?: string[] | null
+          phone?: string | null
+          email?: string | null
+          logo_url?: string | null
+          stamp_url?: string | null
+          signature_image_url?: string | null
+          signature_name?: string | null
+          signature_title?: string | null
+          signature_scale?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       tenants: {
         Row: {
           id: string

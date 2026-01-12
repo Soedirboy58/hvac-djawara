@@ -62,8 +62,6 @@ export default function WorkOrderDetailPage() {
   const [roleInOrder, setRoleInOrder] = useState<string | null>(null);
   const [isPicInOrder, setIsPicInOrder] = useState<boolean>(true);
   const [notes, setNotes] = useState("");
-  const [photoBefore, setPhotoBefore] = useState<File | null>(null);
-  const [photoAfter, setPhotoAfter] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -212,6 +210,7 @@ export default function WorkOrderDetailPage() {
       setUploading(true);
       const location = await getCurrentLocation();
       const supabase = createClient();
+      const nowIso = new Date().toISOString();
 
       // Reuse an existing open work log row if present (avoid duplicates)
       const { data: existingLog } = await supabase
@@ -230,7 +229,7 @@ export default function WorkOrderDetailPage() {
         const updateRes = await supabase
           .from('technician_work_logs')
           .update({
-            check_in_time: existingLog.check_in_time || new Date().toISOString(),
+            check_in_time: existingLog.check_in_time || nowIso,
             location_lat: location.lat,
             location_lng: location.lng,
             notes: notes,
@@ -246,7 +245,7 @@ export default function WorkOrderDetailPage() {
           .insert({
             service_order_id: orderId,
             technician_id: technicianId,
-            check_in_time: new Date().toISOString(),
+            check_in_time: nowIso,
             location_lat: location.lat,
             location_lng: location.lng,
             notes: notes,
@@ -270,10 +269,19 @@ export default function WorkOrderDetailPage() {
         .eq("technician_id", technicianId);
 
       // Update order status
-      await supabase
-        .from("service_orders")
-        .update({ status: "in_progress" })
-        .eq("id", orderId);
+      // Best-effort set actual_start_time if column exists.
+      {
+        let soUpd = await supabase
+          .from("service_orders")
+          .update({ status: "in_progress", actual_start_time: nowIso })
+          .eq("id", orderId);
+        if (soUpd.error) {
+          soUpd = await supabase
+            .from("service_orders")
+            .update({ status: "in_progress" })
+            .eq("id", orderId);
+        }
+      }
 
     } catch (error: any) {
       console.error("Check-in error:", error);
@@ -281,25 +289,6 @@ export default function WorkOrderDetailPage() {
     } finally {
       setUploading(false);
     }
-  };
-
-  const uploadPhoto = async (file: File, type: "before" | "after") => {
-    const supabase = createClient();
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${orderId}_${type}_${Date.now()}.${fileExt}`;
-    const filePath = `${technicianId}/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("work-photos")
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from("work-photos")
-      .getPublicUrl(filePath);
-
-    return publicUrl;
   };
 
   const handleCheckOut = async () => {
@@ -310,26 +299,19 @@ export default function WorkOrderDetailPage() {
       }
       setUploading(true);
       const supabase = createClient();
+      const nowIso = new Date().toISOString();
 
-      let photoBeforeUrl = workLog?.photo_before_url;
-
-      // Upload photo before if provided
-      if (photoBefore && !photoBeforeUrl) {
-        photoBeforeUrl = await uploadPhoto(photoBefore, "before");
-      }
-
-      // Update work log with photo before only
+      // Update work log (notes only). Photo before is temporarily disabled in UI.
       const { error } = await supabase
         .from("technician_work_logs")
         .update({
           notes: notes,
-          photo_before_url: photoBeforeUrl,
         })
         .eq("id", workLog!.id);
 
       if (error) throw error;
 
-      toast.success("Foto sebelum berhasil disimpan!");
+      toast.success("Data tersimpan. Silakan lanjut isi laporan teknis!");
 
       // Update assignment status to completed so technician can fill technical report
       await supabase
@@ -339,17 +321,26 @@ export default function WorkOrderDetailPage() {
         .eq("technician_id", technicianId);
 
       // Update order status to completed - will trigger technical form display
-      await supabase
-        .from("service_orders")
-        .update({ status: "completed" })
-        .eq("id", orderId);
+      // Best-effort set completion timestamps if columns exist.
+      {
+        let soUpd = await supabase
+          .from("service_orders")
+          .update({ status: "completed", actual_end_time: nowIso, completed_at: nowIso })
+          .eq("id", orderId);
+        if (soUpd.error) {
+          soUpd = await supabase
+            .from("service_orders")
+            .update({ status: "completed" })
+            .eq("id", orderId);
+        }
+      }
 
       // Refresh the page to show technical form
       fetchWorkOrderData();
       
     } catch (error: any) {
       console.error("Save photo error:", error);
-      toast.error(error.message || "Gagal menyimpan foto");
+      toast.error(error.message || "Gagal menyimpan data");
     } finally {
       setUploading(false);
     }
@@ -552,34 +543,6 @@ export default function WorkOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Photo Before */}
-            {isCheckedIn && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Foto Sebelum Pekerjaan</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="photo-before">Upload Foto Sebelum</Label>
-                    <Input
-                      id="photo-before"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setPhotoBefore(e.target.files?.[0] || null)}
-                      disabled={isCompleted || !!workLog?.photo_before_url}
-                    />
-                    {workLog?.photo_before_url && (
-                      <p className="text-xs text-green-600 mt-1">✓ Foto sudah diupload</p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Foto sesudah akan diupload di form laporan teknis
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Actions */}
             <div className="space-y-3 pb-6">
               {!workLog && (
@@ -608,7 +571,7 @@ export default function WorkOrderDetailPage() {
                   className="w-full"
                   size="lg"
                   onClick={handleCheckOut}
-                  disabled={uploading || !photoBefore || isHelper}
+                  disabled={uploading || isHelper}
                 >
                   {uploading ? (
                     <>

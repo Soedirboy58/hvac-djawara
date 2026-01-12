@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ExternalLink, Plus, RefreshCw } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ExternalLink, Plus, RefreshCw, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type ReimburseCategory = {
   id: string
@@ -33,8 +34,9 @@ type ReimburseRequest = {
   decided_by: string | null
   decided_at: string | null
   decision_note: string | null
-  reimburse_categories?: { name: string } | null
-  profiles?: { full_name: string | null; phone: string | null } | null
+  // PostgREST embeds can arrive as an object or array depending on relationship config.
+  reimburse_categories?: { name: string } | Array<{ name: string }> | null
+  profiles?: { full_name: string | null; phone: string | null } | Array<{ full_name: string | null; phone: string | null }> | null
   display_name?: string
 }
 
@@ -53,6 +55,11 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [togglingCategoryId, setTogglingCategoryId] = useState<string | null>(null)
   const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null)
+
+  const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set())
+  const [deletingRequests, setDeletingRequests] = useState(false)
+  const [requestPage, setRequestPage] = useState(1)
+  const [requestPageSize, setRequestPageSize] = useState(10)
 
   const fetchCategories = async () => {
     setLoadingCategories(true)
@@ -88,7 +95,14 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
 
       if (error) throw error
 
-      const raw = (data || []) as ReimburseRequest[]
+      const raw = ((data || []) as unknown) as ReimburseRequest[]
+
+      const pickFirst = <T,>(v: T | T[] | null | undefined): T | null => {
+        if (!v) return null
+        return Array.isArray(v) ? (v[0] ?? null) : v
+      }
+
+      const getProfile = (r: ReimburseRequest) => pickFirst(r.profiles)
 
       // Prefer technician name (technicians.full_name) over any profile/email.
       const userIds = Array.from(new Set(raw.map((r) => r.submitted_by).filter(Boolean)))
@@ -113,9 +127,15 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
       setRequests(
         raw.map((r) => ({
           ...r,
-          display_name: techNameByUserId.get(r.submitted_by) || r.profiles?.full_name || null || undefined,
+          display_name: techNameByUserId.get(r.submitted_by) || getProfile(r)?.full_name || null || undefined,
         }))
       )
+
+      // Keep current page in range after refresh
+      setRequestPage((p) => {
+        const totalPages = Math.max(1, Math.ceil(raw.length / requestPageSize))
+        return Math.min(Math.max(1, p), totalPages)
+      })
     } catch (error: any) {
       console.error('fetchRequests error:', error)
       toast.error(error?.message || 'Gagal memuat pengajuan')
@@ -213,6 +233,12 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
     }
   }
 
+  const categoryName = (r: ReimburseRequest) => {
+    const v = r.reimburse_categories
+    if (!v) return '-'
+    return Array.isArray(v) ? (v[0]?.name || '-') : (v.name || '-')
+  }
+
   const updateRequestStatus = async (request: ReimburseRequest, nextStatus: ReimburseRequest['status']) => {
     setUpdatingRequestId(request.id)
     try {
@@ -248,6 +274,70 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
       toast.error(error?.message || 'Gagal update status')
     } finally {
       setUpdatingRequestId(null)
+    }
+  }
+
+  const paginatedRequests = useMemo(() => {
+    const start = (requestPage - 1) * requestPageSize
+    return requests.slice(start, start + requestPageSize)
+  }, [requests, requestPage, requestPageSize])
+
+  const requestTotalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(requests.length / requestPageSize))
+  }, [requests.length, requestPageSize])
+
+  const allSelectedOnPage = useMemo(() => {
+    if (paginatedRequests.length === 0) return false
+    return paginatedRequests.every((r) => selectedRequestIds.has(r.id))
+  }, [paginatedRequests, selectedRequestIds])
+
+  const toggleAllOnPage = (checked: boolean) => {
+    setSelectedRequestIds((prev) => {
+      const next = new Set(prev)
+      for (const r of paginatedRequests) {
+        if (checked) next.add(r.id)
+        else next.delete(r.id)
+      }
+      return next
+    })
+  }
+
+  const toggleOne = (id: string, checked: boolean) => {
+    setSelectedRequestIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const bulkDeleteSelected = async () => {
+    const ids = Array.from(selectedRequestIds)
+    if (ids.length === 0) return
+
+    const ok = confirm(
+      `Yakin ingin menghapus ${ids.length} pengajuan reimburse? Ini akan menghapus data dari database dan tidak bisa dibatalkan.`
+    )
+    if (!ok) return
+
+    setDeletingRequests(true)
+    try {
+      const { error } = await supabase
+        .from('reimburse_requests')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+
+      if (error) throw error
+
+      toast.success('Pengajuan berhasil dihapus')
+      setSelectedRequestIds(new Set())
+      await fetchRequests()
+    } catch (error: any) {
+      console.error('bulkDeleteSelected error:', error)
+      toast.error(error?.message || 'Gagal menghapus pengajuan')
+    } finally {
+      setDeletingRequests(false)
     }
   }
 
@@ -337,7 +427,23 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
           <TabsContent value="requests" className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle>Daftar Pengajuan</CardTitle>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>Daftar Pengajuan</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {selectedRequestIds.size > 0 ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={bulkDeleteSelected}
+                        disabled={deletingRequests}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Hapus ({selectedRequestIds.size})
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {loadingRequests ? (
@@ -349,6 +455,12 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-[42px]">
+                            <Checkbox
+                              checked={allSelectedOnPage}
+                              onCheckedChange={(v) => toggleAllOnPage(Boolean(v))}
+                            />
+                          </TableHead>
                           <TableHead>Tanggal</TableHead>
                           <TableHead>Nama</TableHead>
                           <TableHead>Kategori</TableHead>
@@ -359,8 +471,14 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {requests.map((r) => (
+                        {paginatedRequests.map((r) => (
                           <TableRow key={r.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedRequestIds.has(r.id)}
+                                onCheckedChange={(v) => toggleOne(r.id, Boolean(v))}
+                              />
+                            </TableCell>
                             <TableCell>
                               {new Date(r.submitted_at).toLocaleDateString('id-ID', {
                                 year: 'numeric',
@@ -369,7 +487,7 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
                               })}
                             </TableCell>
                             <TableCell>{r.display_name || '-'}</TableCell>
-                            <TableCell>{r.reimburse_categories?.name || '-'}</TableCell>
+                            <TableCell>{categoryName(r)}</TableCell>
                             <TableCell>{formatRupiah(Number(r.amount))}</TableCell>
                             <TableCell>{statusBadge(r.status)}</TableCell>
                             <TableCell>
@@ -423,6 +541,54 @@ export function FinanceReimburseClient({ tenantId }: { tenantId: string }) {
                         ))}
                       </TableBody>
                     </Table>
+
+                    <div className="flex items-center justify-between pt-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Showing {(requestPage - 1) * requestPageSize + 1} to{' '}
+                        {Math.min(requestPage * requestPageSize, requests.length)} of {requests.length} pengajuan
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRequestPage((p) => Math.max(1, p - 1))}
+                          disabled={requestPage <= 1}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <span className="text-sm">
+                          {requestPage} / {requestTotalPages}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRequestPage((p) => Math.min(requestTotalPages, p + 1))}
+                          disabled={requestPage >= requestTotalPages}
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                        <div className="flex items-center gap-2 ml-3">
+                          <span className="text-sm text-muted-foreground">Rows</span>
+                          <select
+                            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                            value={String(requestPageSize)}
+                            onChange={(e) => {
+                              const next = parseInt(e.target.value || '10', 10)
+                              setRequestPageSize(next)
+                              setRequestPage(1)
+                            }}
+                          >
+                            {[10, 25, 50, 100].map((n) => (
+                              <option key={n} value={String(n)}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </CardContent>

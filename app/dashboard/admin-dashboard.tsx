@@ -9,6 +9,19 @@ import { Calendar, ClipboardList, DollarSign, MapPin, Users, Wallet } from 'luci
 
 const JAKARTA_TZ = 'Asia/Jakarta'
 
+function getJakartaWeekday(date: Date): number {
+  // 0=Sunday ... 6=Saturday
+  const wd = new Intl.DateTimeFormat('en-US', { timeZone: JAKARTA_TZ, weekday: 'short' }).format(date)
+  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  return map[wd] ?? date.getDay()
+}
+
+function addDays(date: Date, days: number) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
 function getJakartaParts(date: Date) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: JAKARTA_TZ,
@@ -91,10 +104,16 @@ export default async function AdminDashboard({ page }: { page: number }) {
 
   const daysElapsed = daysElapsedInMonthJakarta(now)
 
-  const weekStartDate = new Date(now)
-  weekStartDate.setDate(weekStartDate.getDate() - 6)
+  // Business-week anchor (Mon–Sat, Jakarta)
+  const weekdayJakarta = getJakartaWeekday(now)
+  const deltaToMonday = (weekdayJakarta - 1 + 7) % 7
+  const weekStartDate = addDays(now, -deltaToMonday)
+  const saturdayDate = addDays(weekStartDate, 5)
+
   const weekStartParts = getJakartaParts(weekStartDate)
-  const weekStart = `${weekStartParts.yyyy}-${weekStartParts.mm}-${weekStartParts.dd}T00:00:00+07:00`
+  const saturdayParts = getJakartaParts(saturdayDate)
+  const weekStartYMD = `${weekStartParts.yyyy}-${weekStartParts.mm}-${weekStartParts.dd}`
+  const saturdayYMD = `${saturdayParts.yyyy}-${saturdayParts.mm}-${saturdayParts.dd}`
 
   // KPI: customers
   const { count: customersCount } = await supabase
@@ -158,17 +177,19 @@ export default async function AdminDashboard({ page }: { page: number }) {
     supplierDebt = (approvedReimburse || []).reduce((acc, it: any) => acc + safeNumber(it.amount), 0)
   }
 
-  // KPI: weekly expenses (paid reimburse last 7 days)
+  // KPI: weekly expenses (expense_transactions, Mon–Sat by occurred_date)
   let weeklyExpenses = 0
-  if (!reimburseProbe.error) {
-    const { data: paidReimburse } = await supabase
-      .from('reimburse_requests')
-      .select('amount, decided_at')
+  const expenseProbe = await supabase.from('expense_transactions').select('id').limit(1)
+  if (!expenseProbe.error) {
+    const { data: expenseRows } = await supabase
+      .from('expense_transactions')
+      .select('amount, occurred_date')
       .eq('tenant_id', tenantId)
-      .eq('status', 'paid')
-      .gte('decided_at', weekStart)
+      .eq('activity', 'operational')
+      .gte('occurred_date', weekStartYMD)
+      .lte('occurred_date', saturdayYMD)
 
-    weeklyExpenses = (paidReimburse || []).reduce((acc, it: any) => acc + safeNumber(it.amount), 0)
+    weeklyExpenses = (expenseRows || []).reduce((acc, it: any) => acc + safeNumber(it.amount), 0)
   }
 
   // Ranking: unit_category (jenis AC) for this month (best-effort)
@@ -393,7 +414,7 @@ export default async function AdminDashboard({ page }: { page: number }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(Math.round(weeklyExpenses))}</div>
-            <p className="text-xs text-muted-foreground mt-1">Reimburse status paid (7 hari terakhir)</p>
+            <p className="text-xs text-muted-foreground mt-1">Expense operasional (Senin–Sabtu, berdasarkan tanggal)</p>
           </CardContent>
         </Card>
       </div>

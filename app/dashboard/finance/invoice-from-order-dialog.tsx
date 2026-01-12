@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -116,6 +116,41 @@ function safeNumber(v: any) {
   return Number.isFinite(n) ? n : 0
 }
 
+function parseInvoiceSequence(invoiceNumber: string, prefix: string) {
+  const raw = String(invoiceNumber || '').trim().toUpperCase()
+  const p = `${String(prefix || '').trim().toUpperCase()}/`
+  if (!p || !raw.startsWith(p)) return null
+  const tail = raw.slice(p.length)
+  if (!/^\d+$/.test(tail)) return null
+  const seq = Number(tail)
+  return Number.isFinite(seq) && seq > 0 ? seq : null
+}
+
+async function suggestNextInvoiceNumber(supabase: any, tenantId: string, prefix: string) {
+  // Prefer the highest existing INV/00001-style number.
+  const res = await supabase
+    .from('invoices')
+    .select('invoice_number')
+    .eq('tenant_id', tenantId)
+    .like('invoice_number', `${prefix}/%`)
+    .order('invoice_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (res.error) throw res.error
+
+  const last = res.data?.invoice_number
+  const lastSeq = last ? parseInvoiceSequence(last, prefix) : null
+  const next = (lastSeq ?? 0) + 1
+  return `${prefix}/${String(next).padStart(5, '0')}`
+}
+
+function isDuplicateInvoiceNumberError(e: any) {
+  const code = String(e?.code || '')
+  const msg = String(e?.message || '').toLowerCase()
+  return code === '23505' && (msg.includes('invoices_tenant_number_unique') || msg.includes('tenant_number_unique'))
+}
+
 function calcLineTotal(item: InvoiceDraftItem) {
   const qty = safeNumber(item.quantity)
   const unitPrice = safeNumber(item.unitPrice)
@@ -157,14 +192,18 @@ export function InvoiceFromOrderDialog({
   open,
   onOpenChange,
   onDone,
+  initialAction,
 }: {
   tenantId: string
   orderId: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onDone?: () => void
+  initialAction?: 'preview' | 'send' | null
 }) {
   const supabase = useMemo(() => createClient(), [])
+
+  const initialActionRanRef = useRef(false)
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -232,15 +271,28 @@ export function InvoiceFromOrderDialog({
       setLoading(true)
       try {
         // 1) Fetch order + client
-        const orderRes = await supabase
+        let orderRes = await supabase
           .from('service_orders')
           .select(
             `id, tenant_id, order_number, service_title, location_address,
-             clients(id, name, phone, email, address)`
+             clients(id, name, phone, email, address, referred_by_id, referred_by_name)`
           )
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .single()
+
+        if (orderRes.error) {
+          const fallback = await supabase
+            .from('service_orders')
+            .select(
+              `id, tenant_id, order_number, service_title, location_address,
+               clients(id, name, phone, email, address)`
+            )
+            .eq('id', orderId)
+            .eq('tenant_id', tenantId)
+            .single()
+          orderRes = fallback as any
+        }
 
         if (orderRes.error) throw orderRes.error
         setOrder(orderRes.data as any)
@@ -404,14 +456,14 @@ export function InvoiceFromOrderDialog({
         setDueMode('14')
         setDueDate(addDaysFromISO(issueDate, 14))
 
-        // Default invoice number suggestion (INV/00001 style based on count)
-        const countRes = await supabase
-          .from('invoices')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-
-        const next = (countRes.count ?? 0) + 1
-        setInvoiceNumber(`INV/${String(next).padStart(5, '0')}`)
+        // Default invoice number suggestion (INV/00001 style based on max existing number)
+        try {
+          const nextNo = await suggestNextInvoiceNumber(supabase as any, tenantId, 'INV')
+          setInvoiceNumber(nextNo)
+        } catch {
+          // Fallback: keep UI usable even if we can't read invoices.
+          setInvoiceNumber(`INV/${String(Date.now() % 100000).padStart(5, '0')}`)
+        }
       } catch (e: any) {
         console.error('InvoiceFromOrderDialog load error:', e)
         toast.error(e?.message || 'Gagal memuat data invoice')
@@ -476,6 +528,22 @@ export function InvoiceFromOrderDialog({
   const buildPdf = async () => {
     if (!order?.clients) throw new Error('Client tidak ditemukan')
 
+    // Load document branding (kop) settings (best-effort)
+    let branding: any = null
+    try {
+      const bRes = await supabase
+        .from('document_branding_settings' as any)
+        .select(
+          'company_name, address_lines, phone, email, logo_url, stamp_url, signature_image_url, signature_name, signature_title, signature_scale'
+        )
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      branding = bRes.data || null
+    } catch (e) {
+      // Ignore branding errors; fallback to defaults
+      branding = null
+    }
+
     const blob = await generateInvoicePdfBlob({
       invoiceNumber: invoiceNumber || '-',
       issueDate,
@@ -486,10 +554,16 @@ export function InvoiceFromOrderDialog({
         phone: order.clients.phone || undefined,
       },
       company: {
-        name: 'PT. Djawara Tiga Gunung',
-        addressLines: ['Jl. Raya Susukan Desa Karangjati Rt 02 Rw 02', 'Kec. Susukan Kab. Banjarnegara'],
-        phone: '082242638999',
-        email: 'pt.djawara3@gmail.com',
+        name: (branding?.company_name || 'PT. Djawara Tiga Gunung') as string,
+        addressLines: (Array.isArray(branding?.address_lines) && branding.address_lines.length > 0
+          ? branding.address_lines
+          : ['Jl. Raya Susukan Desa Karangjati Rt 02 Rw 02', 'Kec. Susukan Kab. Banjarnegara']) as string[],
+        phone: (branding?.phone || '082242638999') as string,
+        email: (branding?.email || 'pt.djawara3@gmail.com') as string,
+        logoUrl: (branding?.logo_url || undefined) as any,
+        stampUrl: (branding?.stamp_url || undefined) as any,
+        signatureImageUrl: (branding?.signature_image_url || undefined) as any,
+        signatureScale: (typeof branding?.signature_scale === 'number' ? branding.signature_scale : undefined) as any,
         paymentLines: [
           'Pembayaran Transfer Via',
           'BNI - IDR : 154 061 5648',
@@ -498,8 +572,8 @@ export function InvoiceFromOrderDialog({
           'pt.djawara3@gmail.com',
           'whatsapp 0822 9899 9736 / 0822 4263 8999',
         ],
-        signName: 'PT. Djawara Tiga Gunung',
-        signTitle: 'Jabatan',
+        signName: (branding?.signature_name || 'PT. Djawara Tiga Gunung') as string,
+        signTitle: (branding?.signature_title || 'Jabatan') as string,
       },
       items: items.map((it) => ({
         description: it.description,
@@ -535,72 +609,72 @@ export function InvoiceFromOrderDialog({
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<string | null> => {
     if (!order?.clients) {
       toast.error('Client tidak ditemukan')
-      return
+      return null
     }
+    const client = order.clients
     if (!invoiceNumber.trim()) {
       toast.error('Nomor invoice wajib diisi')
-      return
+      return null
     }
 
     setSaving(true)
     try {
       const amountTotal = payable
 
+      let savedInvoiceId: string | null = invoiceId
+
+      const insertInvoice = async (invNo: string, withAdjustments: boolean) => {
+        const payload: any = {
+          tenant_id: tenantId,
+          invoice_number: invNo,
+          status: 'draft',
+          service_order_id: orderId,
+          client_id: client.id,
+          client_name: client.name || 'N/A',
+          client_email: client.email || null,
+          client_phone: client.phone || null,
+          client_address: order.location_address || client.address || null,
+          issue_date: issueDate,
+          due_date: dueDate || null,
+          amount_total: amountTotal,
+          notes: null,
+        }
+        if (withAdjustments) {
+          payload.ppn_enabled = ppnEnabled
+          payload.ppn_percent = safeNumber(ppnPercent) || 0
+          payload.pph_enabled = pphEnabled
+          payload.pph_percent = safeNumber(pphPercent) || 0
+          payload.dp_enabled = dpEnabled
+          payload.dp_amount = safeNumber(dpAmount) || 0
+        }
+        return supabase.from('invoices').insert(payload).select('id').single()
+      }
+
       // Upsert invoice
       if (!invoiceId) {
-        let ins = await supabase
-          .from('invoices')
-          .insert({
-            tenant_id: tenantId,
-            invoice_number: invoiceNumber.trim(),
-            status: 'unpaid',
-            service_order_id: orderId,
-            client_id: order.clients.id,
-            client_name: order.clients.name || 'N/A',
-            client_email: order.clients.email || null,
-            client_phone: order.clients.phone || null,
-            client_address: order.location_address || order.clients.address || null,
-            issue_date: issueDate,
-            due_date: dueDate || null,
-            amount_total: amountTotal,
-            ppn_enabled: ppnEnabled,
-            ppn_percent: safeNumber(ppnPercent) || 0,
-            pph_enabled: pphEnabled,
-            pph_percent: safeNumber(pphPercent) || 0,
-            dp_enabled: dpEnabled,
-            dp_amount: safeNumber(dpAmount) || 0,
-            notes: null,
-          })
-          .select('id')
-          .single()
+        let invNo = invoiceNumber.trim()
 
+        // First attempt (with adjustment columns), then fallback, then retry-on-duplicate once.
+        let ins = await insertInvoice(invNo, true)
         if (ins.error) {
-          // Fallback if adjustment columns not yet added
-          ins = await supabase
-            .from('invoices')
-            .insert({
-              tenant_id: tenantId,
-              invoice_number: invoiceNumber.trim(),
-              status: 'unpaid',
-              service_order_id: orderId,
-              client_id: order.clients.id,
-              client_name: order.clients.name || 'N/A',
-              client_email: order.clients.email || null,
-              client_phone: order.clients.phone || null,
-              client_address: order.location_address || order.clients.address || null,
-              issue_date: issueDate,
-              due_date: dueDate || null,
-              amount_total: amountTotal,
-              notes: null,
-            })
-            .select('id')
-            .single()
+          ins = await insertInvoice(invNo, false)
+        }
+
+        if (ins.error && isDuplicateInvoiceNumberError(ins.error)) {
+          const nextNo = await suggestNextInvoiceNumber(supabase as any, tenantId, 'INV')
+          setInvoiceNumber(nextNo)
+          invNo = nextNo
+
+          let retry = await insertInvoice(invNo, true)
+          if (retry.error) retry = await insertInvoice(invNo, false)
+          ins = retry
         }
 
         if (ins.error) throw ins.error
+        savedInvoiceId = ins.data.id
         setInvoiceId(ins.data.id)
 
         // Insert items
@@ -679,9 +753,11 @@ export function InvoiceFromOrderDialog({
 
       toast.success('Invoice tersimpan')
       onDone?.()
+      return savedInvoiceId
     } catch (e: any) {
       console.error('save invoice error:', e)
       toast.error(e?.message || 'Gagal menyimpan invoice')
+      return null
     } finally {
       setSaving(false)
     }
@@ -705,18 +781,89 @@ export function InvoiceFromOrderDialog({
     }
   }
 
-  const handleSendToClientDocs = async () => {
+  const handleSendToClientDocs = async (invoiceIdOverride?: string | null) => {
     try {
       if (!order?.clients) throw new Error('Client tidak ditemukan')
-      if (!invoiceId) {
+      const effectiveInvoiceId = invoiceIdOverride || invoiceId
+      if (!effectiveInvoiceId) {
         toast.error('Simpan invoice dulu sebelum kirim ke dokumen client')
         return
       }
 
-      const blob = previewBlob || (await buildPdf())
-      const fileName = `${order.clients.id}/invoices/${invoiceNumber || invoiceId}.pdf`
+      const markInvoiceSent = async () => {
+        // Best-effort: mark invoice as sent after it has been delivered / assigned.
+        try {
+          const now = new Date().toISOString()
+          let updInv = await supabase
+            .from('invoices')
+            .update({ status: 'sent', sent_at: now })
+            .eq('tenant_id', tenantId)
+            .eq('id', effectiveInvoiceId)
 
-      const file = await blobToFile(blob, `${invoiceNumber || invoiceId}.pdf`)
+          if (updInv.error) {
+            // Fallback if sent_at column is not present yet (older schema)
+            updInv = await supabase
+              .from('invoices')
+              .update({ status: 'sent' })
+              .eq('tenant_id', tenantId)
+              .eq('id', effectiveInvoiceId)
+          }
+
+          if (updInv.error) {
+            console.warn('invoice status update after send failed:', updInv.error)
+            toast.error('Status invoice belum terupdate (cek migration status sent).')
+          }
+        } catch (e: any) {
+          console.warn('invoice status update after send exception:', e)
+        }
+      }
+
+      const referredById = (order.clients as any)?.referred_by_id as string | null | undefined
+
+      // If client has referral sales_partner, assign invoice to partner module instead of client docs.
+      if (referredById) {
+        const { data: { user } } = await supabase.auth.getUser()
+
+        try {
+          const payload: any = {
+            tenant_id: tenantId,
+            invoice_id: effectiveInvoiceId,
+            sales_partner_id: referredById,
+            invoice_number: invoiceNumber || '- ',
+            client_id: order.clients.id,
+            client_name: order.clients.name || 'N/A',
+            client_phone: order.clients.phone || null,
+            client_address: order.location_address || order.clients.address || null,
+            issue_date: issueDate,
+            due_date: dueDate || null,
+            amount_total: payable,
+            status: 'assigned',
+            created_by: user?.id || null,
+          }
+
+          const ins = await supabase
+            .from('referral_invoice_assignments' as any)
+            .upsert(payload, { onConflict: 'tenant_id,invoice_id' })
+
+          if (ins.error) throw ins.error
+        } catch (e: any) {
+          const msg = String(e?.message || '')
+          if (msg.toLowerCase().includes('referral_invoice_assignments') && msg.toLowerCase().includes('does not exist')) {
+            toast.error('Fitur referral belum aktif di database. Jalankan migration referral_invoice_assignments dulu.')
+            return
+          }
+          throw e
+        }
+
+        await markInvoiceSent()
+        toast.success('Invoice dikirim ke akun mitra (sales partner)')
+        return
+      }
+
+      const blob = previewBlob || (await buildPdf())
+      const fileName = `${order.clients.id}/invoices/${invoiceNumber || effectiveInvoiceId}.pdf`
+
+      const file = await blobToFile(blob, `${invoiceNumber || effectiveInvoiceId}.pdf`)
       const up = await supabase.storage
         .from('client-documents')
         .upload(fileName, file, { upsert: true, contentType: 'application/pdf' })
@@ -773,12 +920,46 @@ export function InvoiceFromOrderDialog({
         if (ins.error) throw ins.error
       }
 
+      await markInvoiceSent()
+
       toast.success('Invoice terkirim ke dokumen client')
     } catch (e: any) {
       console.error('send to docs error:', e)
       toast.error(e?.message || 'Gagal kirim invoice ke dokumen client')
     }
   }
+
+  useEffect(() => {
+    if (!open) {
+      initialActionRanRef.current = false
+      return
+    }
+    // Reset when switching orders while keeping dialog open
+    initialActionRanRef.current = false
+  }, [open, orderId])
+
+  useEffect(() => {
+    if (!open) return
+    if (!initialAction) return
+    if (loading) return
+    if (!order) return
+    if (initialActionRanRef.current) return
+
+    initialActionRanRef.current = true
+    ;(async () => {
+      if (initialAction === 'preview') {
+        await handlePreview()
+        return
+      }
+
+      if (initialAction === 'send') {
+        const ensuredId = invoiceId || (await handleSave())
+        if (!ensuredId) return
+        await handleSendToClientDocs(ensuredId)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialAction, loading, order, invoiceId])
 
   return (
     <>
@@ -1007,7 +1188,7 @@ export function InvoiceFromOrderDialog({
             <Button variant="outline" onClick={handleSave} disabled={saving}>
               Simpan
             </Button>
-            <Button onClick={handleSendToClientDocs}>
+            <Button onClick={() => handleSendToClientDocs()}>
               Kirim ke Dokumen Client
             </Button>
           </DialogFooter>

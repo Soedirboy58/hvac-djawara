@@ -27,6 +27,14 @@ interface Client {
   phone: string
   email?: string
   address?: string
+  client_type?: string
+}
+
+type ClientProperty = {
+  id: string
+  property_name: string
+  address: string
+  city: string | null
 }
 
 interface Technician {
@@ -52,11 +60,11 @@ interface ApprovalDocument {
   category: 'spk' | 'approval' | 'proposal' | 'other'
 }
 
-const TIME_SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-  '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
-]
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const hours = Math.floor(i / 2)
+  const minutes = i % 2 === 0 ? '00' : '30'
+  return `${String(hours).padStart(2, '0')}:${minutes}`
+})
 
 export default function NewOrderPage() {
   const router = useRouter()
@@ -69,16 +77,31 @@ export default function NewOrderPage() {
   const [salesTeam, setSalesTeam] = useState<SalesPerson[]>([])
   const [error, setError] = useState<string | null>(null)
   const [supportsUnitFields, setSupportsUnitFields] = useState(false)
+  const [supportsServiceCategoryFields, setSupportsServiceCategoryFields] = useState(false)
+  const [supportsPropertyFields, setSupportsPropertyFields] = useState(false)
+  const [supportsClientProperties, setSupportsClientProperties] = useState(false)
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [newWorkInitialStatus, setNewWorkInitialStatus] = useState<'listing' | 'scheduled'>('listing')
   const [clientDialogOpen, setClientDialogOpen] = useState(false)
   const [selectedTechnicianIds, setSelectedTechnicianIds] = useState<string[]>([])
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([])
+
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientSearchLoading, setClientSearchLoading] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+
+  const [properties, setProperties] = useState<ClientProperty[]>([])
+  const [propertiesLoading, setPropertiesLoading] = useState(false)
+  const [selectedPropertyId, setSelectedPropertyId] = useState('')
+  const [newPropertyName, setNewPropertyName] = useState('')
+  const [newPropertyAddress, setNewPropertyAddress] = useState('')
+  const [newPropertyCity, setNewPropertyCity] = useState('')
   
   const [formData, setFormData] = useState({
     client_id: '',
     client_phone: '',
     order_type: '',
+    service_category_planned: '',
     service_title: '',
     service_description: '',
     unit_count: '',
@@ -101,19 +124,112 @@ export default function NewOrderPage() {
     loadData()
   }, [])
 
-  // Auto-fill client data when client selected
+  // Keep selected client in sync
   useEffect(() => {
-    if (formData.client_id && clients.length > 0) {
-      const selectedClient = clients.find(c => c.id === formData.client_id)
-      if (selectedClient) {
-        setFormData(prev => ({
-          ...prev,
-          client_phone: selectedClient.phone,
-          location_address: selectedClient.address || ''
-        }))
-      }
+    if (!formData.client_id) {
+      setSelectedClient(null)
+      return
     }
-  }, [formData.client_id, clients])
+    if (selectedClient?.id === formData.client_id) return
+    const found = clients.find((c) => c.id === formData.client_id) || null
+    if (found) setSelectedClient(found)
+  }, [formData.client_id, clients, selectedClient?.id])
+
+  // Load properties when client changes
+  useEffect(() => {
+    if (!tenantId || !formData.client_id) {
+      setProperties([])
+      setSelectedPropertyId('')
+      setNewPropertyName('')
+      setNewPropertyAddress('')
+      setNewPropertyCity('')
+      return
+    }
+    void loadProperties(formData.client_id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, formData.client_id])
+
+  // Auto-fill client phone and location (prefer property address if selected)
+  useEffect(() => {
+    if (!selectedClient) return
+    const prop = selectedPropertyId ? properties.find((p) => p.id === selectedPropertyId) : null
+    const nextAddress = prop?.address || selectedClient.address || ''
+
+    setFormData((prev) => ({
+      ...prev,
+      client_phone: selectedClient.phone,
+      location_address: nextAddress || prev.location_address,
+    }))
+  }, [selectedClient, selectedPropertyId, properties])
+
+  // Debounced client search
+  useEffect(() => {
+    if (!tenantId) return
+    const t = setTimeout(() => {
+      void searchClients(clientSearch)
+    }, 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientSearch, tenantId, viewerRole])
+
+  const searchClients = async (term: string) => {
+    if (!tenantId) return
+    const supabase = createClient()
+    setClientSearchLoading(true)
+    try {
+      let q = supabase
+        .from('clients')
+        .select('id, name, phone, email, address, client_type')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+
+      if (viewerRole === 'sales_partner') {
+        const { data: u } = await supabase.auth.getUser()
+        const userId = u?.user?.id
+        if (userId) q = q.eq('referred_by_id', userId)
+      }
+
+      const normalized = term.trim()
+      if (normalized.length >= 2) {
+        q = q.ilike('name', `%${normalized}%`)
+      }
+
+      const { data, error } = await q.order('name').limit(30)
+      if (error) throw error
+      setClients((data || []) as Client[])
+    } catch (err) {
+      console.error('Error searching clients:', err)
+    } finally {
+      setClientSearchLoading(false)
+    }
+  }
+
+  const loadProperties = async (clientId: string) => {
+    const supabase = createClient()
+    setPropertiesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('client_properties')
+        .select('id, property_name, address, city')
+        .eq('tenant_id', tenantId)
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+        .order('is_primary', { ascending: false })
+        .order('property_name', { ascending: true })
+
+      if (error) throw error
+      setProperties((data || []) as ClientProperty[])
+      setSelectedPropertyId('')
+      setNewPropertyName('')
+      setNewPropertyAddress('')
+      setNewPropertyCity('')
+    } catch (err) {
+      console.error('Error loading properties:', err)
+      setProperties([])
+    } finally {
+      setPropertiesLoading(false)
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -168,10 +284,52 @@ export default function NewOrderPage() {
         setSupportsUnitFields(true)
       }
 
+      // Detect whether service category fields exist on service_orders
+      const { error: categoryProbeError } = await supabase
+        .from('service_orders')
+        .select('id, service_category_planned')
+        .eq('tenant_id', profile.active_tenant_id)
+        .limit(1)
+
+      if (categoryProbeError) {
+        console.warn('ℹ️ service_category_planned not available yet:', categoryProbeError.message)
+        setSupportsServiceCategoryFields(false)
+      } else {
+        setSupportsServiceCategoryFields(true)
+      }
+
+      // Detect whether property_id exists on service_orders
+      const { error: propertyProbeError } = await supabase
+        .from('service_orders')
+        .select('id, property_id')
+        .eq('tenant_id', profile.active_tenant_id)
+        .limit(1)
+
+      if (propertyProbeError) {
+        console.warn('ℹ️ property_id not available yet:', propertyProbeError.message)
+        setSupportsPropertyFields(false)
+      } else {
+        setSupportsPropertyFields(true)
+      }
+
+      // Detect whether client_properties table is available (for property selection/creation UI)
+      const { error: clientPropsProbeError } = await supabase
+        .from('client_properties')
+        .select('id')
+        .eq('tenant_id', profile.active_tenant_id)
+        .limit(1)
+
+      if (clientPropsProbeError) {
+        console.warn('ℹ️ client_properties not available yet:', clientPropsProbeError.message)
+        setSupportsClientProperties(false)
+      } else {
+        setSupportsClientProperties(true)
+      }
+
       // Load clients (sales_partner sees only referred clients)
       let clientsQuery = supabase
         .from('clients')
-        .select('id, name, phone, email, address')
+        .select('id, name, phone, email, address, client_type')
         .eq('tenant_id', profile.active_tenant_id)
         .eq('is_active', true)
 
@@ -179,7 +337,7 @@ export default function NewOrderPage() {
         clientsQuery = clientsQuery.eq('referred_by_id', user.id)
       }
 
-      const { data: clientsData, error: clientsError } = await clientsQuery.order('name')
+      const { data: clientsData, error: clientsError } = await clientsQuery.order('name').limit(30)
 
       if (clientsError) {
         console.error('Clients error:', clientsError)
@@ -275,9 +433,23 @@ export default function NewOrderPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
+    const needsProperty = supportsClientProperties
+    const hasSelectedProperty = !!selectedPropertyId
+    const hasNewPropertyInputs = !!newPropertyName.trim() && !!newPropertyAddress.trim()
+
     if (!formData.client_id || !formData.order_type || !formData.service_title || !formData.location_address) {
       toast.error('Please fill in all required fields')
+      return
+    }
+
+    if (needsProperty && properties.length > 0 && !hasSelectedProperty) {
+      toast.error('Pilih properti client terlebih dulu')
+      return
+    }
+
+    if (needsProperty && properties.length === 0 && !hasNewPropertyInputs) {
+      toast.error('Client baru harus punya data properti (nama & alamat)')
       return
     }
 
@@ -311,6 +483,43 @@ export default function NewOrderPage() {
         .single()
 
       if (!profile?.active_tenant_id) throw new Error('No active tenant')
+
+      const mapPropertyCategory = (propertyType: string | null | undefined) => {
+        const t = (propertyType || '').toLowerCase()
+        if (t === 'pabrik_industri') return 'industri'
+        if (t === 'rumah_tangga') return 'rumah_tangga'
+        if (!t) return 'rumah_tangga'
+        return 'layanan_publik'
+      }
+
+      let propertyIdToUse: string | null = needsProperty ? (selectedPropertyId || null) : null
+
+      // If client has no properties yet, create one as part of the first order
+      if (needsProperty && !propertyIdToUse && properties.length === 0) {
+        const propertyType = (selectedClient?.client_type || 'rumah_tangga') as string
+        const propertyCategory = mapPropertyCategory(propertyType)
+
+        const { data: createdProp, error: propErr } = await supabase
+          .from('client_properties')
+          .insert({
+            tenant_id: profile.active_tenant_id,
+            client_id: formData.client_id,
+            property_name: newPropertyName.trim(),
+            address: newPropertyAddress.trim(),
+            city: newPropertyCity.trim() || null,
+            property_type: propertyType,
+            property_category: propertyCategory,
+            is_primary: true,
+            is_active: true,
+            created_by: user.id,
+            updated_by: user.id,
+          })
+          .select('id')
+          .single()
+
+        if (propErr) throw propErr
+        propertyIdToUse = (createdProp as any)?.id || null
+      }
 
       // Determine status based on historical flag and assignment
       let orderStatus = 'listing'
@@ -349,7 +558,11 @@ export default function NewOrderPage() {
         .insert({
           tenant_id: profile.active_tenant_id,
           client_id: formData.client_id,
+          ...(supportsPropertyFields ? { property_id: propertyIdToUse } : {}),
           order_type: formData.order_type,
+          ...(supportsServiceCategoryFields
+            ? { service_category_planned: formData.service_category_planned || null }
+            : {}),
           service_title: formData.service_title,
           service_description: formData.service_description || null,
           ...(supportsUnitFields
@@ -522,6 +735,7 @@ export default function NewOrderPage() {
                           phone: savedClient.phone,
                           email: savedClient.email ?? undefined,
                           address: savedClient.address ?? undefined,
+                          client_type: (savedClient as any).client_type ?? undefined,
                         }
 
                         setClients((prev) => {
@@ -537,6 +751,9 @@ export default function NewOrderPage() {
                           location_address: mapped.address || prev.location_address,
                         }))
 
+                        setSelectedClient(mapped)
+                        setClientSearch(mapped.name)
+
                         setClientDialogOpen(false)
                         toast.success(`Client "${mapped.name}" created and selected`)
                       }}
@@ -550,14 +767,35 @@ export default function NewOrderPage() {
               </Dialog>
 
               <div className="space-y-2">
-                <Label htmlFor="client">Select Client *</Label>
-                <Select 
-                  value={formData.client_id} 
-                  onValueChange={(value) => setFormData({ ...formData, client_id: value })}
+                <Label htmlFor="client_search">Cari Client *</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="client_search"
+                    placeholder="Ketik nama client (min 2 huruf)"
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                  />
+                  {clientSearchLoading && (
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Menampilkan maksimal 30 hasil. Jika kosong, coba ketik minimal 2 huruf.
+                </p>
+
+                <Select
+                  value={formData.client_id}
+                  onValueChange={(value) => {
+                    const picked = clients.find((c) => c.id === value) || null
+                    setSelectedClient(picked)
+                    setFormData((prev) => ({ ...prev, client_id: value }))
+                  }}
                   disabled={clients.length === 0}
                 >
                   <SelectTrigger id="client">
-                    <SelectValue placeholder={clients.length > 0 ? "Select a client" : "No clients available"} />
+                    <SelectValue
+                      placeholder={clients.length > 0 ? 'Pilih client dari hasil pencarian' : 'Client tidak ditemukan'}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {clients.length > 0 ? (
@@ -567,15 +805,12 @@ export default function NewOrderPage() {
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="none" disabled>No clients found</SelectItem>
+                      <SelectItem value="none" disabled>
+                        Tidak ada client
+                      </SelectItem>
                     )}
                   </SelectContent>
                 </Select>
-                {clients.length === 0 && (
-                  <p className="text-sm text-amber-600">
-                    ⚠️ No clients available. Click &quot;Add New Client&quot; button above.
-                  </p>
-                )}
               </div>
 
               {formData.client_id && (
@@ -590,6 +825,75 @@ export default function NewOrderPage() {
                   <p className="text-xs text-muted-foreground">
                     📞 Auto-filled from client data
                   </p>
+                </div>
+              )}
+
+              {supportsClientProperties && formData.client_id && (
+                <div className="space-y-3">
+                  <Separator />
+                  <div className="space-y-1">
+                    <Label>Properti Client *</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Order harus terkait dengan properti. Jika client belum punya properti, buat properti saat ini.
+                    </p>
+                  </div>
+
+                  {propertiesLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading properties...
+                    </div>
+                  ) : properties.length > 0 ? (
+                    <div className="space-y-2">
+                      <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
+                        <SelectTrigger id="property_id">
+                          <SelectValue placeholder="Pilih properti" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {properties.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.property_name}
+                              {p.city ? ` - ${p.city}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Alamat lokasi akan mengikuti alamat properti (bisa diedit).
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="new_property_name">Nama Properti *</Label>
+                        <Input
+                          id="new_property_name"
+                          placeholder="Contoh: Rumah Pak Budi / Kantor Cabang A"
+                          value={newPropertyName}
+                          onChange={(e) => setNewPropertyName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new_property_address">Alamat Properti *</Label>
+                        <Textarea
+                          id="new_property_address"
+                          placeholder="Masukkan alamat lengkap properti..."
+                          value={newPropertyAddress}
+                          onChange={(e) => setNewPropertyAddress(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new_property_city">Kota (optional)</Label>
+                        <Input
+                          id="new_property_city"
+                          placeholder="Contoh: Jakarta"
+                          value={newPropertyCity}
+                          onChange={(e) => setNewPropertyCity(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -666,7 +970,11 @@ export default function NewOrderPage() {
                 <Label htmlFor="order_type">Service Type *</Label>
                 <Select 
                   value={formData.order_type} 
-                  onValueChange={(value) => setFormData({ ...formData, order_type: value })}
+                  onValueChange={(value) => setFormData({
+                    ...formData,
+                    order_type: value,
+                    service_category_planned: value === 'survey' ? '' : formData.service_category_planned,
+                  })}
                 >
                   <SelectTrigger id="order_type">
                     <SelectValue placeholder="Select service type" />
@@ -682,6 +990,45 @@ export default function NewOrderPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.order_type === 'survey' ? (
+                <div className="space-y-2">
+                  <Label>Kategori Tindak Lanjut (A-D)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Untuk order <span className="font-medium">Survey</span>, kategori tindak lanjut ditentukan oleh admin setelah checking & penawaran.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="service_category_planned">Kategori Service (A-D)</Label>
+                  <Select
+                    value={formData.service_category_planned || undefined}
+                    onValueChange={(value) => setFormData({ ...formData, service_category_planned: value })}
+                    disabled={!supportsServiceCategoryFields}
+                  >
+                    <SelectTrigger id="service_category_planned">
+                      <SelectValue placeholder={supportsServiceCategoryFields ? 'Pilih kategori (opsional)' : 'Belum tersedia (DB belum update)'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">A - Maintenance / Pemeliharaan</SelectItem>
+                      <SelectItem value="B">B - Minor Repair (Electrical/Support)</SelectItem>
+                      <SelectItem value="C">C - Major Repair (Part Utama Unit)</SelectItem>
+                      <SelectItem value="D">D - Sistem Refrigerasi (Vacuum/Refrigerant/Leak)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formData.service_category_planned ? (
+                    <p className="text-xs text-muted-foreground">
+                      {formData.service_category_planned === 'A'
+                        ? 'A: Maintenance / pemeliharaan rutin (ringan)'
+                        : formData.service_category_planned === 'B'
+                          ? 'B: Minor repair (electrical/support)'
+                          : formData.service_category_planned === 'C'
+                            ? 'C: Major repair (part utama unit)'
+                            : 'D: Sistem refrigerasi (vacuum / refrigerant / leak)'}
+                    </p>
+                  ) : null}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="title">Service Title *</Label>

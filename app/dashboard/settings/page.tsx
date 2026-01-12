@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { DocumentBrandingSettingsCard } from '@/components/settings/DocumentBrandingSettingsCard'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -72,6 +73,9 @@ export default async function SettingsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Document Branding (Kop) */}
+        <DocumentBrandingSettingsCard />
 
         {/* Placeholder sections */}
         <Card>

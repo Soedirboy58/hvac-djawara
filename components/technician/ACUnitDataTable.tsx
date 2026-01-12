@@ -37,6 +37,18 @@ export interface ACUnitData {
   jenis_unit: string;
   deskripsi_lain: string;
 
+  // Per-unit outcome & recommendations (for quotation/workflow)
+  repair_outcome?: '' | 'ok' | 'fix_now' | 'need_quote';
+  recommendation_notes?: string;
+  recommended_parts?: Array<{
+    line_id: string;
+    part_id?: string | null;
+    part_name: string;
+    quantity: number;
+    unit: string;
+    notes?: string;
+  }>;
+
   // Per-unit performance/measurement fields (used in "Data Kinerja" section)
   voltage_supply?: string;
   arus_supply?: string;
