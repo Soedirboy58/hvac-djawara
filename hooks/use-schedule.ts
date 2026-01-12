@@ -34,6 +34,8 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
   const [events, setEvents] = useState<ScheduleEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [viewerRole, setViewerRole] = useState<string | null>(null)
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null)
   const supabase = createClient()
 
   const fetchSchedule = useCallback(async () => {
@@ -44,6 +46,8 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      setViewerUserId(user.id)
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('active_tenant_id')
@@ -52,11 +56,21 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
 
       if (!profile?.active_tenant_id) throw new Error('No active tenant')
 
+      const { data: roleRow } = await supabase
+        .from('user_tenant_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('tenant_id', profile.active_tenant_id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      setViewerRole((roleRow as any)?.role ?? null)
+
       let query = supabase
         .from('service_orders')
         .select(`
           *,
-          client:clients!client_id(id, name, phone)
+          client:clients!client_id(id, name, phone, referred_by_id)
         `)
         .eq('tenant_id', profile.active_tenant_id)
         .not('scheduled_date', 'is', null)
@@ -188,6 +202,8 @@ export function useSchedule(startDate?: Date, endDate?: Date) {
     loading,
     error,
     refetch: fetchSchedule,
+    viewerRole,
+    viewerUserId,
   }
 }
 

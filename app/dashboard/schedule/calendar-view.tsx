@@ -50,7 +50,7 @@ export default function ScheduleCalendarView() {
   const [holidayEvents, setHolidayEvents] = useState<CalendarEvent[]>([])
   const holidayCacheRef = useRef<Map<number, CalendarEvent[]>>(new Map())
   
-  const { events, loading, error, refetch } = useSchedule()
+  const { events, loading, error, refetch, viewerRole, viewerUserId } = useSchedule()
   const { updateSchedule } = useUpdateSchedule()
   const { checkConflicts } = useCheckConflicts()
   const { technicians } = useTechnicians()
@@ -114,15 +114,35 @@ export default function ScheduleCalendarView() {
     }
   }, [currentDate])
 
+  const isSalesPartner = viewerRole === 'sales_partner'
+
+  const isOwnPartnerOrder = useCallback((event: CalendarEvent) => {
+    if (!isSalesPartner) return true
+    if (!viewerUserId) return false
+    const client = (event.resource as any)?.client
+    return String(client?.referred_by_id || '') === String(viewerUserId)
+  }, [isSalesPartner, viewerUserId])
+
   // Filter events by selected technician
   const filteredEvents: CalendarEvent[] = useMemo(() => {
     const scheduleEvents = (selectedTechnician === 'all'
       ? events
       : events.filter(e => (e.resource as any)?.technician?.id === selectedTechnician)) as CalendarEvent[]
 
+    const maskedScheduleEvents = isSalesPartner
+      ? scheduleEvents.map((e) => {
+          const owned = isOwnPartnerOrder(e)
+          if (owned) return e
+          return {
+            ...e,
+            title: 'Terjadwal (order lain)',
+          }
+        })
+      : scheduleEvents
+
     // Always show holidays regardless of technician filter
-    return [...holidayEvents, ...scheduleEvents]
-  }, [events, holidayEvents, selectedTechnician])
+    return [...holidayEvents, ...maskedScheduleEvents]
+  }, [events, holidayEvents, selectedTechnician, isSalesPartner, isOwnPartnerOrder])
 
   const handleNavigate = useCallback((newDate: Date) => {
     setCurrentDate(newDate)
@@ -135,6 +155,10 @@ export default function ScheduleCalendarView() {
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
     try {
       if (isHolidayEvent(event)) return
+
+      // Sales partner: only allow opening own orders.
+      if (isSalesPartner && !isOwnPartnerOrder(event)) return
+
       const orderId = (event.resource as any)?.id
       if (orderId) {
         router.push(`/dashboard/orders/${orderId}`)
@@ -142,10 +166,11 @@ export default function ScheduleCalendarView() {
     } catch (err) {
       console.error('Error navigating to order:', err)
     }
-  }, [router])
+  }, [router, isSalesPartner, isOwnPartnerOrder])
 
   const handleSelectSlot = useCallback((slotInfo: SlotInfo) => {
     try {
+      if (isSalesPartner) return
       if (slotInfo?.start) {
         const dateStr = moment(slotInfo.start).format('YYYY-MM-DD')
         router.push(`/dashboard/orders/new?date=${dateStr}`)
@@ -153,12 +178,13 @@ export default function ScheduleCalendarView() {
     } catch (err) {
       console.error('Error creating order:', err)
     }
-  }, [router])
+  }, [router, isSalesPartner])
 
   // Handle drag and drop events
   const handleEventDrop = async ({ event, start, end }: any) => {
     try {
       if (isHolidayEvent(event)) return
+      if (isSalesPartner) return
 
       // For multi-day all-day blocks, shift the whole range (end date) and skip time-based conflict logic.
       if (event?.allDay) {
@@ -231,6 +257,20 @@ export default function ScheduleCalendarView() {
       }
     }
 
+    // Sales partner: mask non-owned orders
+    if (isSalesPartner && !isOwnPartnerOrder(event)) {
+      return {
+        style: {
+          backgroundColor: '#9ca3af',
+          borderRadius: '4px',
+          opacity: 0.7,
+          color: '#111827',
+          border: 'none',
+          display: 'block',
+        },
+      }
+    }
+
     const status = (event.resource as any).status
     let backgroundColor = '#3b82f6' // blue for scheduled
     
@@ -248,7 +288,7 @@ export default function ScheduleCalendarView() {
         display: 'block',
       },
     }
-  }, [])
+  }, [isSalesPartner, isOwnPartnerOrder])
 
   if (loading) {
     return (

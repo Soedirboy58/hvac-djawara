@@ -58,6 +58,7 @@ export interface ServiceOrder {
     phone: string
     email?: string
     address?: string
+    referred_by_id?: string | null
   }
   technician?: {
     id: string
