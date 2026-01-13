@@ -278,12 +278,22 @@ export default async function AdminDashboard({ page }: { page: number }) {
 
   const activeTodayStatuses = ['pending', 'scheduled', 'in_progress', 'complaint']
 
+  // Option B: show orders that overlap "today".
+  // - scheduled_date = today (normal)
+  // - OR scheduled earlier but estimated_end_date >= today
+  // - OR in_progress scheduled earlier with no estimated_end_date (ongoing)
+  const activeStatusesList = activeTodayStatuses.join(',')
+  const todayOverlapFilter = [
+    `and(scheduled_date.eq.${today},status.in.(${activeStatusesList}))`,
+    `and(scheduled_date.lt.${today},estimated_end_date.gte.${today},status.in.(${activeStatusesList}))`,
+    `and(status.eq.in_progress,scheduled_date.lt.${today},estimated_end_date.is.null)`,
+  ].join(',')
+
   const { count: todayCount } = await supabase
     .from('service_orders')
     .select('*', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
-    .eq('scheduled_date', today)
-    .in('status', activeTodayStatuses as any)
+    .or(todayOverlapFilter)
 
   // Try include unit fields; if schema doesn't have them, retry without.
   let todayOrders: any[] = []
@@ -291,8 +301,8 @@ export default async function AdminDashboard({ page }: { page: number }) {
     .from('service_orders')
     .select('id, order_number, service_title, scheduled_time, status, unit_count, unit_category, client:clients(name)')
     .eq('tenant_id', tenantId)
-    .eq('scheduled_date', today)
-    .in('status', activeTodayStatuses as any)
+    .or(todayOverlapFilter)
+    .order('scheduled_date', { ascending: true })
     .order('scheduled_time', { ascending: true })
     .range(from, to)
 
@@ -303,8 +313,8 @@ export default async function AdminDashboard({ page }: { page: number }) {
       .from('service_orders')
       .select('id, order_number, service_title, scheduled_time, status, client:clients(name)')
       .eq('tenant_id', tenantId)
-      .eq('scheduled_date', today)
-      .in('status', activeTodayStatuses as any)
+      .or(todayOverlapFilter)
+      .order('scheduled_date', { ascending: true })
       .order('scheduled_time', { ascending: true })
       .range(from, to)
     todayOrders = fallback.data || []
