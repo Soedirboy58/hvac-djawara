@@ -201,23 +201,35 @@ export default function OrdersPage() {
   // Calculate KPIs
   const kpis = useMemo(() => {
     if (!orders) return null
-    
+
+    const fmtYmdJakarta = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+
+    const ymdJakarta = (value?: string) => {
+      if (!value) return null
+      const d = new Date(value)
+      if (Number.isNaN(d.getTime())) return null
+      return fmtYmdJakarta.format(d)
+    }
+
+    const todayYmd = fmtYmdJakarta.format(new Date())
+
     const total = orders.length
-    const pending = orders.filter(o => o.status === 'listing' || o.status === 'pending').length
-    const inProgress = orders.filter(o => o.status === 'in_progress').length
-    const completed = orders.filter(o => o.status === 'completed').length
-    const completedToday = orders.filter(o => {
-      if (o.status !== 'completed' || !o.completion_date) return false
-      const today = new Date().toDateString()
-      return new Date(o.completion_date).toDateString() === today
-    }).length
+    const pending = orders.filter((o) => o.status === 'listing' || o.status === 'pending').length
+    const inProgress = orders.filter((o) => o.status === 'in_progress').length
+    const completed = orders.filter((o) => o.status === 'completed').length
+    const today = orders.filter((o) => ymdJakarta(o.created_at) === todayYmd).length
 
     return {
       total,
       pending,
       inProgress,
       completed,
-      completedToday,
+      today,
       completionRate: total > 0 ? Math.round((completed / total) * 100) : 0
     }
   }, [orders])
@@ -413,7 +425,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Today</p>
-                  <h3 className="text-2xl font-bold mt-1">{kpis.completedToday}</h3>
+                  <h3 className="text-2xl font-bold mt-1">{kpis.today}</h3>
                 </div>
                 <div className="h-12 w-12 bg-indigo-100 rounded-full flex items-center justify-center">
                   <Calendar className="h-6 w-6 text-indigo-600" />
