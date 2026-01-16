@@ -353,6 +353,21 @@ export function PeopleManagementClient({
         },
       }))
 
+      const nextToken = String((result as any)?.meta?.token || '')
+      const nextExpiresAt = String((result as any)?.meta?.expires_at || '')
+      if (nextToken || nextExpiresAt) {
+        setPartnerRecords((prev) =>
+          prev.map((p) => {
+            if (p.id !== invitationId) return p
+            return {
+              ...p,
+              token: nextToken || p.token,
+              expires_at: nextExpiresAt || p.expires_at,
+            }
+          })
+        )
+      }
+
       toast.success('Link aktivasi dibuat ulang')
     } catch (error: any) {
       console.error('Resend team invite error:', error)
@@ -1286,123 +1301,153 @@ export function PeopleManagementClient({
                   )
                 }
 
+                const effectiveUrl = teamInviteActivationMeta[partner.id]?.url || invitationUrl
+                const copyDisabled = !isActivated && isExpired && !teamInviteActivationMeta[partner.id]?.url
+
                 return (
-                  <Card 
-                    key={partner.id} 
-                    className={`border-2 ${
-                      isActivated 
-                        ? 'border-green-200 bg-green-50' 
-                        : 'border-orange-200 bg-orange-50'
-                    }`}
+                  <Card
+                    key={partner.id}
+                    className={`border-2 ${isActivated ? 'border-green-200 bg-green-50' : 'border-orange-200 bg-orange-50'}`}
                   >
-                    <CardContent className="pt-6">
-                      <div className="space-y-3">
-                        {/* Header */}
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">{partner.full_name}</h4>
-                            <p className="text-sm text-gray-600">{partner.email}</p>
-                            {partner.phone && (
-                              <p className="text-xs text-gray-500">{partner.phone}</p>
-                            )}
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="h-12 w-12 rounded-lg border border-border bg-white flex items-center justify-center shrink-0">
+                            <span className="font-semibold text-gray-700">{initials}</span>
                           </div>
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${
-                              isActivated ? 'bg-green-100' : 'bg-orange-100'
-                            }`}
-                          >
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-gray-900 truncate">{partner.full_name}</h4>
+                            <p className="text-sm text-gray-600 truncate">{partner.email}</p>
+                            {partner.phone ? (
+                              <p className="text-xs text-gray-500 truncate">{partner.phone}</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <Badge variant="outline" className="text-xs">
                             {getRoleDisplayName(partner.role)}
                           </Badge>
-                        </div>
-
-                        {/* QR Code placeholder */}
-                        <div className="bg-white rounded-lg p-3 flex items-center justify-center border-2 border-dashed border-gray-300">
-                          <div className="text-center">
-                            <div className="w-32 h-32 mx-auto bg-gray-100 rounded flex items-center justify-center">
-                              <span className="text-xs text-gray-500">QR Code</span>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">Scan to register</p>
-                          </div>
-                        </div>
-
-                        {/* Activation Status */}
-                        <div className="flex items-center justify-between">
                           {isActivated ? (
-                            <Badge className="text-xs bg-green-500 text-white">
-                                ✓ Activated
+                            <Badge className="bg-green-500 text-white">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Aktif
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="text-xs bg-orange-500 text-white">
-                                ⏳ Pending Activation
+                            <Badge variant="secondary" className="bg-orange-500 text-white">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Pending
                             </Badge>
                           )}
                         </div>
+                      </div>
 
-                        {isActivated ? (
-                          // Active Partner Info
-                          <div className="bg-white rounded-lg p-3 border">
-                            <div className="text-xs space-y-1">
-                              <div className="flex items-center gap-1 text-green-700">
-                                <CheckCircle className="w-3 h-3" />
-                                <span className="font-semibold">Has Dashboard Access</span>
-                              </div>
-                              <p className="text-gray-600">Can manage their clients & view performance</p>
+                      {!isActivated && (
+                        <div className="mt-4 space-y-3">
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4" />
+                              <span>Expires {expiryDate.toLocaleDateString()}</span>
+                              {isExpired ? (
+                                <Badge variant="secondary" className="ml-2 text-xs bg-red-100 text-red-800">
+                                  Expired
+                                </Badge>
+                              ) : null}
                             </div>
                           </div>
-                        ) : (
-                          // Passive Partner - Show Invitation
-                          <>
-                            {/* QR Code placeholder */}
-                            <div className="bg-white rounded-lg p-3 flex items-center justify-center border-2 border-dashed border-gray-300">
-                              <div className="text-center">
-                                <div className="w-32 h-32 mx-auto bg-gray-100 rounded flex items-center justify-center">
-                                  <span className="text-xs text-gray-500">QR Code</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-2">Scan to activate</p>
-                              </div>
-                            </div>
 
-                            {/* Status & Date */}
-                            <div className="text-xs text-gray-500 space-y-1">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                Expires: {expiryDate.toLocaleDateString()}
-                              </div>
-                              {isExpired && (
-                                <Badge variant="secondary" className="text-xs bg-red-100 text-red-800">
-                                  Link Expired
-                                </Badge>
-                              )}
+                          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4">
+                            <div className="flex items-center justify-center gap-2 text-gray-500">
+                              <QrCode className="h-5 w-5" />
+                              <span className="text-sm">QR Code (coming soon)</span>
                             </div>
+                            <p className="mt-2 text-xs text-gray-500 text-center">Use link below to activate</p>
+                          </div>
 
-                            {/* Actions */}
-                            <div className="flex gap-2">
-                              <Button 
-                                size="sm" 
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Activation link</p>
+                            <div className="flex items-center gap-2">
+                              <Input readOnly value={effectiveUrl} className="text-xs" />
+                              <Button
+                                type="button"
                                 variant="outline"
+                                size="icon"
+                                aria-label="Copy activation link"
+                                disabled={copyDisabled}
+                                onClick={async () => {
+                                  const url = effectiveUrl
+                                  try {
+                                    await navigator.clipboard.writeText(url)
+                                    toast.success('Link aktivasi disalin')
+                                  } catch {
+                                    try {
+                                      window.prompt('Copy link aktivasi ini:', url)
+                                    } catch {
+                                      // ignore
+                                    }
+                                  }
+                                }}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            {teamInviteActivationMeta[partner.id]?.message ? (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                {teamInviteActivationMeta[partner.id]?.message}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="flex gap-2">
+                            {isExpired ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => resendTeamInviteActivation(partner.id)}
+                                disabled={resendingInviteId === partner.id}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                {resendingInviteId === partner.id ? 'Membuat...' : 'Buat ulang link'}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
                                 className="flex-1"
                                 onClick={() => copyInvitationLink(partner.token)}
                               >
+                                <Copy className="w-4 h-4 mr-2" />
                                 Copy Link
                               </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                onClick={() => cancelInvitation(partner)}
-                                disabled={removingInviteId === partner.id}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                            )}
 
-                            {/* Link preview */}
-                            <div className="text-xs text-gray-400 break-all bg-white rounded p-2 border">
-                              {invitationUrl}
-                            </div>
-                          </>
-                        )}
-                      </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => cancelInvitation(partner)}
+                              disabled={removingInviteId === partner.id}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isActivated && (
+                        <div className="mt-4 rounded-lg border bg-white p-4">
+                          <div className="flex items-center gap-2 text-sm text-green-700">
+                            <CheckCircle className="w-4 h-4" />
+                            <span className="font-medium">Has Dashboard Access</span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600">
+                            Can manage clients and view performance
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )

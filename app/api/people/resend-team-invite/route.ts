@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import crypto from 'crypto'
 
 type Body = {
   tenantId: string
@@ -81,10 +82,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitation already activated or cancelled' }, { status: 409 })
     }
 
+    const now = Date.now()
+    const expMs = invitation.expires_at ? new Date(invitation.expires_at as any).getTime() : NaN
+    const isExpired = Number.isFinite(expMs) ? expMs < now : false
+
+    let effectiveToken = String(invitation.token || '')
+    let effectiveExpiresAt = invitation.expires_at
+
+    // If expired, generate a fresh token and extend expiry.
+    if (isExpired) {
+      const newToken = crypto.randomUUID()
+      const expiresAt = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      const { data: updated, error: updateError } = await supabase
+        .from('team_invitations')
+        .update({ token: newToken, expires_at: expiresAt })
+        .eq('id', invitationId)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'pending')
+        .select('token, expires_at')
+        .maybeSingle()
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+
+      effectiveToken = String((updated as any)?.token || newToken)
+      effectiveExpiresAt = String((updated as any)?.expires_at || expiresAt)
+    }
+
     // For team invites, we currently do not send emails from server.
     // We provide the activation URL so admin can forward it (WhatsApp/email).
     const baseUrl = getBaseUrlFromRequest(request)
-    const invitationUrl = `${baseUrl}/team/invite/${invitation.token}`
+    const invitationUrl = `${baseUrl}/team/invite/${effectiveToken}`
 
     return NextResponse.json({
       success: true,
@@ -94,7 +124,9 @@ export async function POST(request: Request) {
       meta: {
         email: invitation.email,
         role: invitation.role,
-        expires_at: invitation.expires_at,
+        token: effectiveToken,
+        expires_at: effectiveExpiresAt,
+        regenerated: isExpired,
       },
     })
   } catch (error: any) {
