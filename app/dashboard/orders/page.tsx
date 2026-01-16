@@ -222,7 +222,14 @@ export default function OrdersPage() {
     const pending = orders.filter((o) => o.status === 'listing' || o.status === 'pending').length
     const inProgress = orders.filter((o) => o.status === 'in_progress').length
     const completed = orders.filter((o) => o.status === 'completed').length
-    const today = orders.filter((o) => ymdJakarta(o.created_at) === todayYmd).length
+
+    // "Today" on this page means jobs scheduled for today (not created today)
+    const today = orders.filter((o) => {
+      if (!o.scheduled_date) return false
+      const status = String(o.status || '')
+      if (status === 'cancelled' || status === 'completed') return false
+      return String(o.scheduled_date) === todayYmd
+    }).length
 
     return {
       total,
