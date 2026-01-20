@@ -55,6 +55,15 @@ type OrderQueueRow = {
   tenant_id?: string
   client_id?: string | null
   client_name?: string | null
+  clients?: { name: string | null } | { name: string | null }[] | null
+}
+
+function getClientName(row: OrderQueueRow) {
+  if (row.client_name) return row.client_name
+  const c = row.clients as any
+  if (!c) return null
+  if (Array.isArray(c)) return c[0]?.name ?? null
+  return c?.name ?? null
 }
 
 function formatIdDateTime(iso: string | null | undefined) {
@@ -517,6 +526,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
       const from = (page - 1) * pageSize
       const to = from + pageSize // fetch 1 extra row to detect next page
 
+      // 1) Preferred: query the DB view (requires migration applied)
       const res = await supabase
         .from('v_invoice_queue_service_orders')
         .select('id, tenant_id, order_number, service_title, status, updated_at, client_id, client_name', { count: 'exact' })
@@ -524,20 +534,58 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         .order('updated_at', { ascending: false })
         .range(from, to)
 
-      if (res.error) {
-        console.warn('fetchQueue (view) error:', res.error)
-        setQueueRows([])
-        setQueueHasNext(false)
-        setQueueTotalCount(null)
+      if (!res.error) {
+        setQueueTotalCount(typeof res.count === 'number' ? res.count : null)
+
+        const rows = (res.data || []) as unknown as OrderQueueRow[]
+        const hasNext = rows.length > pageSize
+        setQueueHasNext(hasNext)
+        setQueueRows(hasNext ? (rows.slice(0, pageSize) as unknown as OrderQueueRow[]) : (rows as unknown as OrderQueueRow[]))
         return
       }
 
-      setQueueTotalCount(typeof res.count === 'number' ? res.count : null)
+      // 2) Fallback: if the view isn't available yet, use the previous embed/left join approach.
+      // This keeps the UI usable on deployments where DB migrations are not auto-applied.
+      console.warn('fetchQueue (view) error, falling back:', res.error)
 
-      const rows = (res.data || []) as unknown as OrderQueueRow[]
-      const hasNext = rows.length > pageSize
+      const fallback = await supabase
+        .from('service_orders')
+        .select(
+          `id, order_number, service_title, status, updated_at,
+           clients(name),
+           invoices!left(id)`,
+          { count: 'exact' }
+        )
+        .eq('tenant_id', tenantId)
+        .eq('status', 'completed')
+        .is('invoices.id', null)
+        .order('updated_at', { ascending: false })
+        .range(from, to)
+
+      if (fallback.error) {
+        console.warn('fetchQueue (fallback) error:', fallback.error)
+        setQueueRows([])
+        setQueueHasNext(false)
+        setQueueTotalCount(null)
+        toast.error('Queue invoice belum bisa dimuat (cek migration DB invoice queue).')
+        return
+      }
+
+      setQueueTotalCount(typeof fallback.count === 'number' ? fallback.count : null)
+
+      const rawRows = (fallback.data || []) as unknown as any[]
+      const normalized = rawRows.map((r) => ({
+        id: r.id,
+        order_number: r.order_number,
+        service_title: r.service_title,
+        status: r.status,
+        updated_at: r.updated_at,
+        client_name: Array.isArray(r.clients) ? r.clients[0]?.name ?? null : r.clients?.name ?? null,
+      })) as OrderQueueRow[]
+
+      const hasNext = normalized.length > pageSize
       setQueueHasNext(hasNext)
-      setQueueRows(hasNext ? (rows.slice(0, pageSize) as unknown as OrderQueueRow[]) : (rows as unknown as OrderQueueRow[]))
+      setQueueRows(hasNext ? normalized.slice(0, pageSize) : normalized)
     } catch (e: any) {
       console.error('fetchQueue error:', e)
       toast.error(e?.message || 'Gagal memuat invoice queue')
@@ -990,7 +1038,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                       />
                     </TableCell>
                     <TableCell className="font-medium">{row.order_number}</TableCell>
-                    <TableCell>{row.client_name || '—'}</TableCell>
+                    <TableCell>{getClientName(row) || '—'}</TableCell>
                     <TableCell>{row.service_title}</TableCell>
                     <TableCell>
                       <Badge className="bg-green-600">completed</Badge>
