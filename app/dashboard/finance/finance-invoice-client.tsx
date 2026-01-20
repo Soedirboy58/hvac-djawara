@@ -56,6 +56,10 @@ type OrderQueueRow = {
   client_id?: string | null
   client_name?: string | null
   clients?: { name: string | null } | { name: string | null }[] | null
+  invoice_id?: string | null
+  invoice_number?: string | null
+  invoice_status?: string | null
+  invoice_created_at?: string | null
 }
 
 function getClientName(row: OrderQueueRow) {
@@ -71,6 +75,10 @@ function formatIdDateTime(iso: string | null | undefined) {
   const d = new Date(iso)
   if (String(d) === 'Invalid Date') return null
   return d.toLocaleString('id-ID')
+}
+
+function hasInvoice(row: OrderQueueRow) {
+  return Boolean(row.invoice_id)
 }
 
 type QuotationRow = {
@@ -215,12 +223,13 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
     }
   }, [manualServiceOrderId, supabase, tenantId])
 
-  const allSelectedOnPage = queueRows.length > 0 && queueRows.every((r) => selectedIds.has(r.id))
+  const selectableQueueRows = queueRows.filter((r) => !hasInvoice(r))
+  const allSelectedOnPage = selectableQueueRows.length > 0 && selectableQueueRows.every((r) => selectedIds.has(r.id))
 
   const toggleAllOnPage = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      for (const row of queueRows) {
+      for (const row of selectableQueueRows) {
         if (checked) next.add(row.id)
         else next.delete(row.id)
       }
@@ -519,69 +528,55 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   }
 
   const fetchQueue = async () => {
-    // Invoice queue = service_orders completed that don't yet have an invoice.
-    // Use DB view to avoid PostgREST embed/left-join filtering edge cases.
+    // Queue section shows completed service orders and indicates whether an invoice already exists.
     setLoading(true)
     try {
       const from = (page - 1) * pageSize
       const to = from + pageSize // fetch 1 extra row to detect next page
 
-      // 1) Preferred: query the DB view (requires migration applied)
       const res = await supabase
-        .from('v_invoice_queue_service_orders')
-        .select('id, tenant_id, order_number, service_title, status, updated_at, client_id, client_name', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .order('updated_at', { ascending: false })
-        .range(from, to)
-
-      if (!res.error) {
-        setQueueTotalCount(typeof res.count === 'number' ? res.count : null)
-
-        const rows = (res.data || []) as unknown as OrderQueueRow[]
-        const hasNext = rows.length > pageSize
-        setQueueHasNext(hasNext)
-        setQueueRows(hasNext ? (rows.slice(0, pageSize) as unknown as OrderQueueRow[]) : (rows as unknown as OrderQueueRow[]))
-        return
-      }
-
-      // 2) Fallback: if the view isn't available yet, use the previous embed/left join approach.
-      // This keeps the UI usable on deployments where DB migrations are not auto-applied.
-      console.warn('fetchQueue (view) error, falling back:', res.error)
-
-      const fallback = await supabase
         .from('service_orders')
         .select(
           `id, order_number, service_title, status, updated_at,
            clients(name),
-           invoices!left(id)`,
+           invoices!left(id, invoice_number, status, created_at)`,
           { count: 'exact' }
         )
         .eq('tenant_id', tenantId)
         .eq('status', 'completed')
-        .is('invoices.id', null)
         .order('updated_at', { ascending: false })
         .range(from, to)
 
-      if (fallback.error) {
-        console.warn('fetchQueue (fallback) error:', fallback.error)
-        setQueueRows([])
-        setQueueHasNext(false)
-        setQueueTotalCount(null)
-        toast.error('Queue invoice belum bisa dimuat (cek migration DB invoice queue).')
-        return
-      }
+      if (res.error) throw res.error
 
-      setQueueTotalCount(typeof fallback.count === 'number' ? fallback.count : null)
+      setQueueTotalCount(typeof res.count === 'number' ? res.count : null)
 
-      const rawRows = (fallback.data || []) as unknown as any[]
-      const normalized = rawRows.map((r) => ({
-        id: r.id,
-        order_number: r.order_number,
-        service_title: r.service_title,
-        status: r.status,
-        updated_at: r.updated_at,
-        client_name: Array.isArray(r.clients) ? r.clients[0]?.name ?? null : r.clients?.name ?? null,
-      })) as OrderQueueRow[]
+      const rawRows = (res.data || []) as any[]
+      const normalized: OrderQueueRow[] = rawRows.map((r) => {
+        const invRaw = r.invoices
+        const invArr = Array.isArray(invRaw) ? invRaw : invRaw ? [invRaw] : []
+        const latest = invArr
+          .slice()
+          .sort((a: any, b: any) => {
+            const ta = a?.created_at ? new Date(a.created_at).getTime() : 0
+            const tb = b?.created_at ? new Date(b.created_at).getTime() : 0
+            return tb - ta
+          })[0]
+
+        return {
+          id: r.id,
+          order_number: r.order_number,
+          service_title: r.service_title,
+          status: r.status,
+          updated_at: r.updated_at,
+          clients: r.clients ?? null,
+          client_name: Array.isArray(r.clients) ? r.clients[0]?.name ?? null : r.clients?.name ?? null,
+          invoice_id: latest?.id ?? null,
+          invoice_number: latest?.invoice_number ?? null,
+          invoice_status: latest?.status ?? null,
+          invoice_created_at: latest?.created_at ?? null,
+        }
+      })
 
       const hasNext = normalized.length > pageSize
       setQueueHasNext(hasNext)
@@ -665,13 +660,28 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
       return
     }
 
+    const rowById = new Map(queueRows.map((r) => [r.id, r]))
+    const idsToCreate = ids.filter((id) => {
+      const row = rowById.get(id)
+      return row ? !hasInvoice(row) : true
+    })
+
+    if (idsToCreate.length === 0) {
+      toast.error('Semua pekerjaan terpilih sudah punya invoice')
+      return
+    }
+
+    if (idsToCreate.length !== ids.length) {
+      toast.message('Sebagian pekerjaan sudah punya invoice dan akan dilewati')
+    }
+
     setLoading(true)
     try {
       // Fetch order details for snapshot fields
       const ordersRes = await supabase
         .from('service_orders')
         .select('id, tenant_id, order_number, client_id, service_title, location_address')
-        .in('id', ids)
+        .in('id', idsToCreate)
 
       if (ordersRes.error) throw ordersRes.error
 
@@ -1009,7 +1019,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           </div>
 
           {queueRows.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Tidak ada service order completed yang perlu dibuat invoice pada halaman ini.</div>
+            <div className="text-sm text-muted-foreground">Tidak ada service order completed pada halaman ini.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -1034,6 +1044,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.has(row.id)}
+                        disabled={hasInvoice(row)}
                         onCheckedChange={(v) => toggleOne(row.id, Boolean(v))}
                       />
                     </TableCell>
@@ -1041,8 +1052,22 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                     <TableCell>{getClientName(row) || '—'}</TableCell>
                     <TableCell>{row.service_title}</TableCell>
                     <TableCell>
-                      <Badge className="bg-green-600">completed</Badge>
-                      <Badge variant="secondary" className="ml-2">Belum ada invoice</Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <div>
+                          <Badge className="bg-green-600">completed</Badge>
+                          {hasInvoice(row) ? (
+                            <Badge className="ml-2">Invoice sudah dibuat</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="ml-2">Belum ada invoice</Badge>
+                          )}
+                        </div>
+                        {hasInvoice(row) ? (
+                          <div className="text-xs text-muted-foreground">
+                            {row.invoice_number ? `No: ${row.invoice_number}` : ''}
+                            {row.invoice_status ? ` • Status: ${String(row.invoice_status)}` : ''}
+                          </div>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {row.updated_at ? new Date(row.updated_at).toLocaleDateString('id-ID') : '—'}
@@ -1052,11 +1077,16 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                         size="sm"
                         variant="outline"
                         onClick={() => {
+                          if (hasInvoice(row)) {
+                            setActiveDialogAction('preview')
+                            setActiveOrderId(row.id)
+                            return
+                          }
                           setActiveDialogAction(null)
                           setActiveOrderId(row.id)
                         }}
                       >
-                        Buat Invoice
+                        {hasInvoice(row) ? 'Lihat Invoice' : 'Buat Invoice'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1066,7 +1096,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           )}
 
           <div className="mt-3 text-xs text-muted-foreground">
-            Catatan: Queue ini menampilkan service order `completed` yang belum punya invoice; item akan hilang setelah invoice dibuat.
+            Catatan: Queue ini menampilkan semua service order `completed`; indikator menunjukkan invoice sudah dibuat atau belum.
           </div>
         </CardContent>
       </Card>
@@ -1292,8 +1322,6 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
             }
           }}
           onDone={async () => {
-            // Optimistic: remove the order from queue immediately to avoid confusion/duplicate attempts.
-            setQueueRows((prev) => prev.filter((r) => r.id !== activeOrderId))
             setSelectedIds((prev) => {
               const next = new Set(prev)
               if (activeOrderId) next.delete(activeOrderId)
