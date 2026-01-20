@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +50,8 @@ interface Client {
   address: string | null
   portal_enabled: boolean
   created_at: string
+  referred_by_id?: string | null
+  asset_count?: number
 }
 
 interface ClientsListProps {
@@ -73,12 +75,19 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(9)
 
+  const [ownershipLabelsByUserId, setOwnershipLabelsByUserId] = useState<Record<string, string>>({})
+
+  const canViewOwnershipKpis = useMemo(() => {
+    if (!viewerRole) return false
+    return ['owner', 'admin_finance', 'admin_logistic', 'tech_head'].includes(viewerRole)
+  }, [viewerRole])
+
   const fetchClients = async () => {
     const supabase = createClient()
 
     let query = supabase
       .from('clients')
-      .select('id, name, client_type, email, phone, address, portal_enabled, created_at')
+      .select('id, name, client_type, email, phone, address, portal_enabled, created_at, referred_by_id')
       .eq('tenant_id', tenantId)
 
     // Sales partners should only see clients that were referred by them
@@ -88,15 +97,102 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
 
     const { data, error } = await query.order('created_at', { ascending: false })
 
-    if (!error && data) {
-      setClients(data)
+    if (error) {
+      console.error('Failed to fetch clients:', error)
+      setClients([])
+      setLoading(false)
+      return
     }
+
+    const rows = (data || []) as Client[]
+
+    // Load asset counts (ac_units) per client
+    const clientIds = rows.map((c) => c.id).filter(Boolean)
+    let assetCountByClientId: Record<string, number> = {}
+    if (clientIds.length > 0) {
+      const { data: assetAgg, error: assetError } = await supabase
+        .from('ac_units')
+        .select('client_id, count:id')
+        .eq('tenant_id', tenantId)
+        .in('client_id', clientIds)
+
+      if (assetError) {
+        console.warn('Failed to load asset counts:', assetError.message)
+      } else {
+        for (const r of (assetAgg || []) as any[]) {
+          const cid = String(r?.client_id || '')
+          if (!cid) continue
+          const cnt = Number(r?.count ?? 0)
+          assetCountByClientId[cid] = Number.isFinite(cnt) ? cnt : 0
+        }
+      }
+    }
+
+    // Load referred-by labels for ownership KPIs (admin-only)
+    if (canViewOwnershipKpis) {
+      const referredIds = Array.from(
+        new Set(rows.map((c) => String(c.referred_by_id || '')).filter(Boolean))
+      )
+
+      if (referredIds.length > 0) {
+        const { data: refProfiles, error: refError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', referredIds)
+
+        if (refError) {
+          console.warn('Failed to load referral labels:', refError.message)
+        } else {
+          const map: Record<string, string> = {}
+          for (const p of (refProfiles || []) as any[]) {
+            const id = String(p?.id || '')
+            if (!id) continue
+            map[id] = String(p?.full_name || 'Unknown')
+          }
+          setOwnershipLabelsByUserId(map)
+        }
+      } else {
+        setOwnershipLabelsByUserId({})
+      }
+    }
+
+    const enriched = rows.map((c) => ({
+      ...c,
+      asset_count: assetCountByClientId[c.id] ?? 0,
+    }))
+
+    setClients(enriched)
     setLoading(false)
   }
 
   useEffect(() => {
     fetchClients()
   }, [tenantId, viewerRole, viewerUserId])
+
+  const ownershipKpis = useMemo(() => {
+    if (!canViewOwnershipKpis) return [] as Array<{ label: string; count: number }>
+    if (!clients || clients.length === 0) return [] as Array<{ label: string; count: number }>
+
+    const counts: Record<string, number> = {}
+    for (const c of clients) {
+      const key = c.referred_by_id ? String(c.referred_by_id) : 'internal'
+      counts[key] = (counts[key] || 0) + 1
+    }
+
+    const internalCount = counts['internal'] || 0
+    const items: Array<{ label: string; count: number }> = []
+    items.push({ label: 'PT Djawara', count: internalCount })
+
+    const partnerItems = Object.keys(counts)
+      .filter((k) => k !== 'internal')
+      .map((userId) => ({
+        label: ownershipLabelsByUserId[userId] || 'Sales Partner',
+        count: counts[userId] || 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    return [...items, ...partnerItems]
+  }, [clients, canViewOwnershipKpis, ownershipLabelsByUserId])
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -203,6 +299,21 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
 
   return (
     <div>
+      {/* Ownership KPIs (Admin Only) */}
+      {canViewOwnershipKpis && ownershipKpis.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {ownershipKpis.map((kpi) => (
+            <Card key={kpi.label}>
+              <CardContent className="p-5">
+                <p className="text-sm text-gray-500 truncate">{kpi.label}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{kpi.count}</p>
+                <p className="text-xs text-gray-400 mt-1">client</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         {/* Search */}
@@ -337,6 +448,7 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
                 <TableHead>Type</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
+                <TableHead className="text-center">Aset</TableHead>
                 <TableHead>Portal</TableHead>
                 <TableHead className="w-20">Actions</TableHead>
               </TableRow>
@@ -365,6 +477,7 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
                   </TableCell>
                   <TableCell className="text-gray-600">{client.email || '-'}</TableCell>
                   <TableCell className="text-gray-600">{client.phone || '-'}</TableCell>
+                  <TableCell className="text-center">{client.asset_count ?? 0}</TableCell>
                   <TableCell>
                     <Badge variant={client.portal_enabled ? 'default' : 'secondary'} className="text-xs">
                       {client.portal_enabled ? 'Active' : 'No'}
