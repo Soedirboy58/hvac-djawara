@@ -90,6 +90,8 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   const [invoiceHasNext, setInvoiceHasNext] = useState(false)
   const [invoiceSelectedIds, setInvoiceSelectedIds] = useState<Set<string>>(new Set())
 
+  const [bulkPaidDate, setBulkPaidDate] = useState<string>('')
+
   const [page, setPage] = useState(1)
   const pageSize = 10
 
@@ -369,6 +371,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         .eq('tenant_id', tenantId)
         .in('id', ids)
         .in('status', ['draft', 'unpaid'])
+        .select('id')
 
       if (upd.error) {
         // Fallback for older schema without sent_at
@@ -378,9 +381,16 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           .eq('tenant_id', tenantId)
           .in('id', ids)
           .in('status', ['draft', 'unpaid'])
+          .select('id')
       }
 
       if (upd.error) throw upd.error
+
+      const updatedCount = (upd.data as any[] | null)?.length ?? 0
+      if (updatedCount === 0) {
+        toast.error('Tidak ada invoice yang berubah. Pastikan status masih draft/unpaid dan Anda punya akses finance.')
+        return
+      }
       toast.success('Bulk: invoice ditandai dalam penagihan')
       setInvoiceSelectedIds(new Set())
       await Promise.all([fetchKpis(), fetchRecentInvoices(), fetchQueue()])
@@ -398,15 +408,43 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
     }
 
     try {
+      const toIsoFromDateInput = (d: string) => {
+        const [y, m, day] = d.split('-').map((x) => Number(x))
+        if (!y || !m || !day) return new Date().toISOString()
+        // Use noon local time to avoid edge cases; stored in UTC as ISO.
+        return new Date(y, m - 1, day, 12, 0, 0).toISOString()
+      }
+
       const now = new Date().toISOString()
-      const upd = await supabase
+      const paidIso = bulkPaidDate ? toIsoFromDateInput(bulkPaidDate) : now
+
+      let upd = await supabase
         .from('invoices')
-        .update({ status: 'paid', paid_at: now, sent_at: now })
+        .update({ status: 'paid', paid_at: paidIso, sent_at: paidIso })
         .eq('tenant_id', tenantId)
         .in('id', ids)
-        .in('status', ['sent', 'unpaid'])
+        // Allow direct paid from draft (migration input), and from sent/unpaid.
+        .in('status', ['draft', 'sent', 'unpaid'])
+        .select('id')
+
+      if (upd.error) {
+        // Fallback for older schema without sent_at
+        upd = await supabase
+          .from('invoices')
+          .update({ status: 'paid', paid_at: paidIso })
+          .eq('tenant_id', tenantId)
+          .in('id', ids)
+          .in('status', ['draft', 'sent', 'unpaid'])
+          .select('id')
+      }
 
       if (upd.error) throw upd.error
+
+      const updatedCount = (upd.data as any[] | null)?.length ?? 0
+      if (updatedCount === 0) {
+        toast.error('Tidak ada invoice yang berubah. Pastikan status belum paid/cancelled dan Anda punya akses finance.')
+        return
+      }
       toast.success('Bulk: invoice ditandai lunas')
       setInvoiceSelectedIds(new Set())
       await Promise.all([fetchKpis(), fetchRecentInvoices(), fetchQueue()])
@@ -941,6 +979,13 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Daftar Invoice</CardTitle>
           <div className="flex gap-2">
+            <Input
+              type="date"
+              value={bulkPaidDate}
+              onChange={(e) => setBulkPaidDate(e.target.value)}
+              className="h-9 w-[170px]"
+              placeholder="Tanggal lunas"
+            />
             <Button
               size="sm"
               variant="outline"
