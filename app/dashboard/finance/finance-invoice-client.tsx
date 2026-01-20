@@ -946,6 +946,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                     <TableCell>{row.service_title}</TableCell>
                     <TableCell>
                       <Badge className="bg-green-600">completed</Badge>
+                      <Badge variant="secondary" className="ml-2">Belum ada invoice</Badge>
                     </TableCell>
                     <TableCell>
                       {row.updated_at ? new Date(row.updated_at).toLocaleDateString('id-ID') : '—'}
@@ -1192,6 +1193,13 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
             }
           }}
           onDone={async () => {
+            // Optimistic: remove the order from queue immediately to avoid confusion/duplicate attempts.
+            setQueueRows((prev) => prev.filter((r) => r.id !== activeOrderId))
+            setSelectedIds((prev) => {
+              const next = new Set(prev)
+              if (activeOrderId) next.delete(activeOrderId)
+              return next
+            })
             await fetchKpis()
             await fetchRecentInvoices()
             await fetchQueue()
