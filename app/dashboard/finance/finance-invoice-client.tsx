@@ -77,6 +77,13 @@ function formatIdDateTime(iso: string | null | undefined) {
   return d.toLocaleString('id-ID')
 }
 
+function toDateTimeLocalValue(iso: string | null | undefined) {
+  const d = iso ? new Date(iso) : new Date()
+  if (String(d) === 'Invalid Date') return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function hasInvoice(row: OrderQueueRow) {
   return Boolean(row.invoice_id)
 }
@@ -438,7 +445,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
     }
 
     setPaidConfirmIds(ids)
-    setPaidConfirmDateTime('')
+    setPaidConfirmDateTime(toDateTimeLocalValue(null))
     setPaidConfirmOpen(true)
   }
 
@@ -461,17 +468,18 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
   const markInvoicePaid = async (invoiceId: string) => {
     setPaidConfirmIds([invoiceId])
-    setPaidConfirmDateTime('')
+    const inv = recentInvoices.find((x) => x.id === invoiceId)
+    setPaidConfirmDateTime(toDateTimeLocalValue(inv?.paid_at || null))
     setPaidConfirmOpen(true)
   }
 
   const markPaidWithIso = async (ids: string[], paidIso: string) => {
     let upd = await supabase
       .from('invoices')
-      .update({ status: 'paid', paid_at: paidIso, sent_at: paidIso })
+      .update({ status: 'paid', paid_at: paidIso })
       .eq('tenant_id', tenantId)
       .in('id', ids)
-      .in('status', ['draft', 'sent', 'unpaid'])
+      .neq('status', 'cancelled')
       .select('id')
 
     if (upd.error) {
@@ -481,7 +489,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         .update({ status: 'paid', paid_at: paidIso })
         .eq('tenant_id', tenantId)
         .in('id', ids)
-        .in('status', ['draft', 'sent', 'unpaid'])
+        .neq('status', 'cancelled')
         .select('id')
     }
 
@@ -499,9 +507,12 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
     try {
       setPaidConfirmBusy(true)
-      const paidIso = paidConfirmDateTime
-        ? new Date(paidConfirmDateTime).toISOString()
-        : new Date().toISOString()
+      if (!paidConfirmDateTime) {
+        toast.error('Tanggal/jam lunas wajib diisi')
+        return
+      }
+
+      const paidIso = new Date(paidConfirmDateTime).toISOString()
 
       if (!paidIso || paidIso === 'Invalid Date') {
         toast.error('Tanggal/jam lunas tidak valid')
@@ -1186,7 +1197,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                   const status = String(inv.status || '').toLowerCase()
                   const isPaid = status === 'paid'
                   const isCancelled = status === 'cancelled'
-                  const canMarkPaid = !isPaid && !isCancelled && (status === 'sent' || status === 'unpaid' || status === 'draft')
+                  const canMarkPaid = !isCancelled && (status === 'sent' || status === 'unpaid' || status === 'draft' || status === 'paid')
                   const hasOrderLink = Boolean((inv as any).service_order_id)
 
                   const statusLabel = isPaid
@@ -1284,7 +1295,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                             disabled={!canMarkPaid}
                             onClick={() => markInvoicePaid(inv.id)}
                           >
-                            Tandai Lunas
+                            {isPaid ? 'Ubah Tgl Bayar' : 'Tandai Lunas'}
                           </Button>
                           <Button
                             size="sm"
