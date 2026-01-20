@@ -11,6 +11,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Table,
   TableBody,
   TableCell,
@@ -90,7 +97,10 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   const [invoiceHasNext, setInvoiceHasNext] = useState(false)
   const [invoiceSelectedIds, setInvoiceSelectedIds] = useState<Set<string>>(new Set())
 
-  const [bulkPaidDate, setBulkPaidDate] = useState<string>('')
+  const [paidConfirmOpen, setPaidConfirmOpen] = useState(false)
+  const [paidConfirmIds, setPaidConfirmIds] = useState<string[]>([])
+  const [paidConfirmDateTime, setPaidConfirmDateTime] = useState<string>('')
+  const [paidConfirmBusy, setPaidConfirmBusy] = useState(false)
 
   const [page, setPage] = useState(1)
   const pageSize = 10
@@ -407,51 +417,9 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
       return
     }
 
-    try {
-      const toIsoFromDateInput = (d: string) => {
-        const [y, m, day] = d.split('-').map((x) => Number(x))
-        if (!y || !m || !day) return new Date().toISOString()
-        // Use noon local time to avoid edge cases; stored in UTC as ISO.
-        return new Date(y, m - 1, day, 12, 0, 0).toISOString()
-      }
-
-      const now = new Date().toISOString()
-      const paidIso = bulkPaidDate ? toIsoFromDateInput(bulkPaidDate) : now
-
-      let upd = await supabase
-        .from('invoices')
-        .update({ status: 'paid', paid_at: paidIso, sent_at: paidIso })
-        .eq('tenant_id', tenantId)
-        .in('id', ids)
-        // Allow direct paid from draft (migration input), and from sent/unpaid.
-        .in('status', ['draft', 'sent', 'unpaid'])
-        .select('id')
-
-      if (upd.error) {
-        // Fallback for older schema without sent_at
-        upd = await supabase
-          .from('invoices')
-          .update({ status: 'paid', paid_at: paidIso })
-          .eq('tenant_id', tenantId)
-          .in('id', ids)
-          .in('status', ['draft', 'sent', 'unpaid'])
-          .select('id')
-      }
-
-      if (upd.error) throw upd.error
-
-      const updatedCount = (upd.data as any[] | null)?.length ?? 0
-      if (updatedCount === 0) {
-        toast.error('Tidak ada invoice yang berubah. Pastikan status belum paid/cancelled dan Anda punya akses finance.')
-        return
-      }
-      toast.success('Bulk: invoice ditandai lunas')
-      setInvoiceSelectedIds(new Set())
-      await Promise.all([fetchKpis(), fetchRecentInvoices(), fetchQueue()])
-    } catch (e: any) {
-      console.error('bulkMarkInvoicePaid error:', e)
-      toast.error(e?.message || 'Gagal bulk update invoice')
-    }
+    setPaidConfirmIds(ids)
+    setPaidConfirmDateTime('')
+    setPaidConfirmOpen(true)
   }
 
   const markInvoiceSent = async (invoiceId: string) => {
@@ -472,21 +440,70 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   }
 
   const markInvoicePaid = async (invoiceId: string) => {
-    try {
-      const now = new Date().toISOString()
-      // Also backfill sent_at if missing.
-      const res = await supabase
-        .from('invoices')
-        .update({ status: 'paid', paid_at: now, sent_at: now })
-        .eq('tenant_id', tenantId)
-        .eq('id', invoiceId)
+    setPaidConfirmIds([invoiceId])
+    setPaidConfirmDateTime('')
+    setPaidConfirmOpen(true)
+  }
 
-      if (res.error) throw res.error
-      toast.success('Invoice ditandai: dibayar')
+  const markPaidWithIso = async (ids: string[], paidIso: string) => {
+    let upd = await supabase
+      .from('invoices')
+      .update({ status: 'paid', paid_at: paidIso, sent_at: paidIso })
+      .eq('tenant_id', tenantId)
+      .in('id', ids)
+      .in('status', ['draft', 'sent', 'unpaid'])
+      .select('id')
+
+    if (upd.error) {
+      // Fallback for older schema without sent_at
+      upd = await supabase
+        .from('invoices')
+        .update({ status: 'paid', paid_at: paidIso })
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+        .in('status', ['draft', 'sent', 'unpaid'])
+        .select('id')
+    }
+
+    if (upd.error) throw upd.error
+    const updatedCount = (upd.data as any[] | null)?.length ?? 0
+    return updatedCount
+  }
+
+  const confirmMarkPaid = async () => {
+    const ids = paidConfirmIds
+    if (!ids || ids.length === 0) {
+      setPaidConfirmOpen(false)
+      return
+    }
+
+    try {
+      setPaidConfirmBusy(true)
+      const paidIso = paidConfirmDateTime
+        ? new Date(paidConfirmDateTime).toISOString()
+        : new Date().toISOString()
+
+      if (!paidIso || paidIso === 'Invalid Date') {
+        toast.error('Tanggal/jam lunas tidak valid')
+        return
+      }
+
+      const updatedCount = await markPaidWithIso(ids, paidIso)
+      if (updatedCount === 0) {
+        toast.error('Tidak ada invoice yang berubah. Pastikan status belum paid/cancelled dan Anda punya akses finance.')
+        return
+      }
+
+      toast.success(ids.length > 1 ? 'Bulk: invoice ditandai lunas' : 'Invoice ditandai: lunas')
+      setInvoiceSelectedIds(new Set())
+      setPaidConfirmOpen(false)
+      setPaidConfirmIds([])
       await Promise.all([fetchKpis(), fetchRecentInvoices(), fetchQueue()])
     } catch (e: any) {
-      console.error('markInvoicePaid error:', e)
+      console.error('confirmMarkPaid error:', e)
       toast.error(e?.message || 'Gagal update status invoice')
+    } finally {
+      setPaidConfirmBusy(false)
     }
   }
 
@@ -831,6 +848,45 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="space-y-6">
+      <Dialog open={paidConfirmOpen} onOpenChange={setPaidConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tandai Invoice Lunas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              {paidConfirmIds.length > 1
+                ? `Anda akan menandai ${paidConfirmIds.length} invoice sebagai lunas.`
+                : 'Anda akan menandai 1 invoice sebagai lunas.'}
+            </div>
+            <div className="space-y-2">
+              <Label>Tanggal & Jam Pelunasan</Label>
+              <Input
+                type="datetime-local"
+                value={paidConfirmDateTime}
+                onChange={(e) => setPaidConfirmDateTime(e.target.value)}
+              />
+              <div className="text-xs text-muted-foreground">
+                Kosongkan jika ingin memakai waktu sekarang.
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPaidConfirmOpen(false)}
+              disabled={paidConfirmBusy}
+            >
+              Batal
+            </Button>
+            <Button type="button" onClick={confirmMarkPaid} disabled={paidConfirmBusy}>
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* KPI */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
@@ -980,13 +1036,6 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Daftar Invoice</CardTitle>
           <div className="flex gap-2">
-            <Input
-              type="date"
-              value={bulkPaidDate}
-              onChange={(e) => setBulkPaidDate(e.target.value)}
-              className="h-9 w-[170px]"
-              placeholder="Tanggal lunas"
-            />
             <Button
               size="sm"
               variant="outline"
@@ -1067,7 +1116,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                   const status = String(inv.status || '').toLowerCase()
                   const isPaid = status === 'paid'
                   const isCancelled = status === 'cancelled'
-                  const canMarkPaid = !isPaid && !isCancelled && (status === 'sent' || status === 'unpaid')
+                  const canMarkPaid = !isPaid && !isCancelled && (status === 'sent' || status === 'unpaid' || status === 'draft')
                   const hasOrderLink = Boolean((inv as any).service_order_id)
 
                   const statusLabel = isPaid
