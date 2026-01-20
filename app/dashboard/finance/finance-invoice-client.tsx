@@ -52,14 +52,16 @@ type OrderQueueRow = {
   service_title: string
   status: string
   updated_at: string
-  clients?: { name: string | null } | { name: string | null }[] | null
+  tenant_id?: string
+  client_id?: string | null
+  client_name?: string | null
 }
 
-function getClientName(row: OrderQueueRow) {
-  const c = row.clients as any
-  if (!c) return null
-  if (Array.isArray(c)) return c[0]?.name ?? null
-  return c?.name ?? null
+function formatIdDateTime(iso: string | null | undefined) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (String(d) === 'Invalid Date') return null
+  return d.toLocaleString('id-ID')
 }
 
 type QuotationRow = {
@@ -509,40 +511,30 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
   const fetchQueue = async () => {
     // Invoice queue = service_orders completed that don't yet have an invoice.
-    // We try to do this without requiring a DB view; results are paginated by service_orders.
+    // Use DB view to avoid PostgREST embed/left-join filtering edge cases.
     setLoading(true)
     try {
       const from = (page - 1) * pageSize
       const to = from + pageSize // fetch 1 extra row to detect next page
 
-      // Prefer doing this in one query so pagination is based on eligible rows.
-      // Requires FK relationship invoices.service_order_id -> service_orders.id.
-      const ordersRes = await supabase
-        .from('service_orders')
-        .select(
-          `id, order_number, service_title, status, updated_at,
-           clients(name),
-           invoices!left(id)`,
-          { count: 'exact' }
-        )
+      const res = await supabase
+        .from('v_invoice_queue_service_orders')
+        .select('id, tenant_id, order_number, service_title, status, updated_at, client_id, client_name', { count: 'exact' })
         .eq('tenant_id', tenantId)
-        .eq('status', 'completed')
-        .is('invoices.id', null)
         .order('updated_at', { ascending: false })
         .range(from, to)
 
-      // If invoices table is not present yet, keep the queue visible but show setup warning.
-      if (ordersRes.error) {
-        console.warn('fetchQueue (join invoices) error:', ordersRes.error)
+      if (res.error) {
+        console.warn('fetchQueue (view) error:', res.error)
         setQueueRows([])
         setQueueHasNext(false)
         setQueueTotalCount(null)
         return
       }
 
-      setQueueTotalCount(typeof ordersRes.count === 'number' ? ordersRes.count : null)
+      setQueueTotalCount(typeof res.count === 'number' ? res.count : null)
 
-      const rows = (ordersRes.data || []) as unknown as (OrderQueueRow & { invoices?: any[] })[]
+      const rows = (res.data || []) as unknown as OrderQueueRow[]
       const hasNext = rows.length > pageSize
       setQueueHasNext(hasNext)
       setQueueRows(hasNext ? (rows.slice(0, pageSize) as unknown as OrderQueueRow[]) : (rows as unknown as OrderQueueRow[]))
@@ -998,7 +990,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                       />
                     </TableCell>
                     <TableCell className="font-medium">{row.order_number}</TableCell>
-                    <TableCell>{getClientName(row) || '—'}</TableCell>
+                    <TableCell>{row.client_name || '—'}</TableCell>
                     <TableCell>{row.service_title}</TableCell>
                     <TableCell>
                       <Badge className="bg-green-600">completed</Badge>
@@ -1141,9 +1133,19 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                       <TableCell>{(inv as any).client_name || '—'}</TableCell>
                       <TableCell>{(inv as any).issue_date ? new Date((inv as any).issue_date).toLocaleDateString('id-ID') : '—'}</TableCell>
                       <TableCell>
-                        <Badge variant={badgeVariant as any}>
-                          {statusLabel}
-                        </Badge>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant={badgeVariant as any}>{statusLabel}</Badge>
+                          {status === 'sent' || status === 'unpaid' ? (
+                            <div className="text-xs text-muted-foreground">
+                              Dikirim: {formatIdDateTime((inv as any).sent_at) || '—'}
+                            </div>
+                          ) : null}
+                          {isPaid ? (
+                            <div className="text-xs text-muted-foreground">
+                              Dibayar: {formatIdDateTime((inv as any).paid_at) || '—'}
+                            </div>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         Rp {Number(inv.amount_total || 0).toLocaleString('id-ID')}

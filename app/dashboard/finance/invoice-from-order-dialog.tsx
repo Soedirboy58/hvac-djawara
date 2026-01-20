@@ -71,6 +71,8 @@ type ExistingInvoice = {
   issue_date: string
   due_date: string | null
   status: string
+  sent_at?: string | null
+  paid_at?: string | null
   client_id: string | null
   client_name: string
   client_phone: string | null
@@ -194,12 +196,12 @@ export function InvoiceFromOrderDialog({
   onDone,
   initialAction,
 }: {
-  tenantId: string
-  orderId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onDone?: () => void
-  initialAction?: 'preview' | 'send' | null
+  tenantId: string;
+  orderId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDone?: () => void;
+  initialAction?: 'preview' | 'send' | null;
 }) {
   const supabase = useMemo(() => createClient(), [])
 
@@ -207,6 +209,10 @@ export function InvoiceFromOrderDialog({
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const [loadedStatus, setLoadedStatus] = useState<string | null>(null)
+  const [loadedSentAt, setLoadedSentAt] = useState<string | null>(null)
+  const [loadedPaidAt, setLoadedPaidAt] = useState<string | null>(null)
 
   const [order, setOrder] = useState<OrderRow | null>(null)
   const [workLog, setWorkLog] = useState<WorkLog | null>(null)
@@ -301,7 +307,7 @@ export function InvoiceFromOrderDialog({
         // Try with adjustment columns; fallback if schema not yet applied.
         let existing = await supabase
           .from('invoices')
-          .select('id, invoice_number, issue_date, due_date, status, client_id, client_name, client_phone, client_address, amount_total, ppn_enabled, ppn_percent, pph_enabled, pph_percent, dp_enabled, dp_amount')
+          .select('id, invoice_number, issue_date, due_date, status, sent_at, paid_at, client_id, client_name, client_phone, client_address, amount_total, ppn_enabled, ppn_percent, pph_enabled, pph_percent, dp_enabled, dp_amount')
           .eq('tenant_id', tenantId)
           .eq('service_order_id', orderId)
           .maybeSingle()
@@ -309,7 +315,7 @@ export function InvoiceFromOrderDialog({
         if (existing.error) {
           const fallback = await supabase
             .from('invoices')
-            .select('id, invoice_number, issue_date, due_date, status, client_id, client_name, client_phone, client_address, amount_total')
+            .select('id, invoice_number, issue_date, due_date, status, sent_at, paid_at, client_id, client_name, client_phone, client_address, amount_total')
             .eq('tenant_id', tenantId)
             .eq('service_order_id', orderId)
             .maybeSingle()
@@ -324,6 +330,9 @@ export function InvoiceFromOrderDialog({
           setIssueDate(inv.issue_date)
           setDueDate(inv.due_date || '')
           setDueMode(inv.due_date ? 'custom' : '14')
+          setLoadedStatus(inv.status || null)
+          setLoadedSentAt((inv as any).sent_at ?? null)
+          setLoadedPaidAt((inv as any).paid_at ?? null)
           setPpnEnabled(Boolean(inv.ppn_enabled))
           setPpnPercent(safeNumber(inv.ppn_percent || 11) || 11)
           setPphEnabled(Boolean(inv.pph_enabled))
@@ -354,6 +363,11 @@ export function InvoiceFromOrderDialog({
           }
           return
         }
+
+        // New invoice: reset loaded metadata
+        setLoadedStatus(null)
+        setLoadedSentAt(null)
+        setLoadedPaidAt(null)
 
         // 3) No existing invoice: build from technical report + spareparts
         // Prefer PIC work log so assistant logs don't override the source data.
@@ -967,6 +981,11 @@ export function InvoiceFromOrderDialog({
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Buat Invoice dari Service Order</DialogTitle>
+            <div className="text-xs text-muted-foreground">
+              Status: {loadedStatus ? String(loadedStatus).toUpperCase() : 'DRAFT'}
+              {loadedSentAt ? ` • Dikirim: ${new Date(loadedSentAt).toLocaleString('id-ID')}` : ''}
+              {loadedPaidAt ? ` • Dibayar: ${new Date(loadedPaidAt).toLocaleString('id-ID')}` : ''}
+            </div>
           </DialogHeader>
 
           {loading ? (
