@@ -93,6 +93,9 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   const [page, setPage] = useState(1)
   const pageSize = 10
 
+  const [queueHasNext, setQueueHasNext] = useState(false)
+  const [queueTotalCount, setQueueTotalCount] = useState<number | null>(null)
+
   const [queueRows, setQueueRows] = useState<OrderQueueRow[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -455,44 +458,39 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
     setLoading(true)
     try {
       const from = (page - 1) * pageSize
-      const to = from + pageSize - 1
+      const to = from + pageSize // fetch 1 extra row to detect next page
 
+      // Prefer doing this in one query so pagination is based on eligible rows.
+      // Requires FK relationship invoices.service_order_id -> service_orders.id.
       const ordersRes = await supabase
         .from('service_orders')
         .select(
           `id, order_number, service_title, status, updated_at,
-           clients(name)`
+           clients(name),
+           invoices!left(id)`,
+          { count: 'exact' }
         )
         .eq('tenant_id', tenantId)
         .eq('status', 'completed')
+        .is('invoices.id', null)
         .order('updated_at', { ascending: false })
         .range(from, to)
 
-      if (ordersRes.error) throw ordersRes.error
-
-      const orders = (ordersRes.data || []) as unknown as OrderQueueRow[]
-      if (orders.length === 0) {
-        setQueueRows([])
-        return
-      }
-
-      // Remove orders that already have invoices
-      const orderIds = orders.map((o) => o.id)
-      const invRes = await supabase
-        .from('invoices')
-        .select('id, service_order_id')
-        .eq('tenant_id', tenantId)
-        .in('service_order_id', orderIds)
-
       // If invoices table is not present yet, keep the queue visible but show setup warning.
-      if (invRes.error) {
-        console.warn('fetch invoices for queue error:', invRes.error)
-        setQueueRows(orders)
+      if (ordersRes.error) {
+        console.warn('fetchQueue (join invoices) error:', ordersRes.error)
+        setQueueRows([])
+        setQueueHasNext(false)
+        setQueueTotalCount(null)
         return
       }
 
-      const hasInvoice = new Set((invRes.data || []).map((r: any) => r.service_order_id).filter(Boolean))
-      setQueueRows(orders.filter((o) => !hasInvoice.has(o.id)))
+      setQueueTotalCount(typeof ordersRes.count === 'number' ? ordersRes.count : null)
+
+      const rows = (ordersRes.data || []) as unknown as (OrderQueueRow & { invoices?: any[] })[]
+      const hasNext = rows.length > pageSize
+      setQueueHasNext(hasNext)
+      setQueueRows(hasNext ? (rows.slice(0, pageSize) as unknown as OrderQueueRow[]) : (rows as unknown as OrderQueueRow[]))
     } catch (e: any) {
       console.error('fetchQueue error:', e)
       toast.error(e?.message || 'Gagal memuat invoice queue')
@@ -852,7 +850,9 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
         <CardContent>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-muted-foreground">
-              Halaman {page} • Terpilih: {selectedIds.size}
+              Halaman {page}
+              {queueTotalCount === null ? '' : ` • Total: ${queueTotalCount}`}
+              {' • '}Terpilih: {selectedIds.size}
             </div>
             <div className="flex gap-2">
               <Button
@@ -867,7 +867,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                 variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => p + 1)}
-                disabled={loading || queueRows.length < pageSize}
+                disabled={loading || !queueHasNext}
               >
                 Next
               </Button>
@@ -931,7 +931,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           )}
 
           <div className="mt-3 text-xs text-muted-foreground">
-            Catatan: Queue ini berbasis `service_orders.status = completed` dan akan hilang setelah invoice dibuat.
+            Catatan: Queue ini menampilkan service order `completed` yang belum punya invoice; item akan hilang setelah invoice dibuat.
           </div>
         </CardContent>
       </Card>

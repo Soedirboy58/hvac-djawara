@@ -76,6 +76,7 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
   const [pageSize, setPageSize] = useState(9)
 
   const [ownershipLabelsByUserId, setOwnershipLabelsByUserId] = useState<Record<string, string>>({})
+  const [ownershipPartnerUserIds, setOwnershipPartnerUserIds] = useState<string[]>([])
 
   const canViewOwnershipKpis = useMemo(() => {
     if (!viewerRole) return false
@@ -130,18 +131,39 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
 
     // Load referred-by labels for ownership KPIs (admin-only)
     if (canViewOwnershipKpis) {
-      const referredIds = Array.from(
-        new Set(rows.map((c) => String(c.referred_by_id || '')).filter(Boolean))
-      )
+      // 1) Load all active partner users in this tenant, so KPI shows even if count=0.
+      const { data: partnerRoles, error: partnerError } = await supabase
+        .from('user_tenant_roles')
+        .select('user_id, role')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .in('role', ['sales_partner', 'marketing', 'business_dev'])
 
-      if (referredIds.length > 0) {
+      let partnerIds: string[] = []
+
+      if (partnerError) {
+        console.warn('Failed to load partner roles:', partnerError.message)
+        setOwnershipPartnerUserIds([])
+      } else {
+        partnerIds = Array.from(
+          new Set((partnerRoles || []).map((r: any) => String(r?.user_id || '')).filter(Boolean))
+        )
+        setOwnershipPartnerUserIds(partnerIds)
+      }
+
+      // 2) Load labels for partners (and any referred_by_id that might not have the role anymore).
+      const referredIds = Array.from(new Set(rows.map((c) => String(c.referred_by_id || '')).filter(Boolean)))
+      const labelIds = Array.from(new Set([...(partnerIds || []), ...referredIds].filter(Boolean)))
+
+      if (labelIds.length > 0) {
         const { data: refProfiles, error: refError } = await supabase
           .from('profiles')
           .select('id, full_name')
-          .in('id', referredIds)
+          .in('id', labelIds)
 
         if (refError) {
           console.warn('Failed to load referral labels:', refError.message)
+          setOwnershipLabelsByUserId({})
         } else {
           const map: Record<string, string> = {}
           for (const p of (refProfiles || []) as any[]) {
@@ -183,7 +205,11 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
     const items: Array<{ label: string; count: number }> = []
     items.push({ label: 'PT Djawara', count: internalCount })
 
-    const partnerItems = Object.keys(counts)
+    const basePartnerIds = ownershipPartnerUserIds.length > 0
+      ? ownershipPartnerUserIds
+      : Object.keys(counts).filter((k) => k !== 'internal')
+
+    const partnerItems = basePartnerIds
       .filter((k) => k !== 'internal')
       .map((userId) => ({
         label: ownershipLabelsByUserId[userId] || 'Sales Partner',
@@ -192,7 +218,7 @@ export function ClientsList({ tenantId, viewerRole, viewerUserId }: ClientsListP
       .sort((a, b) => b.count - a.count)
 
     return [...items, ...partnerItems]
-  }, [clients, canViewOwnershipKpis, ownershipLabelsByUserId])
+  }, [clients, canViewOwnershipKpis, ownershipLabelsByUserId, ownershipPartnerUserIds])
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(search.toLowerCase()) ||
