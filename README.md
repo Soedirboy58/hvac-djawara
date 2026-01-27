@@ -1,8 +1,8 @@
 # Djawara HVAC Platform
 
-> **Last Updated:** January 01, 2026  
+> **Last Updated:** January 27, 2026  
 > **Status:** ✅ Production Ready - People + Reimburse + Workforce (Attendance) + Maintenance Schedule + Admin KPIs Live  
-> **Latest Updates:** Maintenance Schedule: tenant resolver fix + first maintenance date suggestion; Admin Dashboard: KPI + maintenance/reimburse notifications; Maintenance urgency buckets standardized (Overdue vs Due Soon ≤7)
+> **Latest Updates:** Maintenance Schedule now auto-syncs next date from actual completion (no manual `start_date` updates required)
 
 ---
 
@@ -11,17 +11,18 @@
 ### 📖 **CRITICAL: Read These Documents in Order**
 
 1. **[docs/ai-agent/CURRENT_STATE.md](docs/ai-agent/CURRENT_STATE.md)** ← **START HERE** - system map + runbook (rolling)
-2. **[docs/ai-agent/2026-01-01-MAINTENANCE-SCHEDULE-DASHBOARD-URGENCY-HANDOFF.md](docs/ai-agent/2026-01-01-MAINTENANCE-SCHEDULE-DASHBOARD-URGENCY-HANDOFF.md)** - Maintenance schedule fixes + admin KPIs + urgency sync (Jan 01)
-3. **[docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md](docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md)** - Orders UX + assignments (technician vs helper) + helper read-only (Dec 26)
-4. **[docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md](docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md)** - Sales Partner dashboard + client referral fixes (Dec 26)
-5. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
-6. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
-7. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
+2. **[docs/ai-agent/2026-01-27-MAINTENANCE-ACTUAL-COMPLETION-SYNC.md](docs/ai-agent/2026-01-27-MAINTENANCE-ACTUAL-COMPLETION-SYNC.md)** - Maintenance schedule auto-sync to actual completion (Jan 27)
+3. **[docs/ai-agent/2026-01-01-MAINTENANCE-SCHEDULE-DASHBOARD-URGENCY-HANDOFF.md](docs/ai-agent/2026-01-01-MAINTENANCE-SCHEDULE-DASHBOARD-URGENCY-HANDOFF.md)** - Maintenance schedule fixes + admin KPIs + urgency sync (Jan 01)
+4. **[docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md](docs/ai-agent/2025-12-26-ORDERS-ASSIGNMENT-HELPER-READONLY-HANDOFF.md)** - Orders UX + assignments (technician vs helper) + helper read-only (Dec 26)
+5. **[docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md](docs/ai-agent/2025-12-26-SALES-PARTNER-DASHBOARD-CLIENT-REFERRAL-HANDOFF.md)** - Sales Partner dashboard + client referral fixes (Dec 26)
+6. **[docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md](docs/ai-agent/2025-12-25-ATTENDANCE-ADMIN-ROSTER-AVATAR-HANDOFF.md)** - Admin attendance monitoring + avatar parity (Dec 25)
+7. **[docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md](docs/ai-agent/2025-12-25-TEAM-INVITE-HELPER-MAGANG-HANDOFF.md)** - Team invite activation + helper/magang roles (Dec 25)
+8. **[docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md](docs/ai-agent/2025-12-22-REIMBURSE-PEOPLE-TECHNICIAN-HANDOFF.md)** - People Management + Reimburse (Dec 22)
 8. **[docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md](docs/ai-handoff/2025-12-21-TECHNICAL-DATA-ENHANCEMENTS.md)** - Technical data + PDF/inventory context
 9. **[PROJECT-SUMMARY.md](PROJECT-SUMMARY.md)** - System architecture overview
 10. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Database structure reference
 
-### ✅ **Current System Status (December 26, 2025)**
+### ✅ **Current System Status (January 27, 2026)**
 
 **Core Features:**
 - PDF Generation: ✅ Working (optimized, no emojis, single signature)
@@ -73,6 +74,9 @@
 - ✅ Client referral dropdown only lists sales partners
 - ✅ Sales partner clients list only shows referred clients (`referred_by_id = auth.uid()`)
 - ✅ Client detail now displays referral info (supports `referred_by_id` + `referred_by_name`)
+
+**Newly Live (Jan 27):**
+- ✅ Maintenance schedule auto-sync: when an order completes, `last_generated_date` updates and `next_scheduled_date` advances automatically (no manual `start_date` updates)
 
 **Common Setup Issue:**
 - If browser console shows CORS blocked calls to `supabase.co/rest/v1/...`, add your app origin in Supabase → Project Settings → API → CORS Allowed Origins.

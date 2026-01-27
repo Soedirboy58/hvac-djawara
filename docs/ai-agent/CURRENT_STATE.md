@@ -1,6 +1,6 @@
 # Current State — Djawara HVAC Platform (Rolling)
 
-**Last updated:** 2026-01-01
+**Last updated:** 2026-01-27
 
 Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, fitur yang sudah live, flow penting, pola otorisasi (tenant + role), serta runbook deploy/debug. Untuk detail sesi per tanggal, lihat dokumen handoff di folder yang sama.
 
@@ -39,6 +39,7 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 ### Maintenance Schedule
 - **Client portal**: konfigurasi maintenance schedule per properti.
 - **Schedule Management**: tab “Maintenance Schedule” untuk monitoring + generate order.
+- **Auto-sync**: saat order maintenance selesai, `last_generated_date` otomatis disinkronkan ke tanggal aktual selesai agar `next_scheduled_date` ikut maju (tanpa edit manual `start_date`).
 - Definisi urgency distandarisasi berbasis `v_upcoming_maintenance.days_until`:
   - **Overdue**: `< 0`
   - **Due Soon (≤7 hari)**: `0..7`
@@ -89,7 +90,7 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 ### Catatan khusus `sales_partner`
 - Sidebar dashboard membatasi menu (Dashboard, Clients, Orders, Contracts, Schedule, Finance, Settings).
 - Halaman Attendance/People/Inventory/Analytics melakukan server-side guard dan akan redirect ke `/dashboard`.
-- List clients untuk sales partner (UI/query) di-filter dengan `referred_by_id = auth.uid()`.
+- List clients untuk sales partner (UI/query) di-filter dengan `referred_by_id = auth.uid()` dan fallback `referred_by_name` bila `referred_by_id` belum terisi.
 
 ### Data “helper/magang” di technician portal
 - Agar helper/magang bisa login ke portal teknisi (untuk attendance dll), saat aktivasi team invite sistem membuat row di `technicians` (role dimapping ke role yang valid di tabel `technicians`).
@@ -263,7 +264,14 @@ Dokumen ini adalah ringkasan *rolling* untuk AI agent berikutnya: peta sistem, f
 
 ---
 
-## 11) Recent Changes (2026-01-01)
+## 11) Recent Changes (2026-01-27)
+
+### Maintenance: sync to actual completion
+- Trigger baru di `service_orders` untuk update `property_maintenance_schedules.last_generated_date` saat order selesai.
+- `next_scheduled_date` otomatis maju mengikuti tanggal aktual selesai (tanpa edit manual `start_date`).
+- Migration: `supabase/migrations/20260127_001_sync_maintenance_actual_completion.sql`.
+
+## 12) Recent Changes (2026-01-01)
 
 ### Maintenance schedule: tenant fix + first maintenance date suggestion
 - Save maintenance schedule dibuat lebih robust terhadap tenant context yang kosong.

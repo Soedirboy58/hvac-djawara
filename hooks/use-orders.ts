@@ -59,6 +59,7 @@ export interface ServiceOrder {
     email?: string
     address?: string
     referred_by_id?: string | null
+    referred_by_name?: string | null
   }
   technician?: {
     id: string
@@ -68,6 +69,44 @@ export interface ServiceOrder {
     id: string
     full_name: string
   }
+}
+
+async function fetchSalesPartnerClientIds(args: {
+  supabase: ReturnType<typeof createClient>
+  tenantId: string
+  userId: string
+  userFullName?: string | null
+}) {
+  const { supabase, tenantId, userId, userFullName } = args
+  const ids = new Set<string>()
+
+  const { data: byId, error: byIdError } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('referred_by_id', userId)
+
+  if (byIdError) throw byIdError
+  for (const row of byId || []) {
+    const id = String((row as any)?.id || '')
+    if (id) ids.add(id)
+  }
+
+  if (userFullName && userFullName.trim()) {
+    const { data: byName, error: byNameError } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('referred_by_name', userFullName.trim())
+
+    if (byNameError) throw byNameError
+    for (const row of byName || []) {
+      const id = String((row as any)?.id || '')
+      if (id) ids.add(id)
+    }
+  }
+
+  return Array.from(ids)
 }
 
 interface UseOrdersOptions {
@@ -102,7 +141,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('active_tenant_id')
+        .select('active_tenant_id, full_name')
         .eq('id', user.id)
         .single()
 
@@ -145,18 +184,12 @@ export function useOrders(options: UseOrdersOptions = {}) {
 
       // Sales partners should only see orders for clients referred by them
       if (viewerRole === 'sales_partner') {
-        const { data: referredClients, error: referredError } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('tenant_id', profile.active_tenant_id)
-          .eq('referred_by_id', user.id)
-
-        if (referredError) {
-          console.error('Error fetching referred clients:', referredError)
-          throw new Error('Failed to fetch referred clients')
-        }
-
-        const clientIds = (referredClients || []).map((c: any) => c.id).filter(Boolean)
+        const clientIds = await fetchSalesPartnerClientIds({
+          supabase,
+          tenantId: profile.active_tenant_id,
+          userId: user.id,
+          userFullName: (profile as any)?.full_name ?? null,
+        })
         if (clientIds.length === 0) {
           setOrders([])
           return
@@ -306,7 +339,7 @@ export function useOrder(orderId: string | null) {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('active_tenant_id')
+        .select('active_tenant_id, full_name')
         .eq('id', user.id)
         .single()
 
@@ -330,18 +363,17 @@ export function useOrder(orderId: string | null) {
 
       let allowedClientIds: string[] | null = null
       if (viewerRole === 'sales_partner') {
-        const { data: referredClients, error: referredError } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('tenant_id', profile.active_tenant_id)
-          .eq('referred_by_id', user.id)
-
-        if (referredError) {
-          console.error('Error fetching referred clients:', referredError)
+        try {
+          allowedClientIds = await fetchSalesPartnerClientIds({
+            supabase,
+            tenantId: profile.active_tenant_id,
+            userId: user.id,
+            userFullName: (profile as any)?.full_name ?? null,
+          })
+        } catch (e) {
+          console.error('Error fetching referred clients:', e)
           throw new Error('Failed to fetch referred clients')
         }
-
-        allowedClientIds = (referredClients || []).map((c: any) => c.id).filter(Boolean)
         if (allowedClientIds.length === 0) {
           throw new Error('Order not found')
         }
