@@ -1268,7 +1268,6 @@ export function PeopleManagementClient({
                   onValueChange={(value) => {
                     setSalesPartnerFilter(value)
                     setSalesPage(1)
-                    fetchSalesPartnerPerformance({ resetPage: true })
                   }}
                 >
                   <SelectTrigger className="w-[220px]">
