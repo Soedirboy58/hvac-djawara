@@ -160,6 +160,7 @@ interface SalesPartnerJobRow {
   invoice_id: string | null
   invoice_number: string | null
   invoice_status: string | null
+  invoice_issue_date?: string | null
   invoice_total: number
   items: SalesPartnerJobItem[]
 }
@@ -1373,7 +1374,9 @@ export function PeopleManagementClient({
                           <div className="text-sm font-medium">{row.order_number || '—'}</div>
                           <div className="text-xs text-muted-foreground">{row.service_title || '—'}</div>
                           <div className="text-xs text-muted-foreground">
-                            {row.completed_at ? new Date(row.completed_at).toLocaleDateString('id-ID') : '—'}
+                            {row.completed_at
+                              ? new Date(row.completed_at).toLocaleDateString('id-ID')
+                              : 'Tanggal selesai belum tercatat'}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1383,6 +1386,11 @@ export function PeopleManagementClient({
                               <Badge variant="outline" className="mt-1">
                                 {row.invoice_status || 'unpaid'}
                               </Badge>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {row.invoice_issue_date
+                                  ? new Date(row.invoice_issue_date).toLocaleDateString('id-ID')
+                                  : 'Tanggal invoice belum tercatat'}
+                              </div>
                             </div>
                           ) : (
                             <Badge variant="secondary">Belum di-invoice</Badge>

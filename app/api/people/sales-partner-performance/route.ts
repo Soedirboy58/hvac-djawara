@@ -182,7 +182,7 @@ export async function GET(request: Request) {
 
     const { data: ordersRaw, error: ordersError, count } = await ctx.admin
       .from("service_orders")
-      .select("id, order_number, service_title, completed_at, updated_at, client_id", { count: "exact" })
+      .select("id, order_number, service_title, completed_at, updated_at, scheduled_date, client_id", { count: "exact" })
       .eq("tenant_id", ctx.tenantId)
       .in("client_id", clientIds)
       .eq("status", "completed")
@@ -203,7 +203,7 @@ export async function GET(request: Request) {
     const { data: invoicesRaw } = orderIds.length
       ? await ctx.admin
           .from("invoices")
-          .select("id, invoice_number, status, amount_total, service_order_id")
+          .select("id, invoice_number, status, amount_total, service_order_id, issue_date, created_at")
           .eq("tenant_id", ctx.tenantId)
           .in("service_order_id", orderIds)
       : { data: [] };
@@ -261,13 +261,14 @@ export async function GET(request: Request) {
         order_id: order.id,
         order_number: order.order_number || null,
         service_title: order.service_title || null,
-        completed_at: order.completed_at || null,
+        completed_at: order.completed_at || order.updated_at || order.scheduled_date || null,
         client_name: client?.name || null,
         sales_partner_id: partnerId,
         sales_partner_name: partnerId ? partnerById.get(partnerId) || null : null,
         invoice_id: invoice?.id || null,
         invoice_number: invoice?.invoice_number || null,
         invoice_status: invoice?.status || null,
+        invoice_issue_date: invoice?.issue_date || invoice?.created_at || null,
         invoice_total: Number(invoice?.amount_total || 0),
         items: invoice?.id ? itemsByInvoice.get(invoice.id) || [] : [],
       };
