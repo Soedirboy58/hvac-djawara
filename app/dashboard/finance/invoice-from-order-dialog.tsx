@@ -415,15 +415,34 @@ export function InvoiceFromOrderDialog({
           .from('technician_work_logs')
           .select('id, work_type, check_type, completed_at, maintenance_units_data, ac_units_data, technician_id')
           .eq('service_order_id', orderId)
+          .eq('log_type', 'technical_report')
+          .eq('report_type', 'bast')
 
         if (picTechnicianIds.length > 0) {
           workLogQuery = workLogQuery.in('technician_id', picTechnicianIds)
         }
 
-        const workLogRes = await workLogQuery
-          .order('completed_at', { ascending: false })
+        let workLogRes = await workLogQuery
+          .order('completed_at', { ascending: false, nullsFirst: false })
           .limit(1)
           .maybeSingle()
+
+        if (!workLogRes.error && !workLogRes.data) {
+          let fallbackQuery = supabase
+            .from('technician_work_logs')
+            .select('id, work_type, check_type, completed_at, maintenance_units_data, ac_units_data, technician_id')
+            .eq('service_order_id', orderId)
+            .or('maintenance_units_data.not.is.null,ac_units_data.not.is.null,work_type.not.is.null')
+
+          if (picTechnicianIds.length > 0) {
+            fallbackQuery = fallbackQuery.in('technician_id', picTechnicianIds)
+          }
+
+          workLogRes = await fallbackQuery
+            .order('completed_at', { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle()
+        }
 
         if (workLogRes.error) throw workLogRes.error
         setWorkLog((workLogRes.data as any) || null)
