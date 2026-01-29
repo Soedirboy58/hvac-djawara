@@ -86,21 +86,53 @@ type ExistingInvoice = {
   dp_amount?: number
 }
 
+function normalizeCapacityLabel(raw: any) {
+  const capRaw = String(raw || '').trim()
+  if (!capRaw) return 'Unit'
+  const cleaned = capRaw.replace(/(pk|PK)\b/g, 'PK').replace(/\s+/g, ' ').trim()
+  return cleaned || 'Unit'
+}
+
 function groupMaintenanceItems(maintenanceUnits: any[]): InvoiceDraftItem[] {
   if (!Array.isArray(maintenanceUnits) || maintenanceUnits.length === 0) return []
 
   const groups = new Map<string, number>()
   for (const u of maintenanceUnits) {
-    const cap = (u?.kapasitas_ac || '').toString().trim()
-    const key = cap || 'Unit'
-    groups.set(key, (groups.get(key) || 0) + 1)
+    const cap = normalizeCapacityLabel(u?.kapasitas_ac)
+    groups.set(cap, (groups.get(cap) || 0) + 1)
   }
 
   const items: InvoiceDraftItem[] = []
   for (const [cap, qty] of groups.entries()) {
-    const desc = cap && cap !== 'Unit' ? `Jasa Cuci AC Split ${cap} Reguler` : 'Jasa Cuci AC Reguler'
+    const desc = cap && cap !== 'Unit' ? `Jasa Pemeliharaan AC ${cap}` : 'Jasa Pemeliharaan AC'
     items.push({
-      id: `svc-${cap}`,
+      id: `svc-maint-${cap}`,
+      description: desc,
+      quantity: qty,
+      unit: 'Unit',
+      unitPrice: 0,
+      discountPercent: 0,
+      taxPercent: 0,
+    })
+  }
+
+  return items
+}
+
+function groupAcUnitItems(units: any[], baseLabel: string): InvoiceDraftItem[] {
+  if (!Array.isArray(units) || units.length === 0) return []
+
+  const groups = new Map<string, number>()
+  for (const u of units) {
+    const cap = normalizeCapacityLabel(u?.kapasitas_ac || u?.capacity_pk || u?.kapasitas)
+    groups.set(cap, (groups.get(cap) || 0) + 1)
+  }
+
+  const items: InvoiceDraftItem[] = []
+  for (const [cap, qty] of groups.entries()) {
+    const desc = cap && cap !== 'Unit' ? `${baseLabel} ${cap}` : baseLabel
+    items.push({
+      id: `svc-${baseLabel}-${cap}`,
       description: desc,
       quantity: qty,
       unit: 'Unit',
@@ -415,10 +447,21 @@ export function InvoiceFromOrderDialog({
         const wt = (wl?.work_type || '').toLowerCase()
 
         if (wt === 'pemeliharaan') {
-          generated.push(...groupMaintenanceItems(wl?.maintenance_units_data || []))
+          const maintenanceUnits = wl?.maintenance_units_data || []
+          if (Array.isArray(maintenanceUnits) && maintenanceUnits.length > 0) {
+            generated.push(...groupMaintenanceItems(maintenanceUnits))
+          } else if (Array.isArray(wl?.ac_units_data) && wl.ac_units_data.length > 0) {
+            generated.push(...groupAcUnitItems(wl.ac_units_data, 'Jasa Pemeliharaan AC'))
+          } else {
+            generated.push({ id: 'svc-maint-default', description: 'Jasa Pemeliharaan AC', quantity: 1, unit: 'Pekerjaan', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          }
         } else if (wt === 'troubleshooting') {
-          const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
-          generated.push({ id: 'svc-troubleshooting', description: 'Jasa Troubleshooting AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          if (Array.isArray(wl?.ac_units_data) && wl.ac_units_data.length > 0) {
+            generated.push(...groupAcUnitItems(wl.ac_units_data, 'Jasa Troubleshooting AC'))
+          } else {
+            const qty = Array.isArray(wl?.ac_units_data) ? wl.ac_units_data.length : 1
+            generated.push({ id: 'svc-troubleshooting', description: 'Jasa Troubleshooting AC', quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          }
         } else if (wt === 'pengecekan') {
           const ctRaw = String(wl?.check_type || '').toLowerCase().trim()
           const ct = ctRaw === 'survey' ? 'survey_instalasi' : ctRaw === 'performa' ? 'kinerja_ac' : ctRaw
@@ -434,11 +477,11 @@ export function InvoiceFromOrderDialog({
               ? 'Jasa Pengecekan (Lain-lain)'
               : 'Jasa Pengecekan'
 
-          const qty = (ct === 'kinerja_ac' || ct === 'kinerja_coldstorage') && Array.isArray(wl?.ac_units_data)
-            ? wl.ac_units_data.length
-            : 1
-
-          generated.push({ id: 'svc-pengecekan', description, quantity: qty || 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          if ((ct === 'kinerja_ac' || ct === 'kinerja_coldstorage') && Array.isArray(wl?.ac_units_data) && wl.ac_units_data.length > 0) {
+            generated.push(...groupAcUnitItems(wl.ac_units_data, description))
+          } else {
+            generated.push({ id: 'svc-pengecekan', description, quantity: 1, unit: 'Unit', unitPrice: 0, discountPercent: 0, taxPercent: 0 })
+          }
         } else {
           // Fallback
           generated.push({
