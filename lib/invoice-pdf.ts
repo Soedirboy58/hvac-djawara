@@ -146,29 +146,56 @@ function terbilang(n: number): string {
   return toWords(x).trim()
 }
 
-// Helper to load remote images as base64 (for jsPDF addImage)
-function loadImage(url: string): Promise<string> {
+type LoadedImage = {
+  dataUrl: string
+  width: number
+  height: number
+}
+
+// Helper to load + compress remote images as base64 (for jsPDF addImage)
+function loadImage(
+  url: string,
+  opts?: { maxWidth?: number; maxHeight?: number; quality?: number }
+): Promise<LoadedImage> {
+  const maxWidth = Math.max(80, Number(opts?.maxWidth || 800))
+  const maxHeight = Math.max(80, Number(opts?.maxHeight || 800))
+  const quality = Math.min(0.9, Math.max(0.4, Number(opts?.quality || 0.7)))
+
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height)
+      const targetW = Math.max(1, Math.round(img.width * scale))
+      const targetH = Math.max(1, Math.round(img.height * scale))
+
       const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
+      canvas.width = targetW
+      canvas.height = targetH
       const ctx = canvas.getContext('2d')
       if (!ctx) return reject(new Error('Failed to get canvas context'))
-      ctx.drawImage(img, 0, 0)
-      resolve(canvas.toDataURL('image/png'))
+      ctx.drawImage(img, 0, 0, targetW, targetH)
+      resolve({
+        dataUrl: canvas.toDataURL('image/jpeg', quality),
+        width: targetW,
+        height: targetH,
+      })
     }
     img.onerror = reject
     img.src = url
   })
 }
 
-async function resolveImageDataUrl(urlOrDataUrl?: string): Promise<string | null> {
+async function resolveImageDataUrl(urlOrDataUrl?: string): Promise<LoadedImage | null> {
   const v = String(urlOrDataUrl || '').trim()
   if (!v) return null
-  if (v.startsWith('data:image/')) return v
+  if (v.startsWith('data:image/')) {
+    try {
+      return await loadImage(v)
+    } catch {
+      return null
+    }
+  }
   try {
     return await loadImage(v)
   } catch (e) {
@@ -181,6 +208,15 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const pageWidth = doc.internal.pageSize.getWidth()
 
+  const addImageFit = (img: LoadedImage, x: number, y: number, maxW: number, maxH: number) => {
+    const ratio = Math.min(maxW / img.width, maxH / img.height)
+    const w = Math.max(1, img.width * ratio)
+    const h = Math.max(1, img.height * ratio)
+    const dx = x + (maxW - w) / 2
+    const dy = y + (maxH - h) / 2
+    doc.addImage(img.dataUrl, 'JPEG', dx, dy, w, h)
+  }
+
   const left = 14
   const right = pageWidth - 14
   let y = 18
@@ -190,7 +226,7 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   const logoDataUrl = await resolveImageDataUrl(data.company.logoUrl)
   if (logoDataUrl) {
     try {
-      doc.addImage(logoDataUrl, 'PNG', left, 10, 18, 18)
+      addImageFit(logoDataUrl, left, 10, 18, 18)
     } catch (e) {
       console.warn('Failed to add logo image:', e)
     }
@@ -461,7 +497,7 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   const signatureDataUrl = await resolveImageDataUrl(data.company.signatureImageUrl)
   if (stampDataUrl) {
     try {
-      doc.addImage(stampDataUrl, 'PNG', sigX + 28, y + 10, 22, 22)
+      addImageFit(stampDataUrl, sigX + 28, y + 10, 22, 22)
     } catch (e) {
       console.warn('Failed to add stamp image:', e)
     }
@@ -469,23 +505,9 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
   if (signatureDataUrl) {
     try {
       const scale = clampNumber(Number(data.company.signatureScale ?? 1), 0.2, 3)
-      let w = 40 * scale
-      let h = 14 * scale
-
-      const maxW = 55
-      const maxH = 16
-      if (w > maxW) {
-        const r = maxW / w
-        w *= r
-        h *= r
-      }
-      if (h > maxH) {
-        const r = maxH / h
-        w *= r
-        h *= r
-      }
-
-      doc.addImage(signatureDataUrl, 'PNG', sigX, y + 14, w, h)
+      const maxW = 55 * scale
+      const maxH = 16 * scale
+      addImageFit(signatureDataUrl, sigX, y + 14, maxW, maxH)
     } catch (e) {
       console.warn('Failed to add signature image:', e)
     }

@@ -1,19 +1,40 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Helper to load image as base64
-function loadImage(url: string): Promise<string> {
+type LoadedImage = {
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
+// Helper to load + compress image as base64
+function loadImage(
+  url: string,
+  opts?: { maxWidth?: number; maxHeight?: number; quality?: number }
+): Promise<LoadedImage> {
+  const maxWidth = Math.max(100, Number(opts?.maxWidth || 1200));
+  const maxHeight = Math.max(100, Number(opts?.maxHeight || 1200));
+  const quality = Math.min(0.85, Math.max(0.35, Number(opts?.quality || 0.6)));
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
+      const targetW = Math.max(1, Math.round(img.width * scale));
+      const targetH = Math.max(1, Math.round(img.height * scale));
+
       const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
+      canvas.width = targetW;
+      canvas.height = targetH;
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        resolve({
+          dataUrl: canvas.toDataURL("image/jpeg", quality),
+          width: targetW,
+          height: targetH,
+        });
       } else {
         reject(new Error("Failed to get canvas context"));
       }
@@ -266,6 +287,15 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       const nameLines = doc.splitTextToSize(displayName, width - 10);
       doc.text(nameLines.slice(0, 2), x + width / 2, y + height - 4, { align: "center" });
     }
+  };
+
+  const addImageFit = (img: LoadedImage, x: number, y: number, maxW: number, maxH: number) => {
+    const ratio = Math.min(maxW / img.width, maxH / img.height);
+    const w = Math.max(1, img.width * ratio);
+    const h = Math.max(1, img.height * ratio);
+    const dx = x + (maxW - w) / 2;
+    const dy = y + (maxH - h) / 2;
+    doc.addImage(img.dataUrl, "JPEG", dx, dy, w, h);
   };
   
   // Header (more compact & professional)
@@ -783,8 +813,8 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
       
       try {
         // Try to add image (may fail for some formats)
-        await loadImage(photo).then((img) => {
-          doc.addImage(img, "JPEG", xPos + 2, yPos + 2, 83, 55);
+        await loadImage(photo, { maxWidth: 1024, maxHeight: 1024, quality: 0.6 }).then((img) => {
+          addImageFit(img, xPos + 2, yPos + 2, 83, 55);
         }).catch(() => {
           // If image load fails, show placeholder
           doc.setFontSize(8);
@@ -863,8 +893,8 @@ export async function generateTechnicalReportPDF(data: WorkLogData): Promise<Blo
           drawBox(xPos, yPos, 87, 70, colors.white, colors.border);
           
           try {
-            await loadImage(photo.preview).then((img) => {
-              doc.addImage(img, "JPEG", xPos + 2, yPos + 2, 83, 55);
+            await loadImage(photo.preview, { maxWidth: 1024, maxHeight: 1024, quality: 0.6 }).then((img) => {
+              addImageFit(img, xPos + 2, yPos + 2, 83, 55);
             }).catch(() => {
               doc.setFontSize(8);
               doc.setTextColor(150, 150, 150);
