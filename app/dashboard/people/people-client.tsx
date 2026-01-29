@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { formatCurrency } from '@/lib/utils/formatters'
 import Image from 'next/image'
 import Cropper from 'react-easy-crop'
 
@@ -134,6 +136,34 @@ interface TechnicianRosterRow {
   created_at: string
 }
 
+interface SalesPartnerOption {
+  id: string
+  name: string
+}
+
+interface SalesPartnerJobItem {
+  description: string
+  quantity: number
+  unit: string
+  unit_price: number
+  line_total: number
+}
+
+interface SalesPartnerJobRow {
+  order_id: string
+  order_number: string | null
+  service_title: string | null
+  completed_at: string | null
+  client_name: string | null
+  sales_partner_id: string | null
+  sales_partner_name: string | null
+  invoice_id: string | null
+  invoice_number: string | null
+  invoice_status: string | null
+  invoice_total: number
+  items: SalesPartnerJobItem[]
+}
+
 export function PeopleManagementClient({ 
   tenantId, 
   initialTeamMembers,
@@ -141,7 +171,7 @@ export function PeopleManagementClient({
 }: PeopleManagementClientProps) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(initialTeamMembers)
   const [partnerRecords, setPartnerRecords] = useState<PartnerRecord[]>([])
-  const [activeTab, setActiveTab] = useState<'people' | 'technicians'>('people')
+  const [activeTab, setActiveTab] = useState<'people' | 'technicians' | 'sales'>('people')
   const [technicianRows, setTechnicianRows] = useState<TechnicianPerformanceRow[]>([])
   const [technicianRoster, setTechnicianRoster] = useState<TechnicianRosterRow[]>([])
   const [staffRoleByUserId, setStaffRoleByUserId] = useState<Record<string, string>>({})
@@ -150,6 +180,19 @@ export function PeopleManagementClient({
   const [techPage, setTechPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [salesPartnerOptions, setSalesPartnerOptions] = useState<SalesPartnerOption[]>([])
+  const [salesPartnerFilter, setSalesPartnerFilter] = useState<string>('all')
+  const [salesRows, setSalesRows] = useState<SalesPartnerJobRow[]>([])
+  const [salesPage, setSalesPage] = useState(1)
+  const [salesHasNext, setSalesHasNext] = useState(false)
+  const [salesTotalCount, setSalesTotalCount] = useState<number | null>(null)
+  const [salesTotalAmount, setSalesTotalAmount] = useState<number | null>(null)
+  const [salesTotalJobs, setSalesTotalJobs] = useState<number | null>(null)
+  const [salesInvoicedJobs, setSalesInvoicedJobs] = useState<number | null>(null)
+  const [salesUninvoicedJobs, setSalesUninvoicedJobs] = useState<number | null>(null)
+  const [salesSelectedIds, setSalesSelectedIds] = useState<Set<string>>(new Set())
+  const [salesLoading, setSalesLoading] = useState(false)
+  const [salesError, setSalesError] = useState<string | null>(null)
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
@@ -399,6 +442,45 @@ export function PeopleManagementClient({
       setTechnicianError(error.message || 'Failed to load technician performance')
     } finally {
       setIsLoadingTechnicians(false)
+    }
+  }
+
+  const fetchSalesPartnerPerformance = async (options?: { resetPage?: boolean }) => {
+    const targetPage = options?.resetPage ? 1 : salesPage
+    setSalesLoading(true)
+    setSalesError(null)
+    try {
+      const params = new URLSearchParams({
+        page: String(targetPage),
+        pageSize: '10',
+      })
+      if (salesPartnerFilter && salesPartnerFilter !== 'all') {
+        params.set('salesPartnerId', salesPartnerFilter)
+      }
+
+      const response = await fetch(`/api/people/sales-partner-performance?${params.toString()}`)
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Gagal memuat performa sales partner')
+      }
+
+      setSalesPartnerOptions((result.partners || []) as SalesPartnerOption[])
+      setSalesRows((result.rows || []) as SalesPartnerJobRow[])
+      setSalesHasNext(Boolean(result.hasNext))
+      setSalesTotalCount(typeof result.totalCount === 'number' ? result.totalCount : null)
+      setSalesTotalAmount(typeof result.totalAmount === 'number' ? result.totalAmount : null)
+      setSalesTotalJobs(typeof result.metrics?.total_jobs === 'number' ? result.metrics.total_jobs : null)
+      setSalesInvoicedJobs(typeof result.metrics?.invoiced_jobs === 'number' ? result.metrics.invoiced_jobs : null)
+      setSalesUninvoicedJobs(typeof result.metrics?.uninvoiced_jobs === 'number' ? result.metrics.uninvoiced_jobs : null)
+      setSalesSelectedIds(new Set())
+      if (options?.resetPage) {
+        setSalesPage(1)
+      }
+    } catch (error: any) {
+      console.error('fetch sales partner performance error:', error)
+      setSalesError(error?.message || 'Gagal memuat performa sales partner')
+    } finally {
+      setSalesLoading(false)
     }
   }
 
@@ -1009,13 +1091,48 @@ export function PeopleManagementClient({
   const teamMemberUserIds = new Set(teamMembers.map(m => m.user_id))
   const technicianCards = technicianRoster.filter(t => !t.user_id || !teamMemberUserIds.has(t.user_id))
 
+  const salesAllSelectedOnPage = salesRows.length > 0 && salesRows.every((r) => salesSelectedIds.has(r.order_id))
+
+  const toggleAllSalesOnPage = (checked: boolean) => {
+    setSalesSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const row of salesRows) {
+        if (checked) next.add(row.order_id)
+        else next.delete(row.order_id)
+      }
+      return next
+    })
+  }
+
+  const toggleSalesOne = (id: string, checked: boolean) => {
+    setSalesSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const selectedSalesTotalAmount = salesRows
+    .filter((r) => salesSelectedIds.has(r.order_id))
+    .reduce((sum, r) => sum + Number(r.invoice_total || 0), 0)
+
+  useEffect(() => {
+    if (activeTab !== 'sales') return
+    fetchSalesPartnerPerformance()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, salesPage, salesPartnerFilter, tenantId])
+
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'people' | 'technicians')}>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'people' | 'technicians' | 'sales')}>
         <TabsList>
           <TabsTrigger value="people">People</TabsTrigger>
           <TabsTrigger value="technicians" onClick={() => fetchTechnicianPerformance()}>
             Kinerja Teknisi
+          </TabsTrigger>
+          <TabsTrigger value="sales" onClick={() => fetchSalesPartnerPerformance({ resetPage: true })}>
+            Sales Partner
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -1128,6 +1245,206 @@ export function PeopleManagementClient({
                 )
               })()
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'sales' && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Sales Partner Performance
+                </CardTitle>
+                <p className="text-sm text-gray-500 mt-1">
+                  Monitoring pekerjaan yang masuk dari sales partner + status invoice.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={salesPartnerFilter}
+                  onValueChange={(value) => {
+                    setSalesPartnerFilter(value)
+                    setSalesPage(1)
+                    fetchSalesPartnerPerformance({ resetPage: true })
+                  }}
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Filter sales partner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Sales Partner</SelectItem>
+                    {salesPartnerOptions.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={() => fetchSalesPartnerPerformance()} disabled={salesLoading}>
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {salesError && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 mb-4">
+                {salesError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Total Pekerjaan</div>
+                <div className="text-lg font-semibold">{salesTotalJobs ?? '—'}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Sudah Di-Invoice</div>
+                <div className="text-lg font-semibold">{salesInvoicedJobs ?? '—'}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Belum Di-Invoice</div>
+                <div className="text-lg font-semibold">{salesUninvoicedJobs ?? '—'}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Total Nilai</div>
+                <div className="text-lg font-semibold">
+                  {salesTotalAmount === null ? '—' : formatCurrency(salesTotalAmount)}
+                </div>
+                {salesTotalAmount === 0 && (
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    Nilai 0 biasanya karena invoice belum dibuat.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={salesAllSelectedOnPage}
+                        onCheckedChange={(v) => toggleAllSalesOnPage(Boolean(v))}
+                        aria-label="Pilih semua"
+                      />
+                    </TableHead>
+                    <TableHead>Sales Partner</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Pekerjaan</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Rincian Biaya</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {salesLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-sm text-gray-500 py-8 text-center">
+                        Loading...
+                      </TableCell>
+                    </TableRow>
+                  ) : salesRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-sm text-gray-500 py-8 text-center">
+                        Belum ada pekerjaan dari sales partner.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    salesRows.map((row) => (
+                      <TableRow key={row.order_id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={salesSelectedIds.has(row.order_id)}
+                            onCheckedChange={(v) => toggleSalesOne(row.order_id, Boolean(v))}
+                            aria-label="Pilih pekerjaan"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm font-medium">{row.sales_partner_name || '—'}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{row.client_name || '—'}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm font-medium">{row.order_number || '—'}</div>
+                          <div className="text-xs text-muted-foreground">{row.service_title || '—'}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {row.completed_at ? new Date(row.completed_at).toLocaleDateString('id-ID') : '—'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {row.invoice_id ? (
+                            <div className="text-sm">
+                              <div className="font-medium">{row.invoice_number || 'Invoice'}</div>
+                              <Badge variant="outline" className="mt-1">
+                                {row.invoice_status || 'unpaid'}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <Badge variant="secondary">Belum di-invoice</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(Number(row.invoice_total || 0))}
+                        </TableCell>
+                        <TableCell>
+                          {row.items?.length ? (
+                            <ul className="space-y-1 text-xs">
+                              {row.items.map((item, idx) => (
+                                <li key={`${row.order_id}-item-${idx}`}>
+                                  <div className="font-medium">{item.description}</div>
+                                  <div className="text-muted-foreground">
+                                    {item.quantity} {item.unit} × {formatCurrency(Number(item.unit_price || 0))} ={' '}
+                                    {formatCurrency(Number(item.line_total || 0))}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Rincian belum tersedia.</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm">
+                Total nilai terpilih: <span className="font-semibold">{formatCurrency(selectedSalesTotalAmount)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSalesSelectedIds(new Set())}
+                  disabled={salesSelectedIds.size === 0}
+                >
+                  Clear Bulk
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setSalesPage((p) => Math.max(1, p - 1))}
+                  disabled={salesPage <= 1 || salesLoading}
+                >
+                  Prev
+                </Button>
+                <span className="text-sm text-gray-500">Page {salesPage}</span>
+                <Button
+                  variant="outline"
+                  onClick={() => setSalesPage((p) => p + 1)}
+                  disabled={!salesHasNext || salesLoading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
