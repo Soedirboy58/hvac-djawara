@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { formatCurrency } from '@/lib/utils/formatters'
 
 type AssignmentStatus = 'assigned' | 'in_collection' | 'collected' | 'cancelled'
 
@@ -26,6 +28,29 @@ type ReferralInvoiceAssignment = {
   status: AssignmentStatus
   partner_notes: string | null
   created_at: string
+}
+
+type CompletedJobItem = {
+  description: string
+  quantity: number
+  unit: string
+  unit_price: number
+  line_total: number
+}
+
+type CompletedJobRow = {
+  invoice_id: string
+  invoice_number: string
+  amount_total: number
+  status: string
+  issue_date: string | null
+  due_date: string | null
+  client_name: string | null
+  service_order_id: string | null
+  order_number: string | null
+  service_title: string | null
+  completed_at: string | null
+  items: CompletedJobItem[]
 }
 
 function statusLabel(s: AssignmentStatus) {
@@ -49,6 +74,16 @@ export function FinanceReferralInvoicesClient({ tenantId }: { tenantId: string }
   const [rows, setRows] = useState<ReferralInvoiceAssignment[]>([])
   const [loading, setLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [referralMissing, setReferralMissing] = useState(false)
+
+  const [completedLoading, setCompletedLoading] = useState(false)
+  const [completedRows, setCompletedRows] = useState<CompletedJobRow[]>([])
+  const [completedPage, setCompletedPage] = useState(1)
+  const completedPageSize = 8
+  const [completedHasNext, setCompletedHasNext] = useState(false)
+  const [completedTotalCount, setCompletedTotalCount] = useState<number | null>(null)
+  const [completedTotalAmount, setCompletedTotalAmount] = useState<number | null>(null)
+  const [completedSelectedIds, setCompletedSelectedIds] = useState<Set<string>>(new Set())
 
   const fetchRows = async () => {
     setLoading(true)
@@ -63,10 +98,11 @@ export function FinanceReferralInvoicesClient({ tenantId }: { tenantId: string }
 
       if (error) throw error
       setRows((data || []) as any)
+      setReferralMissing(false)
     } catch (e: any) {
       const msg = String(e?.message || '')
       if (msg.toLowerCase().includes('referral_invoice_assignments') && msg.toLowerCase().includes('does not exist')) {
-        toast.error('Fitur referral belum aktif di database. Jalankan migration referral_invoice_assignments dulu.')
+        setReferralMissing(true)
         return
       }
       console.error('fetch referral assignments error:', e)
@@ -80,6 +116,65 @@ export function FinanceReferralInvoicesClient({ tenantId }: { tenantId: string }
     fetchRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
+
+  const fetchCompletedJobs = async () => {
+    setCompletedLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: String(completedPage),
+        pageSize: String(completedPageSize),
+      })
+
+      const res = await fetch(`/api/partner/completed-orders?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) {
+        throw new Error(json?.error || 'Gagal memuat pekerjaan selesai')
+      }
+
+      setCompletedRows(Array.isArray(json.rows) ? json.rows : [])
+      setCompletedHasNext(Boolean(json.hasNext))
+      setCompletedTotalCount(typeof json.totalCount === 'number' ? json.totalCount : null)
+      setCompletedTotalAmount(typeof json.totalAmount === 'number' ? json.totalAmount : null)
+      setCompletedSelectedIds(new Set())
+    } catch (e: any) {
+      console.error('fetch completed jobs error:', e)
+      toast.error(e?.message || 'Gagal memuat pekerjaan selesai')
+    } finally {
+      setCompletedLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchCompletedJobs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, completedPage])
+
+  const completedAllSelectedOnPage = completedRows.length > 0 && completedRows.every((r) => completedSelectedIds.has(r.invoice_id))
+
+  const toggleAllCompletedOnPage = (checked: boolean) => {
+    setCompletedSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const row of completedRows) {
+        if (checked) next.add(row.invoice_id)
+        else next.delete(row.invoice_id)
+      }
+      return next
+    })
+  }
+
+  const toggleCompletedOne = (id: string, checked: boolean) => {
+    setCompletedSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const selectedTotalAmount = completedRows
+    .filter((r) => completedSelectedIds.has(r.invoice_id))
+    .reduce((sum, r) => sum + Number(r.amount_total || 0), 0)
 
   const updateStatus = async (id: string, status: AssignmentStatus) => {
     setUpdatingId(id)
@@ -126,12 +221,16 @@ export function FinanceReferralInvoicesClient({ tenantId }: { tenantId: string }
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Tagihan Referral</CardTitle>
-          <Button variant="outline" onClick={fetchRows} disabled={loading}>
+          <Button variant="outline" onClick={fetchRows} disabled={loading || referralMissing}>
             Refresh
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {referralMissing ? (
+            <div className="text-sm text-muted-foreground">
+              Modul tagihan referral belum aktif di database. Jalankan migration referral_invoice_assignments terlebih dahulu.
+            </div>
+          ) : loading ? (
             <div className="text-sm text-muted-foreground">Memuat…</div>
           ) : rows.length === 0 ? (
             <div className="text-sm text-muted-foreground">Belum ada tagihan referral.</div>
@@ -235,6 +334,154 @@ export function FinanceReferralInvoicesClient({ tenantId }: { tenantId: string }
               </div>
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Daftar Pekerjaan Selesai</CardTitle>
+            <div className="text-xs text-muted-foreground">
+              Menampilkan pekerjaan yang sudah selesai dan sudah dibuat invoice (khusus klien referral Anda).
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={fetchCompletedJobs} disabled={completedLoading}>
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div>
+              Total nilai semua pekerjaan:{' '}
+              <span className="font-semibold">
+                {completedTotalAmount === null ? '—' : formatCurrency(completedTotalAmount)}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total data: {completedTotalCount === null ? '—' : completedTotalCount}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={completedAllSelectedOnPage}
+                      onCheckedChange={(v) => toggleAllCompletedOnPage(Boolean(v))}
+                      aria-label="Pilih semua"
+                    />
+                  </TableHead>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Pekerjaan</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Rincian Biaya Service</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {completedLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                      Memuat…
+                    </TableCell>
+                  </TableRow>
+                ) : completedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                      Belum ada pekerjaan selesai untuk referral Anda.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  completedRows.map((row) => (
+                    <TableRow key={row.invoice_id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={completedSelectedIds.has(row.invoice_id)}
+                          onCheckedChange={(v) => toggleCompletedOne(row.invoice_id, Boolean(v))}
+                          aria-label="Pilih pekerjaan"
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div>{row.invoice_number}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.issue_date ? new Date(row.issue_date).toLocaleDateString('id-ID') : '—'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">{row.order_number || '—'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.service_title || '—'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.client_name || '—'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{row.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(Number(row.amount_total || 0))}</TableCell>
+                      <TableCell>
+                        {row.items?.length ? (
+                          <ul className="space-y-1 text-xs">
+                            {row.items.map((item, idx) => (
+                              <li key={`${row.invoice_id}-item-${idx}`}>
+                                <div className="font-medium">{item.description}</div>
+                                <div className="text-muted-foreground">
+                                  {item.quantity} {item.unit} × {formatCurrency(Number(item.unit_price || 0))} ={' '}
+                                  {formatCurrency(Number(item.line_total || 0))}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Rincian belum tersedia.</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div>
+              Total terpilih: <span className="font-semibold">{formatCurrency(selectedTotalAmount)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCompletedSelectedIds(new Set())}
+                disabled={completedSelectedIds.size === 0}
+              >
+                Clear Bulk
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCompletedPage((p) => Math.max(1, p - 1))}
+                  disabled={completedPage === 1 || completedLoading}
+                >
+                  Prev
+                </Button>
+                <span className="text-xs text-muted-foreground">Page {completedPage}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCompletedPage((p) => p + 1)}
+                  disabled={!completedHasNext || completedLoading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

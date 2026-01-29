@@ -127,6 +127,11 @@ export function FinanceClient({
   tenantId: string
   role: string | null
 }) {
+  const canSeeReimburse = useMemo(() => {
+    const r = (role || '').toLowerCase()
+    return r === 'owner' || r === 'admin_finance'
+  }, [role])
+
   const canSeeReferralInvoices = useMemo(() => {
     const r = (role || '').toLowerCase()
     return r === 'sales_partner'
@@ -140,13 +145,14 @@ export function FinanceClient({
   const [tab, setTab] = useState<'reimburse' | 'referral' | 'invoice' | 'expense' | 'supplier' | 'income' | 'reports'>(() => {
     if (canSeeInvoices) return 'invoice'
     if (canSeeReferralInvoices) return 'referral'
-    return 'reimburse'
+    if (canSeeReimburse) return 'reimburse'
+    return 'invoice'
   })
 
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
       <TabsList>
-        <TabsTrigger value="reimburse">Reimburse</TabsTrigger>
+        {canSeeReimburse && <TabsTrigger value="reimburse">Reimburse</TabsTrigger>}
         {canSeeReferralInvoices && <TabsTrigger value="referral">Tagihan Referral</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="invoice">Invoice</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="expense">Expense</TabsTrigger>}
@@ -155,9 +161,11 @@ export function FinanceClient({
         {canSeeInvoices && <TabsTrigger value="reports">Laporan</TabsTrigger>}
       </TabsList>
 
-      <TabsContent value="reimburse" className="mt-4">
-        <FinanceReimburseClient tenantId={tenantId} />
-      </TabsContent>
+      {canSeeReimburse && (
+        <TabsContent value="reimburse" className="mt-4">
+          <FinanceReimburseClient tenantId={tenantId} />
+        </TabsContent>
+      )}
 
       {canSeeReferralInvoices && (
         <TabsContent value="referral" className="mt-4">
