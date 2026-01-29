@@ -113,7 +113,7 @@ export async function GET(request: Request) {
 
     const { data: partnersRaw, error: partnersError } = await ctx.admin
       .from("user_tenant_roles")
-      .select("user_id, role, profiles:user_id(full_name, email)")
+      .select("user_id, role, profiles:user_id(full_name)")
       .eq("tenant_id", ctx.tenantId)
       .eq("is_active", true)
       .eq("role", "sales_partner");
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
 
     const partners = (partnersRaw || []).map((row: any) => ({
       id: row.user_id as string,
-      name: row?.profiles?.full_name || row?.profiles?.email || "Sales Partner",
+      name: row?.profiles?.full_name || "Sales Partner",
     }));
 
     const partnerIds = salesPartnerId
