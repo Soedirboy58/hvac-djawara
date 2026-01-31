@@ -78,12 +78,32 @@ const priorityConfig = {
 
 export default function OrdersPage() {
   const router = useRouter()
+  const formatYmdLocal = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const getMonthRange = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1)
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+    return {
+      start: formatYmdLocal(start),
+      end: formatYmdLocal(end),
+    }
+  }
+
+  const initialMonthRange = getMonthRange(new Date())
+
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [rangeStart, setRangeStart] = useState<string>(initialMonthRange.start)
+  const [rangeEnd, setRangeEnd] = useState<string>(initialMonthRange.end)
 
   const [needsQuoteOnly, setNeedsQuoteOnly] = useState(false)
   const [quoteNeededOrderIds, setQuoteNeededOrderIds] = useState<Set<string>>(new Set())
@@ -231,15 +251,31 @@ export default function OrdersPage() {
       return String(o.scheduled_date) === todayYmd
     }).length
 
+    const normalizedStart = rangeStart || initialMonthRange.start
+    const normalizedEnd = rangeEnd || initialMonthRange.end
+
+    const inRange = (value?: string) => {
+      const ymd = ymdJakarta(value)
+      if (!ymd) return false
+      return ymd >= normalizedStart && ymd <= normalizedEnd
+    }
+
+    const monthlyIncoming = orders.filter((o) => inRange(o.created_at)).length
+
     return {
       total,
       pending,
       inProgress,
       completed,
       today,
-      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+      monthlyIncoming,
+      monthlyRange: {
+        start: normalizedStart,
+        end: normalizedEnd,
+      },
     }
-  }, [orders])
+  }, [orders, rangeStart, rangeEnd, initialMonthRange.end, initialMonthRange.start])
 
   // Pagination
   const filteredOrders = useMemo(() => {
@@ -370,7 +406,45 @@ export default function OrdersPage() {
 
       {/* KPI Cards */}
       {kpis && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="space-y-3">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground">Filter order masuk</h2>
+              <p className="text-xs text-muted-foreground">Menghitung order berdasarkan tanggal dibuat.</p>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col">
+                <Label className="text-xs">Dari</Label>
+                <Input
+                  type="date"
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                  className="h-9 w-[160px]"
+                />
+              </div>
+              <div className="flex flex-col">
+                <Label className="text-xs">Sampai</Label>
+                <Input
+                  type="date"
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                  className="h-9 w-[160px]"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRangeStart(initialMonthRange.start)
+                  setRangeEnd(initialMonthRange.end)
+                }}
+              >
+                Bulan Ini
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -380,6 +454,23 @@ export default function OrdersPage() {
                 </div>
                 <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
                   <TrendingUp className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Order Masuk (Range)</p>
+                  <h3 className="text-2xl font-bold mt-1">{kpis.monthlyIncoming}</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpis.monthlyRange.start} - {kpis.monthlyRange.end}
+                  </p>
+                </div>
+                <div className="h-12 w-12 bg-slate-100 rounded-full flex items-center justify-center">
+                  <Calendar className="h-6 w-6 text-slate-600" />
                 </div>
               </div>
             </CardContent>
@@ -479,6 +570,7 @@ export default function OrdersPage() {
               </CardContent>
             </Card>
           ) : null}
+          </div>
         </div>
       )}
 
