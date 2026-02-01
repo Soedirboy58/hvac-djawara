@@ -581,7 +581,7 @@ export function FinancePayrollClient() {
                   <TableHead className="w-[48px]">
                     <Checkbox checked={allSelectedOnPage} onCheckedChange={(v) => toggleSelectAll(Boolean(v))} />
                   </TableHead>
-                  <TableHead className="w-[150px]">Aksi</TableHead>
+                  <TableHead className="w-[200px]">Aksi</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Employee</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
@@ -631,6 +631,20 @@ export function FinancePayrollClient() {
                               }}
                             >
                               View
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setPayrollRecords((prev) => prev.filter((item) => item.id !== row.id))
+                                if (previewId === row.id) {
+                                  setPreviewOpen(false)
+                                  setPreviewId(null)
+                                }
+                                toast.success('Payroll dihapus')
+                              }}
+                            >
+                              Delete
                             </Button>
                           </div>
                         </TableCell>
@@ -887,7 +901,7 @@ export function FinancePayrollClient() {
                       <Input value={formatCurrency(getAmount(line.units, line.unitPrice))} readOnly />
                     </div>
                     <div className="md:col-span-1 flex justify-end">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" onClick={() => copyLine(deductions, setDeductions, line.id)}>
                           Copy
                         </Button>
@@ -1122,72 +1136,72 @@ export function FinancePayrollClient() {
               </div>
 
               <Card>
-                <CardContent className="space-y-4 pt-6">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <CardContent className="pt-8 pb-6">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h2 className="text-3xl font-semibold tracking-tight">{previewRecord.customTitle || 'Slip Gaji'}</h2>
+                        <p className="text-sm text-muted-foreground mt-2">{previewRecord.description || 'Slip gaji karyawan'}</p>
+                      </div>
+                      <div className="h-16 w-16 rounded-full border-4 border-yellow-400/70 flex items-center justify-center text-yellow-600 font-semibold">
+                        LOGO
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Employee</p>
+                        <p className="font-semibold">{previewRecord.employeeName}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Date</p>
+                        <p className="font-semibold">{previewRecord.date}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Company</p>
+                        <p className="font-semibold">HVAC Djawara</p>
+                      </div>
+                    </div>
+
                     <div>
-                      <h2 className="text-2xl font-semibold">{previewRecord.customTitle || 'Payslip'}</h2>
-                      <p className="text-sm text-muted-foreground">{previewRecord.description || 'Slip gaji karyawan'}</p>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      <div>Nama: {previewRecord.employeeName}</div>
-                      <div>Tanggal: {previewRecord.date}</div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold">Earnings</h3>
-                      <div className="rounded-md border">
-                        <Table>
-                          <TableBody>
-                            {previewRecord.earnings.length === 0 ? (
-                              <TableRow>
-                                <TableCell className="text-sm text-muted-foreground">Tidak ada data.</TableCell>
-                              </TableRow>
-                            ) : (
-                              previewRecord.earnings.map((line) => (
-                                <TableRow key={line.id}>
-                                  <TableCell>{line.type || 'Earning'}</TableCell>
-                                  <TableCell className="text-right">{formatCurrency(getAmount(line.units, line.unitPrice))}</TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
+                      <p className="text-sm font-semibold mb-2">Slip Gaji</p>
+                      <div className="border rounded-md">
+                        <div className="grid grid-cols-3 px-4 py-2 text-sm font-medium border-b bg-muted/30">
+                          <div className="col-span-2">Description</div>
+                          <div className="text-right">Total</div>
+                        </div>
+                        <div className="divide-y">
+                          {previewRecord.earnings.map((line) => (
+                            <div key={line.id} className="grid grid-cols-3 px-4 py-2 text-sm">
+                              <div className="col-span-2">{line.type || 'Earnings'}</div>
+                              <div className="text-right">{formatCurrency(getAmount(line.units, line.unitPrice))}</div>
+                            </div>
+                          ))}
+                          {previewRecord.deductions.map((line) => (
+                            <div key={line.id} className="grid grid-cols-3 px-4 py-2 text-sm">
+                              <div className="col-span-2">{line.type || 'Deduction'}</div>
+                              <div className="text-right">-{formatCurrency(getAmount(line.units, line.unitPrice))}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold">Deductions</h3>
-                      <div className="rounded-md border">
-                        <Table>
-                          <TableBody>
-                            {previewRecord.deductions.length === 0 ? (
-                              <TableRow>
-                                <TableCell className="text-sm text-muted-foreground">Tidak ada data.</TableCell>
-                              </TableRow>
-                            ) : (
-                              previewRecord.deductions.map((line) => (
-                                <TableRow key={line.id}>
-                                  <TableCell>{line.type || 'Deduction'}</TableCell>
-                                  <TableCell className="text-right">{formatCurrency(getAmount(line.units, line.unitPrice))}</TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="flex flex-col md:flex-row md:justify-between gap-4 text-sm">
-                    <div className="space-y-1 text-muted-foreground">
-                      <div>Reference: {previewRecord.referenceEnabled ? previewRecord.reference || '-' : '-'}</div>
-                      <div>Contributions: {formatCurrency(computeTotals(previewRecord).contribution)}</div>
-                    </div>
-                    <div className="space-y-1 text-right">
-                      <div>Gross pay: {formatCurrency(computeTotals(previewRecord).grossPay)}</div>
-                      <div>Deduction: {formatCurrency(computeTotals(previewRecord).deduction)}</div>
-                      <div className="font-semibold">Net pay: {formatCurrency(computeTotals(previewRecord).netPay)}</div>
+                    <div className="flex justify-end">
+                      <div className="border rounded-md w-full max-w-xs text-sm">
+                        <div className="flex justify-between px-4 py-2 border-b">
+                          <span>Gross pay</span>
+                          <span className="font-semibold">{formatCurrency(computeTotals(previewRecord).grossPay)}</span>
+                        </div>
+                        <div className="flex justify-between px-4 py-2 border-b">
+                          <span>Deduction</span>
+                          <span>{formatCurrency(computeTotals(previewRecord).deduction)}</span>
+                        </div>
+                        <div className="flex justify-between px-4 py-2 font-semibold">
+                          <span>Net pay</span>
+                          <span>{formatCurrency(computeTotals(previewRecord).netPay)}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
