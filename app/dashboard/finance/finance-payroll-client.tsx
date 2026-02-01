@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { formatCurrency } from '@/lib/utils/formatters'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 const samplePayrollRows = [
@@ -186,6 +187,7 @@ type PayrollRecord = {
   showFooters: boolean
   customTitle: string
   footerText: string
+  logoUrl: string
 }
 
 const STORAGE_KEY = 'finance-payroll-records-v1'
@@ -235,6 +237,7 @@ export function FinancePayrollClient() {
     showFooters: false,
     customTitle: 'Payslip',
     footerText: '',
+    logoUrl: '',
   })
 
   const emptyLine = (): PayrollLine => ({
@@ -278,6 +281,7 @@ export function FinancePayrollClient() {
       showFooters: payrollForm.showFooters,
       customTitle: payrollForm.customTitle,
       footerText: payrollForm.footerText,
+      logoUrl: payrollForm.logoUrl,
     }
   }
 
@@ -454,6 +458,7 @@ export function FinancePayrollClient() {
       showFooters: false,
       customTitle: 'Payslip',
       footerText: '',
+      logoUrl: '',
     })
     setEarnings([emptyLine()])
     setDeductions([emptyLine()])
@@ -472,6 +477,7 @@ export function FinancePayrollClient() {
       showFooters: record.showFooters,
       customTitle: record.customTitle,
       footerText: record.footerText,
+      logoUrl: record.logoUrl || '',
     })
     setEarnings(record.earnings.length > 0 ? record.earnings : [emptyLine()])
     setDeductions(record.deductions.length > 0 ? record.deductions : [emptyLine()])
@@ -581,7 +587,7 @@ export function FinancePayrollClient() {
                   <TableHead className="w-[48px]">
                     <Checkbox checked={allSelectedOnPage} onCheckedChange={(v) => toggleSelectAll(Boolean(v))} />
                   </TableHead>
-                  <TableHead className="w-[200px]">Aksi</TableHead>
+                  <TableHead className="w-[180px]">Aksi</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Employee</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
@@ -633,8 +639,8 @@ export function FinancePayrollClient() {
                               View
                             </Button>
                             <Button
-                              variant="destructive"
-                              size="sm"
+                              variant="ghost"
+                              size="icon"
                               onClick={() => {
                                 setPayrollRecords((prev) => prev.filter((item) => item.id !== row.id))
                                 if (previewId === row.id) {
@@ -643,8 +649,9 @@ export function FinancePayrollClient() {
                                 }
                                 toast.success('Payroll dihapus')
                               }}
+                              title="Hapus"
                             >
-                              Delete
+                              <Trash2 className="h-4 w-4 text-red-600" />
                             </Button>
                           </div>
                         </TableCell>
@@ -900,7 +907,7 @@ export function FinancePayrollClient() {
                       <Label className="text-xs">Amount</Label>
                       <Input value={formatCurrency(getAmount(line.units, line.unitPrice))} readOnly />
                     </div>
-                    <div className="md:col-span-1 flex justify-end">
+                    <div className="md:col-span-12 flex justify-end">
                       <div className="flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" onClick={() => copyLine(deductions, setDeductions, line.id)}>
                           Copy
@@ -1022,6 +1029,16 @@ export function FinancePayrollClient() {
                   onChange={(e) => setPayrollForm((prev) => ({ ...prev, footerText: e.target.value }))}
                 />
               )}
+
+              <div className="space-y-2">
+                <Label>Logo URL</Label>
+                <Input
+                  placeholder="https://.../logo.png"
+                  value={payrollForm.logoUrl}
+                  onChange={(e) => setPayrollForm((prev) => ({ ...prev, logoUrl: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">Isi URL logo untuk ditampilkan di preview slip.</p>
+              </div>
             </div>
           </div>
 
@@ -1143,8 +1160,17 @@ export function FinancePayrollClient() {
                         <h2 className="text-3xl font-semibold tracking-tight">{previewRecord.customTitle || 'Slip Gaji'}</h2>
                         <p className="text-sm text-muted-foreground mt-2">{previewRecord.description || 'Slip gaji karyawan'}</p>
                       </div>
-                      <div className="h-16 w-16 rounded-full border-4 border-yellow-400/70 flex items-center justify-center text-yellow-600 font-semibold">
-                        LOGO
+                      <div className="h-16 w-16 rounded-full border-4 border-yellow-400/70 flex items-center justify-center overflow-hidden bg-white">
+                        {previewRecord.logoUrl ? (
+                          <img
+                            src={previewRecord.logoUrl}
+                            alt="Logo"
+                            className="h-full w-full object-contain"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="text-yellow-600 font-semibold">LOGO</span>
+                        )}
                       </div>
                     </div>
 
