@@ -282,6 +282,15 @@ export function FinancePayrollClient() {
     setList((prev) => [...prev, emptyLine()])
   }
 
+  const removeLine = (
+    list: PayrollLine[],
+    setList: React.Dispatch<React.SetStateAction<PayrollLine[]>>,
+    id: string
+  ) => {
+    if (list.length <= 1) return
+    setList(list.filter((line) => line.id !== id))
+  }
+
   const copyLine = (
     list: PayrollLine[],
     setList: React.Dispatch<React.SetStateAction<PayrollLine[]>>,
@@ -445,7 +454,7 @@ export function FinancePayrollClient() {
       </Card>
 
       <Dialog open={payrollOpen} onOpenChange={setPayrollOpen}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Payroll</DialogTitle>
           </DialogHeader>
@@ -584,9 +593,17 @@ export function FinancePayrollClient() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="md:col-span-12 flex justify-end">
+                    <div className="md:col-span-12 flex flex-wrap justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => copyLine(earnings, setEarnings, line.id)}>
                         Copy
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={earnings.length <= 1}
+                        onClick={() => removeLine(earnings, setEarnings, line.id)}
+                      >
+                        Remove
                       </Button>
                     </div>
                   </div>
@@ -651,9 +668,19 @@ export function FinancePayrollClient() {
                       <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
                     </div>
                     <div className="md:col-span-1 flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => copyLine(deductions, setDeductions, line.id)}>
-                        Copy
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => copyLine(deductions, setDeductions, line.id)}>
+                          Copy
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deductions.length <= 1}
+                          onClick={() => removeLine(deductions, setDeductions, line.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -699,9 +726,19 @@ export function FinancePayrollClient() {
                       <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
                     </div>
                     <div className="md:col-span-2 flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => copyLine(contributions, setContributions, line.id)}>
-                        Copy
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => copyLine(contributions, setContributions, line.id)}>
+                          Copy
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={contributions.length <= 1}
+                          onClick={() => removeLine(contributions, setContributions, line.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
