@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -133,6 +141,19 @@ const samplePayrollRows = [
   },
 ]
 
+const sampleEmployees = [
+  { id: 'emp-001', name: 'Yukhimauludin' },
+  { id: 'emp-002', name: 'Febri Setia Ningsih' },
+  { id: 'emp-003', name: 'Nurfad' },
+  { id: 'emp-004', name: 'Lutfi Arif S.' },
+  { id: 'emp-005', name: 'Dani Rachmanto' },
+  { id: 'emp-006', name: 'Anjar Putra Kusuma' },
+]
+
+const sampleProjects = ['Optional', 'Project A', 'Project B', 'Project C']
+
+const defaultEarningTypes = ['Gaji Pokok', 'Bonus Tahunan', 'Insentif', 'Tunjangan']
+
 function toMonthKey(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -155,6 +176,48 @@ export function FinancePayrollClient() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const [payrollOpen, setPayrollOpen] = useState(false)
+  const [earningTypes, setEarningTypes] = useState<string[]>(defaultEarningTypes)
+  const [earningTypeModalOpen, setEarningTypeModalOpen] = useState(false)
+  const [newEarningType, setNewEarningType] = useState('')
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  const [payrollForm, setPayrollForm] = useState({
+    date: today,
+    referenceEnabled: false,
+    reference: '',
+    description: '',
+    employeeId: '',
+    showTotals: false,
+    showCustomTitle: false,
+    showFooters: false,
+    customTitle: 'Payslip',
+    footerText: '',
+  })
+
+  type PayrollLine = {
+    id: string
+    type: string
+    description: string
+    units: number
+    unitPrice: number
+    project: string
+  }
+
+  const emptyLine = (): PayrollLine => ({
+    id: `line-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type: '',
+    description: '',
+    units: 1,
+    unitPrice: 0,
+    project: 'Optional',
+  })
+
+  const [earnings, setEarnings] = useState<PayrollLine[]>([emptyLine()])
+  const [deductions, setDeductions] = useState<PayrollLine[]>([emptyLine()])
+  const [contributions, setContributions] = useState<PayrollLine[]>([emptyLine()])
 
   const monthOptions = useMemo(() => {
     const keys = Array.from(new Set(samplePayrollRows.map((row) => toMonthKey(row.date))))
@@ -204,6 +267,49 @@ export function FinancePayrollClient() {
     }
   }
 
+  const updateLine = (
+    list: PayrollLine[],
+    setList: React.Dispatch<React.SetStateAction<PayrollLine[]>>,
+    id: string,
+    patch: Partial<PayrollLine>
+  ) => {
+    setList(list.map((line) => (line.id === id ? { ...line, ...patch } : line)))
+  }
+
+  const addLine = (
+    setList: React.Dispatch<React.SetStateAction<PayrollLine[]>>,
+  ) => {
+    setList((prev) => [...prev, emptyLine()])
+  }
+
+  const copyLine = (
+    list: PayrollLine[],
+    setList: React.Dispatch<React.SetStateAction<PayrollLine[]>>,
+    id: string
+  ) => {
+    const target = list.find((line) => line.id === id)
+    if (!target) return
+    setList((prev) => [...prev, { ...target, id: `line-${Date.now()}-${Math.random().toString(16).slice(2)}` }])
+  }
+
+  const resetPayrollForm = () => {
+    setPayrollForm({
+      date: today,
+      referenceEnabled: false,
+      reference: '',
+      description: '',
+      employeeId: '',
+      showTotals: false,
+      showCustomTitle: false,
+      showFooters: false,
+      customTitle: 'Payslip',
+      footerText: '',
+    })
+    setEarnings([emptyLine()])
+    setDeductions([emptyLine()])
+    setContributions([emptyLine()])
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -213,7 +319,7 @@ export function FinancePayrollClient() {
               <CardTitle>Payroll</CardTitle>
               <p className="text-sm text-muted-foreground">Kelola pembayaran gaji karyawan.</p>
             </div>
-            <Button>New Payroll</Button>
+            <Button onClick={() => setPayrollOpen(true)}>New Payroll</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -337,6 +443,372 @@ export function FinancePayrollClient() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={payrollOpen} onOpenChange={setPayrollOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>New Payroll</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input
+                  type="date"
+                  value={payrollForm.date}
+                  onChange={(e) => setPayrollForm((prev) => ({ ...prev, date: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={payrollForm.referenceEnabled}
+                    onCheckedChange={(v) =>
+                      setPayrollForm((prev) => ({ ...prev, referenceEnabled: Boolean(v) }))
+                    }
+                  />
+                  <Input
+                    placeholder="Optional"
+                    value={payrollForm.reference}
+                    onChange={(e) => setPayrollForm((prev) => ({ ...prev, reference: e.target.value }))}
+                    disabled={!payrollForm.referenceEnabled}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Description</Label>
+                <Input
+                  placeholder="Judul / keterangan pembayaran"
+                  value={payrollForm.description}
+                  onChange={(e) => setPayrollForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Employee</Label>
+                <Select
+                  value={payrollForm.employeeId}
+                  onValueChange={(value) => setPayrollForm((prev) => ({ ...prev, employeeId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih karyawan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sampleEmployees.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Earnings</h3>
+                <Button variant="outline" size="sm" onClick={() => addLine(setEarnings)}>
+                  Add line
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {earnings.map((line) => (
+                  <div key={line.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Earning</Label>
+                      <Select
+                        value={line.type}
+                        onValueChange={(value) => updateLine(earnings, setEarnings, line.id, { type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <div className="px-2 py-2">
+                            <Button variant="outline" size="sm" className="w-full" onClick={() => setEarningTypeModalOpen(true)}>
+                              Buat Baru
+                            </Button>
+                          </div>
+                          {earningTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-3">
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        placeholder="Optional"
+                        value={line.description}
+                        onChange={(e) => updateLine(earnings, setEarnings, line.id, { description: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Units</Label>
+                      <Input
+                        type="number"
+                        value={line.units}
+                        onChange={(e) => updateLine(earnings, setEarnings, line.id, { units: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Unit price</Label>
+                      <Input
+                        type="number"
+                        value={line.unitPrice}
+                        onChange={(e) => updateLine(earnings, setEarnings, line.id, { unitPrice: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Amount</Label>
+                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                    </div>
+                    <div className="md:col-span-1">
+                      <Label className="text-xs">Project</Label>
+                      <Select
+                        value={line.project}
+                        onValueChange={(value) => updateLine(earnings, setEarnings, line.id, { project: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sampleProjects.map((project) => (
+                            <SelectItem key={project} value={project}>
+                              {project}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-12 flex justify-end">
+                      <Button variant="outline" size="sm" onClick={() => copyLine(earnings, setEarnings, line.id)}>
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Deductions</h3>
+                <Button variant="outline" size="sm" onClick={() => addLine(setDeductions)}>
+                  Add line
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {deductions.map((line) => (
+                  <div key={line.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Deduction</Label>
+                      <Select
+                        value={line.type}
+                        onValueChange={(value) => updateLine(deductions, setDeductions, line.id, { type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {earningTypes.map((type) => (
+                            <SelectItem key={`ded-${type}`} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-3">
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        placeholder="Optional"
+                        value={line.description}
+                        onChange={(e) => updateLine(deductions, setDeductions, line.id, { description: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Units</Label>
+                      <Input
+                        type="number"
+                        value={line.units}
+                        onChange={(e) => updateLine(deductions, setDeductions, line.id, { units: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Unit price</Label>
+                      <Input
+                        type="number"
+                        value={line.unitPrice}
+                        onChange={(e) => updateLine(deductions, setDeductions, line.id, { unitPrice: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Amount</Label>
+                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                    </div>
+                    <div className="md:col-span-1 flex justify-end">
+                      <Button variant="outline" size="sm" onClick={() => copyLine(deductions, setDeductions, line.id)}>
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Contributions</h3>
+                <Button variant="outline" size="sm" onClick={() => addLine(setContributions)}>
+                  Add line
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {contributions.map((line) => (
+                  <div key={line.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-3">
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        placeholder="Optional"
+                        value={line.description}
+                        onChange={(e) => updateLine(contributions, setContributions, line.id, { description: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Units</Label>
+                      <Input
+                        type="number"
+                        value={line.units}
+                        onChange={(e) => updateLine(contributions, setContributions, line.id, { units: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Unit price</Label>
+                      <Input
+                        type="number"
+                        value={line.unitPrice}
+                        onChange={(e) => updateLine(contributions, setContributions, line.id, { unitPrice: Number(e.target.value || 0) })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs">Amount</Label>
+                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                    </div>
+                    <div className="md:col-span-2 flex justify-end">
+                      <Button variant="outline" size="sm" onClick={() => copyLine(contributions, setContributions, line.id)}>
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={payrollForm.showTotals}
+                  onCheckedChange={(v) => setPayrollForm((prev) => ({ ...prev, showTotals: Boolean(v) }))}
+                />
+                <Label>Show totals for the period</Label>
+              </div>
+              {payrollForm.showTotals && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs">From</Label>
+                    <Input type="date" />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={payrollForm.showCustomTitle}
+                  onCheckedChange={(v) => setPayrollForm((prev) => ({ ...prev, showCustomTitle: Boolean(v) }))}
+                />
+                <Label>Custom title</Label>
+              </div>
+              {payrollForm.showCustomTitle && (
+                <Input
+                  value={payrollForm.customTitle}
+                  onChange={(e) => setPayrollForm((prev) => ({ ...prev, customTitle: e.target.value }))}
+                />
+              )}
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={payrollForm.showFooters}
+                  onCheckedChange={(v) => setPayrollForm((prev) => ({ ...prev, showFooters: Boolean(v) }))}
+                />
+                <Label>Footers</Label>
+              </div>
+              {payrollForm.showFooters && (
+                <Input
+                  value={payrollForm.footerText}
+                  onChange={(e) => setPayrollForm((prev) => ({ ...prev, footerText: e.target.value }))}
+                />
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                resetPayrollForm()
+                setPayrollOpen(false)
+              }}
+            >
+              Create
+            </Button>
+            <Button
+              onClick={() => {
+                resetPayrollForm()
+              }}
+            >
+              Create & add another
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={earningTypeModalOpen} onOpenChange={setEarningTypeModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Buat Earning Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Nama earning</Label>
+            <Input
+              placeholder="Contoh: Bonus Tahunan"
+              value={newEarningType}
+              onChange={(e) => setNewEarningType(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEarningTypeModalOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={() => {
+                const trimmed = newEarningType.trim()
+                if (!trimmed) return
+                if (!earningTypes.includes(trimmed)) {
+                  setEarningTypes((prev) => [...prev, trimmed])
+                }
+                setNewEarningType('')
+                setEarningTypeModalOpen(false)
+              }}
+            >
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
