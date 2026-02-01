@@ -201,7 +201,7 @@ export function FinancePayrollClient() {
     id: string
     type: string
     description: string
-    units: number
+    units: string
     unitPrice: number
     project: string
   }
@@ -210,10 +210,16 @@ export function FinancePayrollClient() {
     id: `line-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type: '',
     description: '',
-    units: 1,
+    units: '',
     unitPrice: 0,
     project: 'Optional',
   })
+
+  const getAmount = (units: string, unitPrice: number) => {
+    const parsedUnits = Number(units)
+    const effectiveUnits = Number.isFinite(parsedUnits) && units !== '' ? parsedUnits : 1
+    return effectiveUnits * unitPrice
+  }
 
   const [earnings, setEarnings] = useState<PayrollLine[]>([emptyLine()])
   const [deductions, setDeductions] = useState<PayrollLine[]>([emptyLine()])
@@ -560,7 +566,7 @@ export function FinancePayrollClient() {
                       <Input
                         type="number"
                         value={line.units}
-                        onChange={(e) => updateLine(earnings, setEarnings, line.id, { units: Number(e.target.value || 0) })}
+                        onChange={(e) => updateLine(earnings, setEarnings, line.id, { units: e.target.value })}
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -573,7 +579,7 @@ export function FinancePayrollClient() {
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs">Amount</Label>
-                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                      <Input value={formatCurrency(getAmount(line.units, line.unitPrice))} readOnly />
                     </div>
                     <div className="md:col-span-1">
                       <Label className="text-xs">Project</Label>
@@ -652,7 +658,7 @@ export function FinancePayrollClient() {
                       <Input
                         type="number"
                         value={line.units}
-                        onChange={(e) => updateLine(deductions, setDeductions, line.id, { units: Number(e.target.value || 0) })}
+                        onChange={(e) => updateLine(deductions, setDeductions, line.id, { units: e.target.value })}
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -665,7 +671,7 @@ export function FinancePayrollClient() {
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs">Amount</Label>
-                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                      <Input value={formatCurrency(getAmount(line.units, line.unitPrice))} readOnly />
                     </div>
                     <div className="md:col-span-1 flex justify-end">
                       <div className="flex gap-2">
@@ -710,7 +716,7 @@ export function FinancePayrollClient() {
                       <Input
                         type="number"
                         value={line.units}
-                        onChange={(e) => updateLine(contributions, setContributions, line.id, { units: Number(e.target.value || 0) })}
+                        onChange={(e) => updateLine(contributions, setContributions, line.id, { units: e.target.value })}
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -723,7 +729,7 @@ export function FinancePayrollClient() {
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs">Amount</Label>
-                      <Input value={formatCurrency(line.units * line.unitPrice)} readOnly />
+                      <Input value={formatCurrency(getAmount(line.units, line.unitPrice))} readOnly />
                     </div>
                     <div className="md:col-span-2 flex justify-end">
                       <div className="flex gap-2">
