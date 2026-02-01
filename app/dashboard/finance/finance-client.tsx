@@ -10,6 +10,7 @@ import { FinanceExpenseClient } from './finance-expense-client'
 import { FinanceSuppliersClient } from './finance-suppliers-client'
 import { FinanceReferralInvoicesClient } from './finance-referral-invoices-client'
 import { FinanceWeeklyRecapClient } from './finance-weekly-recap-client'
+import { FinancePayrollClient } from './finance-payroll-client'
 
 function FinanceExpensePlaceholder() {
   return (
@@ -142,7 +143,7 @@ export function FinanceClient({
     return r === 'owner' || r === 'admin_finance'
   }, [role])
 
-  const [tab, setTab] = useState<'reimburse' | 'referral' | 'invoice' | 'expense' | 'supplier' | 'income' | 'reports'>(() => {
+  const [tab, setTab] = useState<'reimburse' | 'referral' | 'invoice' | 'payroll' | 'expense' | 'supplier' | 'income' | 'reports'>(() => {
     if (canSeeInvoices) return 'invoice'
     if (canSeeReferralInvoices) return 'referral'
     if (canSeeReimburse) return 'reimburse'
@@ -155,6 +156,7 @@ export function FinanceClient({
         {canSeeReimburse && <TabsTrigger value="reimburse">Reimburse</TabsTrigger>}
         {canSeeReferralInvoices && <TabsTrigger value="referral">Tagihan Referral</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="invoice">Invoice</TabsTrigger>}
+        {canSeeInvoices && <TabsTrigger value="payroll">Payroll</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="expense">Expense</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="supplier">Supplier</TabsTrigger>}
         {canSeeInvoices && <TabsTrigger value="income">Income</TabsTrigger>}
@@ -176,6 +178,12 @@ export function FinanceClient({
       {canSeeInvoices && (
         <TabsContent value="invoice" className="mt-4">
           <FinanceInvoiceClient tenantId={tenantId} />
+        </TabsContent>
+      )}
+
+      {canSeeInvoices && (
+        <TabsContent value="payroll" className="mt-4">
+          <FinancePayrollClient />
         </TabsContent>
       )}
 
