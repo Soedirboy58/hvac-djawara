@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table'
 import { RefreshCw, FilePlus2 } from 'lucide-react'
 import { InvoiceFromOrderDialog } from './invoice-from-order-dialog'
+import { formatCurrency } from '@/lib/utils/formatters'
 
 type InvoiceRow = {
   id: string
