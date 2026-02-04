@@ -99,10 +99,12 @@ export default function OrdersPage() {
 
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
+  const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [orderMonthFilter, setOrderMonthFilter] = useState('all')
   const [rangeStart, setRangeStart] = useState<string>(initialMonthRange.start)
   const [rangeEnd, setRangeEnd] = useState<string>(initialMonthRange.end)
 
@@ -119,7 +121,15 @@ export default function OrdersPage() {
   useEffect(() => {
     setSelectedOrders(new Set())
     setCurrentPage(1)
-  }, [statusFilter, searchQuery, needsQuoteOnly])
+  }, [statusFilter, searchQuery, needsQuoteOnly, orderMonthFilter])
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchQuery(searchInput.trim())
+    }, 350)
+
+    return () => clearTimeout(handle)
+  }, [searchInput])
 
   // Fetch latest technical work logs per order to determine "need quotation" queue
   useEffect(() => {
@@ -279,11 +289,45 @@ export default function OrdersPage() {
   }, [orders, rangeStart, rangeEnd, initialMonthRange.end, initialMonthRange.start])
 
   // Pagination
+  const orderMonthOptions = useMemo(() => {
+    if (!orders) return []
+    const keys = new Set<string>()
+    for (const order of orders) {
+      if (!order.created_at) continue
+      const date = new Date(order.created_at)
+      if (Number.isNaN(date.getTime())) continue
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      keys.add(key)
+    }
+    return Array.from(keys).sort((a, b) => (a > b ? -1 : 1))
+  }, [orders])
+
+  const formatMonthLabel = (value: string) => {
+    if (!value) return 'Semua Bulan'
+    const [year, month] = value.split('-')
+    const monthIdx = Number(month) - 1
+    if (!Number.isFinite(monthIdx) || monthIdx < 0) return value
+    const date = new Date(Number(year), monthIdx, 1)
+    return date.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+  }
+
   const filteredOrders = useMemo(() => {
     if (!orders) return []
-    if (!needsQuoteOnly) return orders
-    return orders.filter((o) => quoteNeededOrderIds.has(o.id))
-  }, [orders, needsQuoteOnly, quoteNeededOrderIds])
+    let result = orders
+
+    if (orderMonthFilter !== 'all') {
+      result = result.filter((o) => {
+        if (!o.created_at) return false
+        const date = new Date(o.created_at)
+        if (Number.isNaN(date.getTime())) return false
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        return key === orderMonthFilter
+      })
+    }
+
+    if (!needsQuoteOnly) return result
+    return result.filter((o) => quoteNeededOrderIds.has(o.id))
+  }, [orders, needsQuoteOnly, quoteNeededOrderIds, orderMonthFilter])
 
   const paginatedOrders = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize
@@ -585,8 +629,8 @@ export default function OrdersPage() {
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by order number, client, or description..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-10"
                 />
               </div>
@@ -605,6 +649,20 @@ export default function OrdersPage() {
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={orderMonthFilter} onValueChange={setOrderMonthFilter}>
+              <SelectTrigger className="w-full md:w-[200px]">
+                <SelectValue placeholder="Semua Bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Bulan</SelectItem>
+                {orderMonthOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {formatMonthLabel(opt)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
