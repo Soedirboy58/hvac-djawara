@@ -92,6 +92,7 @@ type WaitingListItem = {
     pic_name: string | null
     assistant_names: string[]
   }
+  maskClient: boolean
 }
 
 type TechnicianCalendarEvent = {
@@ -103,6 +104,7 @@ type TechnicianCalendarEvent = {
   resource: {
     orderId: string
     status: string
+    isAssigned: boolean
   }
 }
 
@@ -316,7 +318,6 @@ export default function TechnicianDashboard() {
       let formattedOrders: WorkOrder[] = [];
       if (!assignmentsData || assignmentsData.length === 0) {
         setWorkOrders([]);
-        setCalendarEvents([]);
       } else {
         // Fetch service orders separately (include all orders)
         const orderIds = assignmentsData.map((a) => a.service_order_id);
@@ -349,62 +350,105 @@ export default function TechnicianDashboard() {
 
         setWorkOrders(formattedOrders);
 
-        // Build calendar events (assigned-to-self only)
-        const calendar: TechnicianCalendarEvent[] = (formattedOrders || [])
+      }
+
+      // Build calendar events for all technicians (mask client data for non-assigned tech)
+      if (techData.tenant_id) {
+        const { data: scheduledOrders, error: scheduledOrdersError } = await supabase
+          .from('service_orders')
+          .select('id, order_number, service_title, scheduled_date, scheduled_time, status, estimated_duration, estimated_end_date, estimated_end_time')
+          .eq('tenant_id', techData.tenant_id)
+          .not('scheduled_date', 'is', null)
+          .in('status', ['scheduled', 'in_progress', 'completed'])
+
+        if (scheduledOrdersError) {
+          console.warn('Error fetching scheduled orders:', scheduledOrdersError)
+        }
+
+        const scheduleRows = (scheduledOrders || []) as any[]
+        const scheduleIds = scheduleRows.map((o) => o.id)
+        const assignmentsByOrder = new Map<string, Set<string>>()
+
+        if (scheduleIds.length > 0) {
+          const { data: assignedRows, error: assignedRowsError } = await supabase
+            .from('work_order_assignments')
+            .select('service_order_id, technician_id')
+            .in('service_order_id', scheduleIds)
+
+          if (assignedRowsError) {
+            console.warn('Error fetching schedule assignments:', assignedRowsError)
+          }
+
+          ;(assignedRows || []).forEach((row: any) => {
+            const orderId = String(row.service_order_id || '')
+            const techId = String(row.technician_id || '')
+            if (!orderId || !techId) return
+            const set = assignmentsByOrder.get(orderId) || new Set<string>()
+            set.add(techId)
+            assignmentsByOrder.set(orderId, set)
+          })
+        }
+
+        const calendar: TechnicianCalendarEvent[] = scheduleRows
           .filter((o) => !!o.scheduled_date)
           .map((order) => {
-            const startDateTime = new Date(`${order.scheduled_date}T00:00:00`);
+            const startDateTime = new Date(`${order.scheduled_date}T00:00:00`)
             if (order.scheduled_time) {
-              const [hours, minutes] = order.scheduled_time.split(':');
-              startDateTime.setHours(parseInt(hours), parseInt(minutes));
+              const [hours, minutes] = order.scheduled_time.split(':')
+              startDateTime.setHours(parseInt(hours), parseInt(minutes))
             } else {
-              startDateTime.setHours(9, 0, 0, 0);
+              startDateTime.setHours(9, 0, 0, 0)
             }
 
-            let endDateTime: Date;
-            let allDay = false;
+            let endDateTime: Date
+            let allDay = false
 
             if (order.estimated_end_date) {
-              const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`);
+              const endInclusive = new Date(`${order.estimated_end_date}T00:00:00`)
               if (order.estimated_end_time) {
-                const [endHours, endMinutes] = order.estimated_end_time.split(':');
-                endInclusive.setHours(parseInt(endHours), parseInt(endMinutes));
+                const [endHours, endMinutes] = order.estimated_end_time.split(':')
+                endInclusive.setHours(parseInt(endHours), parseInt(endMinutes))
               } else {
-                endInclusive.setHours(23, 59, 0, 0);
+                endInclusive.setHours(23, 59, 0, 0)
               }
 
-              const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`;
-              const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`;
+              const startYMD = `${startDateTime.getFullYear()}-${startDateTime.getMonth()}-${startDateTime.getDate()}`
+              const endYMD = `${endInclusive.getFullYear()}-${endInclusive.getMonth()}-${endInclusive.getDate()}`
 
               if (startYMD !== endYMD) {
-                allDay = true;
-                const endExclusive = new Date(endInclusive);
-                endExclusive.setHours(0, 0, 0, 0);
-                endExclusive.setDate(endExclusive.getDate() + 1);
-                endDateTime = endExclusive;
-                startDateTime.setHours(0, 0, 0, 0);
+                allDay = true
+                const endExclusive = new Date(endInclusive)
+                endExclusive.setHours(0, 0, 0, 0)
+                endExclusive.setDate(endExclusive.getDate() + 1)
+                endDateTime = endExclusive
+                startDateTime.setHours(0, 0, 0, 0)
               } else {
-                endDateTime = endInclusive;
+                endDateTime = endInclusive
               }
             } else {
-              endDateTime = new Date(startDateTime);
-              const duration = order.estimated_duration || 120;
-              endDateTime.setMinutes(endDateTime.getMinutes() + duration);
+              endDateTime = new Date(startDateTime)
+              const duration = order.estimated_duration || 120
+              endDateTime.setMinutes(endDateTime.getMinutes() + duration)
             }
+
+            const assignedSet = assignmentsByOrder.get(order.id) || new Set<string>()
+            const isAssigned = assignedSet.has(techData.id)
 
             return {
               id: order.id,
-              title: `${order.order_number} - ${order.service_title}`,
+              title: isAssigned ? `${order.order_number} - ${order.service_title}` : 'Terjadwal (order lain)',
               start: startDateTime,
               end: endDateTime,
               allDay,
               resource: {
                 orderId: order.id,
                 status: order.status,
+                isAssigned,
               },
-            };
-          });
-        setCalendarEvents(calendar);
+            }
+          })
+
+        setCalendarEvents(calendar)
       }
 
       // Fetch shared waiting list: orders still in admin pipeline (listing/pending) and not yet assigned.
@@ -529,6 +573,7 @@ export default function TechnicianDashboard() {
                   assistant_names: (exec?.assistants || []).filter(Boolean),
                 }
               : null,
+            maskClient: true,
           }
         })
 
@@ -910,8 +955,8 @@ export default function TechnicianDashboard() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Jadwal tugas yang ditugaskan ke Anda</p>
-                  <Badge className="bg-blue-500">Assigned</Badge>
+                  <p className="text-sm text-muted-foreground">Semua jadwal teknisi (pelanggan disembunyikan jika bukan tugas Anda)</p>
+                  <Badge className="bg-blue-500">Shared</Badge>
                 </div>
                 <div className="rounded-lg border bg-white p-2 tech-calendar">
                   <div className="h-[420px] sm:h-[520px]">
@@ -929,7 +974,12 @@ export default function TechnicianDashboard() {
                       eventPropGetter={(e: any) => calendarEventStyleGetter(e as TechnicianCalendarEvent)}
                       onSelectEvent={(e: any) => {
                         if (isHelper) return
-                        const orderId = (e as any)?.resource?.orderId
+                        const resource = (e as any)?.resource
+                        if (!resource?.isAssigned) {
+                          toast.message('Detail pelanggan disembunyikan untuk order yang bukan tugas Anda')
+                          return
+                        }
+                        const orderId = resource?.orderId
                         if (orderId) router.push(`/technician/orders/${orderId}`)
                       }}
                     />
@@ -978,13 +1028,14 @@ export default function TechnicianDashboard() {
                       const o = item.order
                       const last = item.lastService
                       const assistants = last?.assistant_names?.length ? last.assistant_names.join(', ') : '-'
+                      const masked = item.maskClient
 
                       return (
                         <div key={o.id} className="rounded-lg border bg-white p-4 space-y-2">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-medium truncate">
-                                {o.client?.name || 'Pelanggan'}{' '}
+                                {masked ? 'Pelanggan (disembunyikan)' : (o.client?.name || 'Pelanggan')}{' '}
                                 <span className="text-muted-foreground">({o.order_number})</span>
                               </p>
                               <p className="text-sm text-muted-foreground truncate">{o.service_title}</p>
@@ -998,7 +1049,7 @@ export default function TechnicianDashboard() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                             <div className="flex items-center gap-2 min-w-0">
                               <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <span className="truncate">{o.location_address || '-'}</span>
+                              <span className="truncate">{masked ? 'Lokasi disembunyikan' : (o.location_address || '-')}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4 text-muted-foreground" />
@@ -1010,7 +1061,7 @@ export default function TechnicianDashboard() {
 
                           <div className="text-xs text-muted-foreground space-y-1">
                             <p>
-                              Kontak: {o.client?.phone || '-'}
+                              Kontak: {masked ? '-' : (o.client?.phone || '-')}
                             </p>
                             <p>
                               Riwayat service terakhir:{' '}
