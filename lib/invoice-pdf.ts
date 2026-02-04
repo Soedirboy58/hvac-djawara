@@ -150,16 +150,18 @@ type LoadedImage = {
   dataUrl: string
   width: number
   height: number
+  format: 'JPEG' | 'PNG'
 }
 
 // Helper to load + compress remote images as base64 (for jsPDF addImage)
 function loadImage(
   url: string,
-  opts?: { maxWidth?: number; maxHeight?: number; quality?: number }
+  opts?: { maxWidth?: number; maxHeight?: number; quality?: number; preferPng?: boolean }
 ): Promise<LoadedImage> {
   const maxWidth = Math.max(80, Number(opts?.maxWidth || 800))
   const maxHeight = Math.max(80, Number(opts?.maxHeight || 800))
   const quality = Math.min(0.9, Math.max(0.4, Number(opts?.quality || 0.7)))
+  const preferPng = Boolean(opts?.preferPng)
 
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -175,10 +177,21 @@ function loadImage(
       const ctx = canvas.getContext('2d')
       if (!ctx) return reject(new Error('Failed to get canvas context'))
       ctx.drawImage(img, 0, 0, targetW, targetH)
+      if (preferPng) {
+        resolve({
+          dataUrl: canvas.toDataURL('image/png'),
+          width: targetW,
+          height: targetH,
+          format: 'PNG',
+        })
+        return
+      }
+
       resolve({
         dataUrl: canvas.toDataURL('image/jpeg', quality),
         width: targetW,
         height: targetH,
+        format: 'JPEG',
       })
     }
     img.onerror = reject
@@ -189,15 +202,16 @@ function loadImage(
 async function resolveImageDataUrl(urlOrDataUrl?: string): Promise<LoadedImage | null> {
   const v = String(urlOrDataUrl || '').trim()
   if (!v) return null
+  const isPng = v.startsWith('data:image/png') || v.toLowerCase().includes('.png')
   if (v.startsWith('data:image/')) {
     try {
-      return await loadImage(v)
+      return await loadImage(v, { preferPng: isPng })
     } catch {
       return null
     }
   }
   try {
-    return await loadImage(v)
+    return await loadImage(v, { preferPng: isPng })
   } catch (e) {
     console.warn('Failed to load image for PDF:', e)
     return null
@@ -214,7 +228,7 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
     const h = Math.max(1, img.height * ratio)
     const dx = x + (maxW - w) / 2
     const dy = y + (maxH - h) / 2
-    doc.addImage(img.dataUrl, 'JPEG', dx, dy, w, h)
+    doc.addImage(img.dataUrl, img.format, dx, dy, w, h)
   }
 
   const left = 14
