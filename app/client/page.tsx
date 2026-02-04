@@ -144,7 +144,7 @@ export default function ClientDashboardPage() {
       setStats({
         total_properties: propertiesCount || 0,
         total_units: unitsCount || 0,
-        total_orders: ordersCount || 0,
+        total_orders: (ordersCount || 0) + (schedulesCount || 0),
         completed_orders: completedCount || 0,
         active_schedules: schedulesCount || 0
       })
@@ -331,7 +331,7 @@ export default function ClientDashboardPage() {
                 <p className="text-sm text-gray-600">Service Orders</p>
                 <p className="text-3xl font-bold mt-1">{stats.total_orders}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {stats.completed_orders} completed
+                  {stats.completed_orders} completed • termasuk jadwal aktif
                 </p>
               </div>
               <TrendingUp className="w-10 h-10 text-purple-600" />
