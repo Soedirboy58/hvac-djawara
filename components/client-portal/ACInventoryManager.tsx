@@ -272,7 +272,9 @@ export function ACInventoryManager({ clientId }: ACInventoryManagerProps) {
       fetchData()
     } catch (err) {
       console.error('Error deleting AC unit:', err)
-      setError('Failed to delete AC unit')
+      const message = err instanceof Error ? err.message : 'Failed to delete AC unit'
+      setError(message)
+      toast.error('Failed to delete AC unit', { description: message })
     }
   }
 
