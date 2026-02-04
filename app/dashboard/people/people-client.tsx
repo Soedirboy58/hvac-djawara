@@ -56,6 +56,7 @@ import {
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils/formatters'
+import { InvoiceFromOrderDialog } from '@/app/dashboard/finance/invoice-from-order-dialog'
 import Image from 'next/image'
 import Cropper from 'react-easy-crop'
 
@@ -194,6 +195,9 @@ export function PeopleManagementClient({
   const [salesSelectedIds, setSalesSelectedIds] = useState<Set<string>>(new Set())
   const [salesLoading, setSalesLoading] = useState(false)
   const [salesError, setSalesError] = useState<string | null>(null)
+  const [salesInvoiceOpen, setSalesInvoiceOpen] = useState(false)
+  const [salesInvoiceOrderId, setSalesInvoiceOrderId] = useState<string | null>(null)
+  const [salesInvoiceAction, setSalesInvoiceAction] = useState<'preview' | 'send' | null>(null)
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
@@ -483,6 +487,12 @@ export function PeopleManagementClient({
     } finally {
       setSalesLoading(false)
     }
+  }
+
+  const openSalesInvoiceDialog = (orderId: string, action: 'preview' | 'send' | null = null) => {
+    setSalesInvoiceOrderId(orderId)
+    setSalesInvoiceAction(action)
+    setSalesInvoiceOpen(true)
   }
 
   const fetchTechnicianRoster = async () => {
@@ -1339,18 +1349,19 @@ export function PeopleManagementClient({
                     <TableHead>Invoice</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Rincian Biaya</TableHead>
+                    <TableHead>Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {salesLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-sm text-gray-500 py-8 text-center">
+                      <TableCell colSpan={8} className="text-sm text-gray-500 py-8 text-center">
                         Loading...
                       </TableCell>
                     </TableRow>
                   ) : salesRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-sm text-gray-500 py-8 text-center">
+                      <TableCell colSpan={8} className="text-sm text-gray-500 py-8 text-center">
                         Belum ada pekerjaan dari sales partner.
                       </TableCell>
                     </TableRow>
@@ -1416,12 +1427,38 @@ export function PeopleManagementClient({
                             <span className="text-xs text-muted-foreground">Rincian belum tersedia.</span>
                           )}
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openSalesInvoiceDialog(row.order_id)}
+                          >
+                            {row.invoice_id ? 'Lihat / Update' : 'Input Rincian'}
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
             </div>
+
+            {salesInvoiceOrderId ? (
+              <InvoiceFromOrderDialog
+                tenantId={tenantId}
+                orderId={salesInvoiceOrderId}
+                open={salesInvoiceOpen}
+                onOpenChange={(open) => {
+                  setSalesInvoiceOpen(open)
+                  if (!open) {
+                    setSalesInvoiceOrderId(null)
+                    setSalesInvoiceAction(null)
+                  }
+                }}
+                onDone={() => fetchSalesPartnerPerformance()}
+                initialAction={salesInvoiceAction || null}
+              />
+            ) : null}
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm">
