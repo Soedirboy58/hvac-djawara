@@ -116,6 +116,9 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
   const [paidCount, setPaidCount] = useState<number | null>(null)
   const [pendingSentCount, setPendingSentCount] = useState<number | null>(null)
   const [sentTotalCount, setSentTotalCount] = useState<number | null>(null)
+  const [paidAmount, setPaidAmount] = useState<number | null>(null)
+  const [unpaidAmount, setUnpaidAmount] = useState<number | null>(null)
+  const [totalInvoicedAmount, setTotalInvoicedAmount] = useState<number | null>(null)
 
   const [recentInvoices, setRecentInvoices] = useState<InvoiceRow[]>([])
   const [invoicePage, setInvoicePage] = useState(1)
@@ -272,14 +275,42 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
 
       if (pending.error) throw pending.error
 
+      const totalsRes = await supabase
+        .from('invoices')
+        .select('amount_total, status')
+        .eq('tenant_id', tenantId)
+        .neq('status', 'cancelled')
+
+      if (totalsRes.error) throw totalsRes.error
+
+      const totalsRows = (totalsRes.data || []) as { amount_total: number | null; status: string | null }[]
+      let totalSum = 0
+      let paidSum = 0
+      let unpaidSum = 0
+      for (const row of totalsRows) {
+        const amt = Number(row.amount_total || 0)
+        totalSum += amt
+        if (row.status === 'paid') {
+          paidSum += amt
+        } else if (['sent', 'unpaid', 'draft'].includes(String(row.status || '').toLowerCase())) {
+          unpaidSum += amt
+        }
+      }
+
       setPaidCount(paid.count ?? 0)
       setPendingSentCount(pending.count ?? 0)
       setSentTotalCount((paid.count ?? 0) + (pending.count ?? 0))
+      setPaidAmount(paidSum)
+      setUnpaidAmount(unpaidSum)
+      setTotalInvoicedAmount(totalSum)
     } catch (e: any) {
       console.warn('fetchKpis error:', e)
       setPaidCount(null)
       setPendingSentCount(null)
       setSentTotalCount(null)
+      setPaidAmount(null)
+      setUnpaidAmount(null)
+      setTotalInvoicedAmount(null)
     }
   }
 
@@ -949,7 +980,7 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
       </Dialog>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Invoice Dibayar</CardTitle>
@@ -983,6 +1014,30 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
                 : `${Math.round((paidCount / sentTotalCount) * 100)}%`}
             </div>
             <p className="text-sm text-muted-foreground mt-1">Paid / (Sent+Paid)</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Nilai Invoice Belum Bayar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">
+              {unpaidAmount === null ? '—' : formatCurrency(unpaidAmount)}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">Draft / Sent / Unpaid</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Nilai Invoice Dibayar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">
+              {paidAmount === null ? '—' : formatCurrency(paidAmount)}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">Status: paid</p>
           </CardContent>
         </Card>
       </div>
@@ -1148,6 +1203,17 @@ export function FinanceInvoiceClient({ tenantId }: { tenantId: string }) {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="text-sm text-muted-foreground">
+              Akumulasi nilai invoice:{' '}
+              <span className="font-semibold text-foreground">
+                {totalInvoicedAmount === null ? '—' : formatCurrency(totalInvoicedAmount)}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Tidak termasuk invoice berstatus cancelled.
+            </div>
+          </div>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-muted-foreground">
               Halaman {invoicePage} • Terpilih: {invoiceSelectedIds.size}
