@@ -22,7 +22,6 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  ArrowRight,
   Crown,
   Building,
   Wrench,
@@ -101,6 +100,27 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
     .eq('client_id', clientData.id)
     .order('created_at', { ascending: false })
     .limit(5)
+
+  const formatTime = (time?: string | null) => {
+    if (!time) return null
+    const parts = String(time).split(':')
+    if (parts.length < 2) return time
+    return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}`
+  }
+
+  const formatScheduleDateTime = (order: any) => {
+    if (order?.completed_date) {
+      return new Date(order.completed_date).toLocaleDateString('id-ID')
+    }
+    if (!order?.scheduled_date) return 'Not scheduled'
+
+    const dateLabel = new Date(order.scheduled_date).toLocaleDateString('id-ID')
+    const start = formatTime(order?.scheduled_time)
+    const end = formatTime(order?.estimated_end_time)
+    if (start && end) return `${dateLabel} ${start} - ${end}`
+    if (start) return `${dateLabel} ${start}`
+    return dateLabel
+  }
 
   // Get upcoming maintenance schedules
   const { data: upcomingMaintenance } = await supabase
@@ -368,11 +388,7 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-1 text-sm text-gray-600">
                             <Calendar className="w-4 h-4" />
-                            {order.completed_date 
-                              ? new Date(order.completed_date).toLocaleDateString('id-ID')
-                              : order.scheduled_date
-                              ? new Date(order.scheduled_date).toLocaleDateString('id-ID')
-                              : 'Not scheduled'}
+                            {formatScheduleDateTime(order)}
                           </div>
                           {order.status === 'completed' && (
                             <DownloadPDFButton
@@ -442,12 +458,9 @@ export default async function PublicClientPage({ params }: PublicClientPageProps
                     </div>
                   </div>
 
-                  <Link href={`/client/register?token=${params.token}`}>
-                    <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
-                      Activate Premium
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
+                  <Button className="w-full" disabled>
+                    Soon
+                  </Button>
                   
                   <p className="text-xs text-center text-gray-500 mt-3">
                     Already have account?{' '}

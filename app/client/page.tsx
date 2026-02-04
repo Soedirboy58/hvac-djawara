@@ -39,6 +39,8 @@ interface ServiceOrder {
   service_title: string
   status: string
   scheduled_date: string
+  scheduled_time?: string | null
+  estimated_end_time?: string | null
   completed_date: string
   property_name: string
 }
@@ -200,6 +202,8 @@ export default function ClientDashboardPage() {
           service_title,
           status,
           scheduled_date,
+          scheduled_time,
+          estimated_end_time,
           completed_date,
           property:client_properties(property_name)
         `)
@@ -228,6 +232,27 @@ export default function ClientDashboardPage() {
     return <Badge className={styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-700'}>
       {status}
     </Badge>
+  }
+
+  const formatTime = (time?: string | null) => {
+    if (!time) return null
+    const parts = String(time).split(':')
+    if (parts.length < 2) return time
+    return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}`
+  }
+
+  const formatScheduleDateTime = (order: ServiceOrder) => {
+    if (order.completed_date) {
+      return new Date(order.completed_date).toLocaleDateString('id-ID')
+    }
+    if (!order.scheduled_date) return 'Not scheduled'
+
+    const dateLabel = new Date(order.scheduled_date).toLocaleDateString('id-ID')
+    const start = formatTime(order.scheduled_time)
+    const end = formatTime(order.estimated_end_time)
+    if (start && end) return `${dateLabel} ${start} - ${end}`
+    if (start) return `${dateLabel} ${start}`
+    return dateLabel
   }
 
   const getUrgencyColor = (daysUntil: number) => {
@@ -432,10 +457,7 @@ export default function ClientDashboardPage() {
                     
                     <div className="text-right text-sm">
                       <p className="text-gray-500">
-                        {order.completed_date 
-                          ? new Date(order.completed_date).toLocaleDateString('id-ID')
-                          : new Date(order.scheduled_date).toLocaleDateString('id-ID')
-                        }
+                        {formatScheduleDateTime(order)}
                       </p>
                       {order.status === 'completed' && (
                         <CheckCircle className="w-4 h-4 text-green-600 ml-auto mt-1" />
