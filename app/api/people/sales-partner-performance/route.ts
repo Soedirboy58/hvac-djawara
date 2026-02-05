@@ -182,12 +182,12 @@ export async function GET(request: Request) {
 
     const { data: ordersRaw, error: ordersError, count } = await ctx.admin
       .from("service_orders")
-      .select("id, order_number, service_title, completed_at, updated_at, scheduled_date, client_id", { count: "exact" })
+      .select("id, order_number, service_title, completed_at, scheduled_date, client_id", { count: "exact" })
       .eq("tenant_id", ctx.tenantId)
       .in("client_id", clientIds)
       .eq("status", "completed")
       .order("completed_at", { ascending: false })
-      .order("updated_at", { ascending: false })
+      .order("scheduled_date", { ascending: false })
       .range(from, to);
 
     if (ordersError) {
@@ -261,7 +261,7 @@ export async function GET(request: Request) {
         order_id: order.id,
         order_number: order.order_number || null,
         service_title: order.service_title || null,
-        completed_at: order.completed_at || order.updated_at || order.scheduled_date || null,
+        completed_at: order.completed_at || order.scheduled_date || null,
         client_name: client?.name || null,
         sales_partner_id: partnerId,
         sales_partner_name: partnerId ? partnerById.get(partnerId) || null : null,
