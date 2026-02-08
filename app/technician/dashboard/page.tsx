@@ -126,6 +126,7 @@ export default function TechnicianDashboard() {
   const [unassignedRecurring, setUnassignedRecurring] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isHelper, setIsHelper] = useState(false);
+  const [displayRole, setDisplayRole] = useState<string | null>(null);
   const [waitingListPage, setWaitingListPage] = useState(0);
   const [recurringPage, setRecurringPage] = useState(0);
   const [completedSearch, setCompletedSearch] = useState("");
@@ -167,6 +168,17 @@ export default function TechnicianDashboard() {
     const d = new Date(str);
     if (Number.isNaN(d.getTime())) return "";
     return d.toISOString().slice(0, 10);
+  };
+
+  const formatRoleLabel = (value?: string | null) => {
+    const role = String(value || '').toLowerCase();
+    if (!role) return '-';
+    if (role === 'magang' || role === 'trainee') return 'Magang';
+    if (role === 'helper') return 'Helper';
+    if (role === 'technician' || role === 'teknisi') return 'Technician';
+    if (role === 'tech_head') return 'Tech Head';
+    if (role === 'supervisor') return 'Supervisor';
+    return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   const completedQuery = completedSearch.trim().toLowerCase();
@@ -282,6 +294,7 @@ export default function TechnicianDashboard() {
 
         const role = (roleData as any)?.role as string | undefined;
         setIsHelper((role || '').toLowerCase() === 'helper' || (role || '').toLowerCase() === 'magang');
+        setDisplayRole(role || null);
       }
 
       // Fetch reimburse status summary (use internal API to avoid direct Supabase REST calls)
@@ -873,7 +886,7 @@ export default function TechnicianDashboard() {
 
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Role</p>
-                      <p className="font-medium">{technician.role}</p>
+                      <p className="font-medium">{formatRoleLabel(displayRole || technician.role)}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Status Akun</p>
