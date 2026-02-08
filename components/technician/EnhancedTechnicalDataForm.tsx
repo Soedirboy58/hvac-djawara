@@ -1731,11 +1731,11 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           <CardContent className="space-y-4">
             {acUnits.length === 0 ? (
               <div className="text-sm text-muted-foreground">
-                Pilih unit AC terlebih dahulu (maksimal 6 unit), lalu isi pengukuran per unit.
+                Pilih unit AC terlebih dahulu, lalu isi pengukuran per unit.
               </div>
             ) : (
               <div className="space-y-3">
-                {acUnits.slice(0, 6).map((unit, idx) => (
+                {acUnits.map((unit, idx) => (
                   <div key={unit.id} className="border rounded-lg p-3 bg-white">
                     <div className="text-sm font-medium text-gray-800 mb-2">
                       Unit {idx + 1}: {unit.nama_ruang || '-'}
@@ -1909,7 +1909,7 @@ export default function EnhancedTechnicalDataForm({ orderId, technicianId, onSuc
           {acUnits.length > 0 ? (
             <div className="space-y-3">
               <div className="text-sm font-medium">Hasil per Unit & Rekomendasi Penawaran</div>
-              {acUnits.slice(0, 6).map((unit, idx) => (
+              {acUnits.map((unit, idx) => (
                 <div key={unit.id} className="border rounded-lg p-3 bg-white space-y-3">
                   <div className="text-sm font-medium text-gray-800">
                     Unit {idx + 1}: {unit.nama_ruang || '-'}
