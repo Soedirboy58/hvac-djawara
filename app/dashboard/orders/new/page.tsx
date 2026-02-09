@@ -175,6 +175,28 @@ export default function NewOrderPage() {
   const searchClients = async (term: string) => {
     if (!tenantId) return
     const supabase = createClient()
+
+    const pickViewerRole = (roles: Array<{ role: string }> | null | undefined) => {
+      const priority = [
+        'owner',
+        'admin_finance',
+        'admin_logistic',
+        'tech_head',
+        'supervisor',
+        'team_lead',
+        'technician',
+        'helper',
+        'magang',
+        'sales_partner',
+        'marketing',
+        'business_dev',
+      ]
+      const values = (roles || []).map((r) => String(r.role || '').toLowerCase()).filter(Boolean)
+      for (const p of priority) {
+        if (values.includes(p)) return p
+      }
+      return values[0] || null
+    }
     setClientSearchLoading(true)
     try {
       let q = supabase
@@ -255,19 +277,18 @@ export default function NewOrderPage() {
 
       setTenantId(profile.active_tenant_id)
 
-      const { data: roleRow, error: roleError } = await supabase
+      const { data: roleRows, error: roleError } = await supabase
         .from('user_tenant_roles')
         .select('role')
         .eq('user_id', user.id)
         .eq('tenant_id', profile.active_tenant_id)
         .eq('is_active', true)
-        .maybeSingle()
 
       if (roleError) {
         console.error('Role error:', roleError)
       }
 
-      const role = (roleRow as any)?.role ?? null
+      const role = pickViewerRole((roleRows as any[]) || [])
       setViewerRole(role)
 
       // Detect whether unit fields exist on service_orders (avoid breaking if DB migration not applied)
