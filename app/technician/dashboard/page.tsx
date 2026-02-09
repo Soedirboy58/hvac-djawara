@@ -968,7 +968,7 @@ export default function TechnicianDashboard() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">Semua jadwal teknisi (pelanggan disembunyikan jika bukan tugas Anda)</p>
+                  <p className="text-sm text-muted-foreground">Semua jadwal teknisi</p>
                   <Badge className="bg-blue-500">Shared</Badge>
                 </div>
                 <div className="rounded-lg border bg-white p-2 tech-calendar">
@@ -989,7 +989,7 @@ export default function TechnicianDashboard() {
                         if (isHelper) return
                         const resource = (e as any)?.resource
                         if (!resource?.isAssigned) {
-                          toast.message('Detail pelanggan disembunyikan untuk order yang bukan tugas Anda')
+                          return
                           return
                         }
                         const orderId = resource?.orderId
@@ -1048,7 +1048,7 @@ export default function TechnicianDashboard() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-medium truncate">
-                                {masked ? 'Pelanggan (disembunyikan)' : (o.client?.name || 'Pelanggan')}{' '}
+                                {masked ? 'Pelanggan' : (o.client?.name || 'Pelanggan')}{' '}
                                 <span className="text-muted-foreground">({o.order_number})</span>
                               </p>
                               <p className="text-sm text-muted-foreground truncate">{o.service_title}</p>
@@ -1062,7 +1062,7 @@ export default function TechnicianDashboard() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                             <div className="flex items-center gap-2 min-w-0">
                               <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <span className="truncate">{masked ? 'Lokasi disembunyikan' : (o.location_address || '-')}</span>
+                              <span className="truncate">{masked ? '-' : (o.location_address || '-')}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4 text-muted-foreground" />
