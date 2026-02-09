@@ -86,6 +86,28 @@ export default function NewOrderPage() {
   const [selectedTechnicianIds, setSelectedTechnicianIds] = useState<string[]>([])
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([])
 
+  const pickViewerRole = (roles: Array<{ role: string }> | null | undefined) => {
+    const priority = [
+      'owner',
+      'admin_finance',
+      'admin_logistic',
+      'tech_head',
+      'supervisor',
+      'team_lead',
+      'technician',
+      'helper',
+      'magang',
+      'sales_partner',
+      'marketing',
+      'business_dev',
+    ]
+    const values = (roles || []).map((r) => String(r.role || '').toLowerCase()).filter(Boolean)
+    for (const p of priority) {
+      if (values.includes(p)) return p
+    }
+    return values[0] || null
+  }
+
   const [clientSearch, setClientSearch] = useState('')
   const [clientSearchLoading, setClientSearchLoading] = useState(false)
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
@@ -175,28 +197,6 @@ export default function NewOrderPage() {
   const searchClients = async (term: string) => {
     if (!tenantId) return
     const supabase = createClient()
-
-    const pickViewerRole = (roles: Array<{ role: string }> | null | undefined) => {
-      const priority = [
-        'owner',
-        'admin_finance',
-        'admin_logistic',
-        'tech_head',
-        'supervisor',
-        'team_lead',
-        'technician',
-        'helper',
-        'magang',
-        'sales_partner',
-        'marketing',
-        'business_dev',
-      ]
-      const values = (roles || []).map((r) => String(r.role || '').toLowerCase()).filter(Boolean)
-      for (const p of priority) {
-        if (values.includes(p)) return p
-      }
-      return values[0] || null
-    }
     setClientSearchLoading(true)
     try {
       let q = supabase
