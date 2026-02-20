@@ -64,7 +64,10 @@ export function Sidebar({ role }: SidebarProps) {
 
       <nav className="flex-1 px-4 space-y-1">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          const isDashboard = item.href === '/dashboard'
+          const isActive = isDashboard
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + '/')
           
           return (
             <Link
