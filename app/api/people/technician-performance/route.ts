@@ -4,6 +4,8 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 
 type Body = {
   tenantId: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
 };
 
 type TechnicianRow = {
@@ -25,11 +27,24 @@ type TechnicianRow = {
 type ServiceOrderRow = {
   id: string;
   assigned_to: string | null;
+  completed_at?: string | null;
+  unit_category?: string | null;
+  unit_count?: number | null;
 };
 
 function safeNumber(value: any) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDateOnly(value?: string | null) {
+  if (!value) return null;
+  const v = String(value).trim();
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
 }
 
 export async function POST(request: Request) {
@@ -97,6 +112,15 @@ export async function POST(request: Request) {
 
     const techRows = (technicians || []) as TechnicianRow[];
 
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const defaultSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const defaultSinceDate = defaultSince.toISOString().slice(0, 10);
+
+    const fromDate = normalizeDateOnly(body?.dateFrom) || defaultSinceDate;
+    const toDate = normalizeDateOnly(body?.dateTo) || todayISO;
+    const rangeStart = `${fromDate}T00:00:00`;
+    const rangeEnd = `${toDate}T23:59:59.999`;
+
     // --- A) New technician system (technicians.id based) ---
 
     // NOTE: In production data, `work_order_assignments.status` is not always updated to "completed"
@@ -108,7 +132,9 @@ export async function POST(request: Request) {
         "technician_id, service_order_id, status, role_in_order, service_orders!inner(tenant_id, status)"
       )
       .eq("service_orders.tenant_id", tenantId)
-      .eq("service_orders.status", "completed");
+      .eq("service_orders.status", "completed")
+      .gte("service_orders.completed_at", rangeStart)
+      .lte("service_orders.completed_at", rangeEnd);
 
     const assignments = (assignmentsData || []) as Array<{
       technician_id: string;
@@ -137,11 +163,35 @@ export async function POST(request: Request) {
     // --- B) Existing workflow (profiles/auth uid based) ---
     // Many existing orders are tracked via service_orders.assigned_to + job_assignments,
     // so we must count completed jobs using those sources too.
-    const { data: completedServiceOrdersData, error: completedOrdersError } = await admin
+    let completedServiceOrdersData: ServiceOrderRow[] | null = null;
+    let completedOrdersError: any = null;
+
+    const primaryCompletedQuery = await admin
       .from("service_orders")
-      .select("id, assigned_to")
+      .select("id, assigned_to, completed_at, unit_category, unit_count")
       .eq("tenant_id", tenantId)
-      .eq("status", "completed");
+      .eq("status", "completed")
+      .gte("completed_at", rangeStart)
+      .lte("completed_at", rangeEnd);
+
+    if (primaryCompletedQuery.error) {
+      const msg = String(primaryCompletedQuery.error.message || '').toLowerCase();
+      if (msg.includes('unit_category') || msg.includes('unit_count')) {
+        const fallback = await admin
+          .from("service_orders")
+          .select("id, assigned_to, completed_at")
+          .eq("tenant_id", tenantId)
+          .eq("status", "completed")
+          .gte("completed_at", rangeStart)
+          .lte("completed_at", rangeEnd);
+        completedServiceOrdersData = (fallback.data || []) as ServiceOrderRow[];
+        completedOrdersError = fallback.error || null;
+      } else {
+        completedOrdersError = primaryCompletedQuery.error;
+      }
+    } else {
+      completedServiceOrdersData = (primaryCompletedQuery.data || []) as ServiceOrderRow[];
+    }
 
     if (completedOrdersError) {
       return NextResponse.json({ error: completedOrdersError.message }, { status: 500 });
@@ -152,8 +202,14 @@ export async function POST(request: Request) {
 
     const completedOrderIdsByUserId = new Map<string, Set<string>>();
     const orderIdToAssignedUserId = new Map<string, string>();
+    const orderMetaById = new Map<string, { unit_category: string | null; unit_count: number }>();
 
     for (const o of completedServiceOrders) {
+      const unitCount = Math.max(1, safeNumber(o.unit_count || 0));
+      orderMetaById.set(o.id, {
+        unit_category: o.unit_category || null,
+        unit_count: unitCount,
+      });
       if (!o.assigned_to) continue;
       orderIdToAssignedUserId.set(o.id, o.assigned_to);
       if (!completedOrderIdsByUserId.has(o.assigned_to)) {
@@ -228,8 +284,6 @@ export async function POST(request: Request) {
     }
 
     const techUserIds = techRows.map((t) => t.user_id).filter(Boolean) as string[];
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const sinceDate = since.toISOString().slice(0, 10);
 
     const attendanceByUser = new Map<string, { present: number; late: number }>();
 
@@ -238,7 +292,8 @@ export async function POST(request: Request) {
         .from("daily_attendance")
         .select("technician_id, clock_in_time, is_late, date")
         .eq("tenant_id", tenantId)
-        .gte("date", sinceDate)
+        .gte("date", fromDate)
+        .lte("date", toDate)
         .in("technician_id", techUserIds);
 
       if (!attendanceError && attendanceData) {
@@ -262,7 +317,8 @@ export async function POST(request: Request) {
         .from("overtime_requests")
         .select("technician_id, actual_hours, status, request_date")
         .eq("tenant_id", tenantId)
-        .gte("request_date", sinceDate)
+        .gte("request_date", fromDate)
+        .lte("request_date", toDate)
         .in("technician_id", techUserIds);
 
       if (!overtimeError && overtimeData) {
@@ -293,6 +349,28 @@ export async function POST(request: Request) {
 
       const completedJobs = orderIdsSet.size;
 
+      const unitTotals = {
+        split: 0,
+        cassette: 0,
+        standing: 0,
+        ducting: 0,
+        vrv: 0,
+        total: 0,
+      };
+
+      for (const oid of orderIdsSet) {
+        const meta = orderMetaById.get(oid);
+        if (!meta) continue;
+        const cat = String(meta.unit_category || '').toLowerCase();
+        const count = Math.max(1, safeNumber(meta.unit_count || 0));
+        unitTotals.total += count;
+        if (cat.includes('cassette')) unitTotals.cassette += count;
+        else if (cat.includes('standing')) unitTotals.standing += count;
+        else if (cat.includes('duct')) unitTotals.ducting += count;
+        else if (cat.includes('vrv') || cat.includes('vrf')) unitTotals.vrv += count;
+        else unitTotals.split += count;
+      }
+
       const complaints =
         (t.user_id ? complaintsByUserId.get(t.user_id) || 0 : 0) + (complaintsByTechId.get(t.id) || 0);
       const attendance = t.user_id ? attendanceByUser.get(t.user_id) : undefined;
@@ -300,6 +378,7 @@ export async function POST(request: Request) {
 
       return {
         id: t.id,
+        user_id: t.user_id,
         full_name: t.full_name,
         email: t.email,
         phone: t.phone,
@@ -308,6 +387,12 @@ export async function POST(request: Request) {
         availability_status: t.availability_status,
         last_login_at: t.last_login_at,
         jobs_completed: completedJobs,
+        units_total: unitTotals.total,
+        units_split: unitTotals.split,
+        units_cassette: unitTotals.cassette,
+        units_standing: unitTotals.standing,
+        units_ducting: unitTotals.ducting,
+        units_vrv: unitTotals.vrv,
         complaints_count: complaints,
         average_rating: safeNumber(t.average_rating),
         attendance_30d_present: attendance?.present || 0,

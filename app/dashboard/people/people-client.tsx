@@ -5,7 +5,7 @@
 
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -108,6 +108,7 @@ interface PartnerRecord {
 
 interface TechnicianPerformanceRow {
   id: string
+  user_id: string | null
   full_name: string
   email: string
   phone: string | null
@@ -116,6 +117,12 @@ interface TechnicianPerformanceRow {
   availability_status: string
   last_login_at: string | null
   jobs_completed: number
+  units_total?: number
+  units_split?: number
+  units_cassette?: number
+  units_standing?: number
+  units_ducting?: number
+  units_vrv?: number
   complaints_count: number
   average_rating: number
   attendance_30d_present: number
@@ -180,6 +187,11 @@ export function PeopleManagementClient({
   const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false)
   const [technicianError, setTechnicianError] = useState<string | null>(null)
   const [techPage, setTechPage] = useState(1)
+  const [techDateFrom, setTechDateFrom] = useState(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    return d.toISOString().slice(0, 10)
+  })
+  const [techDateTo, setTechDateTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [salesPartnerOptions, setSalesPartnerOptions] = useState<SalesPartnerOption[]>([])
@@ -432,7 +444,11 @@ export function PeopleManagementClient({
       const response = await fetch('/api/people/technician-performance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId })
+        body: JSON.stringify({
+          tenantId,
+          dateFrom: techDateFrom || null,
+          dateTo: techDateTo || null,
+        })
       })
 
       const result = await response.json()
@@ -1128,6 +1144,11 @@ export function PeopleManagementClient({
     .filter((r) => salesSelectedIds.has(r.order_id))
     .reduce((sum, r) => sum + Number(r.invoice_total || 0), 0)
 
+  const selectedMemberPerformance = useMemo(() => {
+    if (!selectedMember?.user_id) return null
+    return technicianRows.find((r) => r.user_id === selectedMember.user_id) || null
+  }, [selectedMember, technicianRows])
+
   useEffect(() => {
     if (activeTab !== 'sales') return
     fetchSalesPartnerPerformance()
@@ -1166,7 +1187,7 @@ export function PeopleManagementClient({
               </div>
             </div>
             <p className="text-sm text-gray-500 mt-1">
-              Ringkasan 30 hari terakhir (attendance & overtime) + total pekerjaan selesai
+              Ringkasan berdasarkan rentang tanggal + total pekerjaan selesai
             </p>
           </CardHeader>
           <CardContent>
@@ -1175,6 +1196,37 @@ export function PeopleManagementClient({
                 {technicianError}
               </div>
             )}
+
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div className="space-y-1">
+                <Label>Mulai</Label>
+                <Input
+                  type="date"
+                  value={techDateFrom}
+                  onChange={(e) => setTechDateFrom(e.target.value)}
+                  className="w-[170px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Sampai</Label>
+                <Input
+                  type="date"
+                  value={techDateTo}
+                  onChange={(e) => setTechDateTo(e.target.value)}
+                  className="w-[170px]"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setTechPage(1)
+                  fetchTechnicianPerformance()
+                }}
+                disabled={isLoadingTechnicians}
+              >
+                Terapkan
+              </Button>
+            </div>
 
             {isLoadingTechnicians ? (
               <p className="text-sm text-gray-500">Loading...</p>
@@ -2612,9 +2664,12 @@ export function PeopleManagementClient({
                           />
                         ))}
                       </div>
-                      <p className="text-3xl font-bold text-gray-900">-</p>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {selectedMemberPerformance?.average_rating
+                          ? Number(selectedMemberPerformance.average_rating).toFixed(2)
+                          : '-'}
+                      </p>
                       <p className="text-sm text-gray-500 mt-1">Average Rating</p>
-                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -2624,9 +2679,10 @@ export function PeopleManagementClient({
                   <CardContent className="pt-6">
                     <div className="text-center">
                       <Award className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                      <p className="text-xl font-bold text-gray-900">-</p>
+                      <p className="text-xl font-bold text-gray-900">
+                        {selectedMemberPerformance?.level || getRoleDisplayName(selectedMember?.role || '') || '-'}
+                      </p>
                       <p className="text-sm text-gray-500 mt-1">Career Level</p>
-                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -2636,9 +2692,10 @@ export function PeopleManagementClient({
                   <CardContent className="pt-6">
                     <div className="text-center">
                       <TrendingUp className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                      <p className="text-3xl font-bold text-gray-900">-</p>
-                      <p className="text-sm text-gray-500 mt-1">Total Orders</p>
-                      <p className="text-xs text-gray-400 mt-1">(Coming Soon)</p>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {selectedMemberPerformance?.jobs_completed ?? 0}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">Total Orders (Completed)</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -2653,11 +2710,40 @@ export function PeopleManagementClient({
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8 text-gray-500">
-                    <p className="text-sm">Track record data will be available soon</p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      This will show order history, client acquisition, and performance metrics
-                    </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="rounded-lg border p-3 text-center">
+                      <div className="text-xs text-gray-500">Split</div>
+                      <div className="text-lg font-semibold">
+                        {selectedMemberPerformance?.units_split ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <div className="text-xs text-gray-500">Cassette</div>
+                      <div className="text-lg font-semibold">
+                        {selectedMemberPerformance?.units_cassette ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <div className="text-xs text-gray-500">Standing</div>
+                      <div className="text-lg font-semibold">
+                        {selectedMemberPerformance?.units_standing ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <div className="text-xs text-gray-500">Ducting</div>
+                      <div className="text-lg font-semibold">
+                        {selectedMemberPerformance?.units_ducting ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <div className="text-xs text-gray-500">VRV/VRF</div>
+                      <div className="text-lg font-semibold">
+                        {selectedMemberPerformance?.units_vrv ?? 0}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-gray-500">
+                    Total unit selesai: {selectedMemberPerformance?.units_total ?? 0}
                   </div>
                 </CardContent>
               </Card>
