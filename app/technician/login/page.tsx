@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2, User } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 export default function TechnicianLoginPage() {
   const router = useRouter();
@@ -146,6 +147,11 @@ export default function TechnicianLoginPage() {
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
+              </div>
+              <div className="mt-2 text-right">
+                <Link href="/forgot-password?role=technician" className="text-sm text-blue-600 hover:text-blue-700">
+                  Lupa password?
+                </Link>
               </div>
             </div>
 

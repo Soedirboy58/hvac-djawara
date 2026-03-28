@@ -11,6 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff } from 'lucide-react'
+import Link from 'next/link'
 
 const loginSchema = z.object({
   email: z.string().email('Email tidak valid'),
@@ -148,6 +149,11 @@ export function LoginForm() {
         {errors.password && (
           <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
         )}
+        <div className="mt-2 text-right">
+          <Link href="/forgot-password?role=user" className="text-sm text-blue-600 hover:text-blue-700">
+            Lupa password?
+          </Link>
+        </div>
       </div>
 
       <button
